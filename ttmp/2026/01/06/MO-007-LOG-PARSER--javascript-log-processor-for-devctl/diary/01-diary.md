@@ -20,7 +20,7 @@ RelatedFiles:
       Note: MVP scope trimming decisions captured here
 ExternalSources: []
 Summary: ""
-LastUpdated: 2026-01-06T18:45:34-05:00
+LastUpdated: 2026-01-06T18:56:23-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
@@ -440,3 +440,83 @@ This step makes timeout accounting precise (only count when we are interrupted s
 
 ### Technical details
 - Timeout classification uses `errors.As(err, *goja.InterruptedError)` and checks `InterruptedError.Value()` for `ErrHookTimeout`.
+
+## Step 8: Research go-go-goja and jesus Patterns (require(), console, sandboxing)
+
+Reviewed `go-go-goja` (our wrapper around goja/goja_nodejs) and the larger `jesus` project to understand how they structure runtime setup (require/console/module registry) and to identify patterns that would have avoided the integration issues we hit in `logjs` (notably `goja_nodejs/console` requiring `require()` and the risk of accidentally enabling filesystem-backed module loading).
+
+The key outcome is a concrete plan for a *safe* `require()` sandbox: we can enable `require()` primarily for **core modules** like `console`/`util` (for formatting) while using a custom `SourceLoader` that restricts any `.js`/`.json` file loads to a specific directory tree (e.g. “only under the entry script directory”), and by carefully controlling which native modules are registered (do not register `fs`/`exec` unless explicitly opted in).
+
+### What I did
+- Read the `go-go-goja` registry code and its runtime helper:
+  - `/home/manuel/workspaces/2026-01-06/log-parser-module/go-go-goja/modules/common.go`
+  - `/home/manuel/workspaces/2026-01-06/log-parser-module/go-go-goja/engine/runtime.go`
+- Verified the exact reason `goja_nodejs/console.Enable(vm)` panics without `require()`:
+  - `go-go-goja/engine/runtime.go` calls `reg.Enable(vm)` before `console.Enable(vm)` (safe ordering).
+  - `goja_nodejs/console` internally calls `require.Require(runtime, "console")`, which panics if `require` wasn’t installed into the runtime.
+- Examined the goja_nodejs `require` implementation for where sandbox hooks exist:
+  - `require.WithLoader(...)` and `DefaultSourceLoader` (filesystem) behavior.
+  - the Node-like resolver algorithm (file/dir paths vs “bare” module names, and node_modules traversal).
+- Looked at how `jesus` uses `go-go-goja/modules.Registry` and `require.NewRegistry()` in a real system:
+  - `/home/manuel/workspaces/2026-01-06/log-parser-module/jesus/pkg/engine/engine.go`
+- Looked at how `jesus` provides `console` without depending on goja_nodejs `console`:
+  - `/home/manuel/workspaces/2026-01-06/log-parser-module/jesus/pkg/engine/bindings.go`
+  - `/home/manuel/workspaces/2026-01-06/log-parser-module/jesus/pkg/repl/model.go`
+
+### Why
+- Our MVP `logjs` avoided `require()` entirely to stay safe-by-default, but this came at a cost:
+  - we had to implement our own minimal `console`
+  - we cannot currently support `require("./local-file")` user scripts
+- `go-go-goja` and `jesus` already contain patterns for:
+  - installing `require()` safely in the runtime
+  - controlling which native modules are enabled
+  - providing a console implementation (either Node-style via goja_nodejs or minimal custom)
+
+### What worked
+- `go-go-goja` confirms the critical ordering: enable `require()` first, then enable `console`.
+- `jesus` shows a “selective module enablement” approach:
+  - use `gogogojamodules.DefaultRegistry` + only import specific modules (e.g. `database`) so that only those modules register via `init()`.
+- The goja_nodejs `require` API includes a concrete sandbox seam (`WithLoader`) that can be used to restrict filesystem access.
+
+### What didn't work
+- N/A (research-only step).
+
+### What I learned
+- goja_nodejs `console` is itself a core module implemented via `require()`, and it requires the `util` core module for `util.format`.
+- goja_nodejs `require` has *two distinct capability planes*:
+  1) **native/core modules** loaded via `RegisterNativeModule` / `RegisterCoreModule` (no filesystem loader involved)
+  2) **file-backed modules** loaded via `SourceLoader` (filesystem by default)
+  A sandbox can allow (1) while tightly restricting (2).
+- The resolver walks “node_modules” up the directory tree for bare imports; sandboxing must prevent that from escaping the allowed root (return `ModuleFileDoesNotExistError` for any disallowed candidate path).
+
+### What was tricky to build
+- N/A (research), but the tricky implementation details are clear:
+  - path normalization: goja_nodejs `require` uses the POSIX `path` package internally; our loader must normalize consistently and avoid `..` traversal.
+  - symlinks: a prefix check on cleaned paths is not sufficient if symlinks exist; an optional `EvalSymlinks` check is safer but more expensive.
+  - “entry script path must be absolute” if we want a clean “allowed root” policy.
+
+### What warrants a second pair of eyes
+- Sandbox policy: confirm the exact desired semantics for what “down from the entry script” means:
+  - allow only within the entry script directory (`/path/to/script-dir/**`)
+  - whether to allow `node_modules` inside that directory
+  - whether to allow `.json` requires
+
+### What should be done in the future
+- Write a dedicated analysis doc that explains:
+  - require() resolution semantics and caching
+  - what hooks exist for sandboxing (WithLoader)
+  - a concrete sandbox loader design for our `log-parse` use case
+
+### Code review instructions
+- Read the registry and runtime wiring:
+  - `/home/manuel/workspaces/2026-01-06/log-parser-module/go-go-goja/modules/common.go`
+  - `/home/manuel/workspaces/2026-01-06/log-parser-module/go-go-goja/engine/runtime.go`
+- Compare `jesus` runtime setup and console implementations:
+  - `/home/manuel/workspaces/2026-01-06/log-parser-module/jesus/pkg/engine/engine.go`
+  - `/home/manuel/workspaces/2026-01-06/log-parser-module/jesus/pkg/engine/bindings.go`
+
+### Technical details
+- goja_nodejs `console` → `require()` dependency:
+  - It calls `require.Require(runtime, "console")` which panics unless `(*require.Registry).Enable(runtime)` was called.
+- Sandbox seam:
+  - `require.WithLoader(...)` lets us replace filesystem module loading; returning `ModuleFileDoesNotExistError` makes the resolver continue searching.
