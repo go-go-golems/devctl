@@ -14,3 +14,11 @@ plugins:
 #     args:
 #       - ./testdata/plugins/pipeline/plugin.py
 #     priority: 10
+
+# Supervision example (launches a local python http.server with health check)
+# plugins:
+#   - id: http
+#     path: python3
+#     args:
+#       - ./testdata/plugins/http-service/plugin.py
+#     priority: 10
