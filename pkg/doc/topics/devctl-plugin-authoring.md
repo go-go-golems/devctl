@@ -17,23 +17,25 @@ SectionType: GeneralTopic
 
 # devctl Plugin Authoring Guide (NDJSON Stdio Protocol v1)
 
-devctl plugins let you turn “how we run dev in this repo” into a versioned, testable contract. A plugin is an executable that speaks a tiny NDJSON protocol over stdin/stdout, so devctl can ask it to mutate config, validate prerequisites, build/prepare artifacts, and produce a launch plan that devctl supervises.
+devctl plugins let you take all the “tribal knowledge” of starting a dev environment—ports, env vars, build steps, prerequisites, and how to launch services—and turn it into a small, versioned, testable program. A plugin is just an executable that speaks a tiny NDJSON protocol over stdin/stdout, so devctl can ask it to compute config, validate prerequisites, run build/prepare steps, and produce a launch plan that devctl supervises.
 
-This guide is a playbook: it explains the protocol, provides reference examples, and shows an end-to-end workflow for building a plugin developers can rely on day-to-day.
+This guide is a playbook, not just a spec. It explains the protocol, shows the mental model devctl uses when it talks to plugins, and gives you copy/paste examples (plus the patterns you’ll want once people actually rely on your plugin every day).
 
 ## 1. What a devctl plugin is
 
-A devctl plugin is a long-lived child process managed by devctl. devctl starts the process, reads a required handshake from the plugin’s stdout, then drives the dev environment by sending request frames on stdin and reading response/event frames from stdout.
+A devctl plugin is a long-lived child process managed by devctl. devctl starts the process, expects an immediate handshake on stdout, and then drives the dev environment by sending request frames on stdin and reading response/event frames on stdout. Put differently: devctl is the orchestrator, and your plugin is the repo-specific adapter.
 
 At a high level:
 
 - devctl owns orchestration: ordering, timeouts, strictness, process supervision, state, and log capture.
 - your plugin owns repo-specific logic: config derivation, prerequisite checks, build/prepare steps, and the service plan.
-- the protocol boundary is small on purpose: JSON in, JSON out.
+- the protocol boundary is small on purpose: JSON in, JSON out (so you can write plugins in whatever language your repo already uses).
+
+If you’re replacing a large `startdev.sh`, a good rule of thumb is: move “policy and knowledge” into the plugin, and keep “running processes and tracking state” in devctl.
 
 ## 2. Quick start: your first plugin in 10 minutes
 
-The quickest path to a useful plugin is to implement `config.mutate` and `launch.plan` for one service, then add `validate.run` so failures are actionable. This section gives you a copy/paste workflow that you can run in any repo with a bash shell and Python installed.
+The quickest path to a useful plugin is to implement `config.mutate` and `launch.plan` for one service, then add `validate.run` so failures are actionable. This section is intentionally “boring”: it gets you to a working `devctl up/status/logs/down` loop as fast as possible, and you can iterate from there.
 
 ### Step 1: Create a plugin file
 
@@ -127,7 +129,7 @@ If `plugins list` works, your handshake is valid and your stdout is clean. If `u
 
 ## 3. The non-negotiable rules
 
-The protocol is strict so devctl can be reliable and debuggable.
+The protocol is strict so devctl can be reliable and debuggable. The goal is that when things go wrong, you can trust the boundary: if devctl says “protocol contamination”, it really means stdout got polluted—not “maybe something else”.
 
 - stdout is protocol-only NDJSON:
   - one JSON object per line
@@ -142,7 +144,7 @@ If you print anything non-JSON to stdout, devctl treats it as protocol contamina
 
 ## 4. Lifecycle and pipeline (diagrams)
 
-The plugin lifecycle is a simple handshake + request loop, but it sits inside devctl’s larger pipeline.
+The plugin lifecycle is a simple handshake + request loop, but it sits inside devctl’s larger pipeline. The most helpful way to design plugins is to think in phases: “what config do we need?”, “what must we build?”, “what must we prepare?”, “is it safe to proceed?”, and “what services should devctl supervise?”
 
 ```mermaid
 sequenceDiagram
@@ -171,7 +173,7 @@ sequenceDiagram
   D->>P: terminate on shutdown
 ```
 
-This flowchart is the “mental model” most plugin work should preserve: you add capabilities by filling in boxes, not by creating new bespoke orchestration.
+This flowchart is the mental model to preserve as you add capabilities. Most plugin changes should feel like “filling in a box” (implementing one op), not “inventing a new orchestration path”.
 
 ```mermaid
 flowchart TD
@@ -187,7 +189,7 @@ flowchart TD
 
 ## 5. Protocol frames: handshake, request, response, event
 
-devctl’s protocol types are defined in Go and mirrored by JSON frames. The plugin does not need a library; it just needs to produce valid JSON objects with the right keys.
+devctl’s protocol types are defined in Go and mirrored by JSON frames. You don’t need a client library; you just need to produce valid JSON objects with the expected keys and keep stdout clean. When in doubt, copy the JSON shapes in this section exactly and evolve them slowly.
 
 ### 5.1. Handshake (stdout, first frame)
 
@@ -223,7 +225,7 @@ The handshake tells devctl who you are and which operations you support.
 
 ### 5.2. Request (stdin)
 
-devctl sends request frames on stdin.
+devctl sends request frames on stdin. The important thing to internalize is that devctl may call you with partial input (for example, a subset of requested steps), and it may do so under a deadline. Always validate inputs and handle unknown fields gracefully.
 
 ```json
 {
@@ -254,7 +256,7 @@ devctl sends request frames on stdin.
 
 ### 5.3. Response (stdout)
 
-For each request, emit exactly one response on stdout.
+For each request, emit exactly one response on stdout. If your plugin needs to do “background work” (like log following), do that via streams; don’t emit multiple responses for one request.
 
 ```json
 {
@@ -278,18 +280,18 @@ If you can’t handle the request, return `ok=false` with an error.
 
 ### 5.4. Event (stdout, streaming)
 
-Some ops return a `stream_id` in their response output and then emit `event` frames.
+Some ops return a `stream_id` in their response output and then emit `event` frames. A good streaming op behaves like `tail -f`: it keeps sending log events until it can’t, then ends cleanly.
 
 ```json
 { "type": "event", "stream_id": "s1", "event": "log", "level": "info", "message": "hello" }
 { "type": "event", "stream_id": "s1", "event": "end", "ok": true }
 ```
 
-Streams are for “follow” style operations where devctl should keep reading until you emit `event=end` (or the plugin is terminated).
+Streams are for “follow” style operations where devctl should keep reading until you emit `event=end` (or devctl terminates the plugin).
 
 ## 6. Implementing common operations
 
-Most real plugins implement some subset of the pipeline ops. devctl merges outputs across plugins in priority order and (optionally) enforces strictness rules on collisions.
+Most real plugins implement some subset of the pipeline ops. devctl will call you only for the ops you declare, and it can merge outputs across multiple plugins in priority order (optionally enforcing strictness rules on collisions). That means you can start small—one plugin, one repo—and still have a path to shared “org-wide defaults” later.
 
 ### 6.1. `config.mutate`: return a config patch
 
@@ -315,6 +317,7 @@ Most real plugins implement some subset of the pipeline ops. devctl merges outpu
 **Best practices:**
 
 - treat `input.config` as the current config and compute a patch from it.
+- keep names stable; changing a key is a breaking change for any scripts that read it.
 - avoid “random” values (like ephemeral ports) unless you also patch the chosen value into config.
 - make the patch idempotent: repeated application should converge.
 
@@ -340,11 +343,12 @@ Validation should answer: “can we proceed?” and “if not, what should the d
 **Best practices:**
 
 - keep errors stable and searchable (consistent codes/messages).
-- prefer one error per missing prerequisite; aggregate if that’s friendlier.
+- prefer errors that tell someone exactly what to install or configure.
+- if something is required for *some* workflows but not others, return it as a warning and document it.
 
 ### 6.3. `build.run` / `prepare.run`: steps and artifacts
 
-These ops are for deterministic side-effect steps (compilation, generating files, installing deps). devctl can pass a list of requested step names; your plugin should run only the requested steps if provided.
+These ops are for deterministic side-effect steps (compilation, generating files, installing deps). The key design is that these steps are named and selectable, so a developer can rerun just the part they care about (or so CI can run a minimal subset).
 
 ```json
 {
@@ -369,7 +373,7 @@ These ops are for deterministic side-effect steps (compilation, generating files
 
 ### 6.4. `launch.plan`: describe services devctl should supervise
 
-The launch plan is what devctl turns into processes, logs, health checks, and `devctl status/logs/down`.
+The launch plan is what devctl turns into processes, logs, health checks, and `devctl status/logs/down`. In practice, this is where plugins earn their keep: once the plan is correct, devctl can manage the whole environment consistently.
 
 ```json
 {
@@ -400,7 +404,7 @@ The launch plan is what devctl turns into processes, logs, health checks, and `d
 
 ### 6.5. `commands.list` / `command.run`: plugin-defined CLI commands
 
-Plugins can expose custom commands (e.g., `devctl db-reset`) without adding Go code to devctl. devctl asks for the command list and wires cobra subcommands dynamically.
+Plugins can expose custom commands (e.g., `devctl db-reset`) without adding Go code to devctl. devctl asks for the command list and wires cobra subcommands dynamically. This is best used for small “dev chores” that are repo-specific but need to be discoverable and consistent across the team.
 
 `commands.list` response (shape is a convention in this repo; keep it stable within your plugin suite):
 
@@ -437,7 +441,7 @@ Your response should include an exit code:
 
 ## 7. Merge behavior, ordering, and strictness
 
-If you configure multiple plugins, devctl calls them in deterministic order and merges their outputs. This is how you can have a “stack” of plugins (shared org defaults + repo specifics) without baking everything into one monolithic script.
+If you configure multiple plugins, devctl calls them in deterministic order and merges their outputs. This is how you can build a “stack” of plugins (shared org defaults + repo specifics) without forcing every repo to copy/paste the same logic.
 
 - Ordering:
   - primary key: `priority` (lower first)
@@ -511,7 +515,7 @@ for line in sys.stdin:
 
 ## 9. Wiring your plugin into a repo (`.devctl.yaml`)
 
-devctl discovers plugins from a config file at the repo root (by default `.devctl.yaml`).
+devctl discovers plugins from a config file at the repo root (by default `.devctl.yaml`). This keeps plugin configuration close to the repo, which is usually what you want for dev environments.
 
 ```yaml
 plugins:
@@ -537,7 +541,7 @@ devctl down
 
 ## 10. Timeouts, cancellation, and dry-run
 
-Plugins operate in messy environments, so you need to design for “this is taking too long” and “this should not do anything destructive”. devctl provides `ctx.deadline_ms` and `ctx.dry_run`, but your plugin still needs to enforce timeouts and safe behavior explicitly.
+Plugins operate in messy environments: someone’s machine is slow, a subprocess hangs, Docker isn’t running, or a developer just wants to see what would happen without actually changing anything. devctl provides `ctx.deadline_ms` and `ctx.dry_run`, but your plugin still needs to enforce timeouts and safe behavior explicitly.
 
 - `ctx.deadline_ms` is a hint:
   - wrap external commands with your own timeouts
@@ -585,7 +589,7 @@ Most plugin failures are protocol failures. This section is a checklist for the 
 
 ## 13. Reference: schema cheatsheet
 
-This section summarizes what devctl expects at the JSON boundary.
+This section summarizes what devctl expects at the JSON boundary. Use it when you’re implementing a plugin in a new language and just need the “shape of things”.
 
 - `handshake.capabilities.ops`: list of operations you implement
 - `request`:
