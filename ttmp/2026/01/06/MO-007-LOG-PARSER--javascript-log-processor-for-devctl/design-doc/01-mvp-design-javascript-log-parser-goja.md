@@ -26,7 +26,7 @@ ExternalSources:
     - local:js-log-parser-spec.md
     - local:js-log-parser-examples.md
 Summary: A small, synchronous, single-module JS log parser for devctl implemented with goja, reusing go-go-goja patterns where beneficial.
-LastUpdated: 2026-01-06T18:41:20-05:00
+LastUpdated: 2026-01-06T18:46:13-05:00
 WhatFor: Define an implementable MVP for JS-based log parsing with clear contracts, safety boundaries, and a Go implementation plan (standalone CLI first; devctl integration later).
 WhenToUse: Use when implementing the MVP, reviewing API/UX choices, or extending scope beyond the MVP.
 ---
@@ -538,13 +538,10 @@ Rejected for MVP:
 
 ## Open Questions
 
-1) **Newline handling**: does `line` include trailing `\n` when passed to JS?
-- Passing without newline is more ergonomic. MVP should normalize by trimming a single trailing newline.
-
-2) **Ordering vs workers**:
+1) **Ordering vs workers**:
 - If we add `--workers>1`, do we accept out-of-order output or buffer/reorder?
 
-3) **Module loading**:
+2) **Module loading**:
 - Do we require `register(...)` or allow `module.exports = { ... }` too?
 - MVP should start with one to avoid ambiguity.
 
