@@ -115,11 +115,11 @@ func TestRuntime_CallTimeout(t *testing.T) {
 	require.NoError(t, err)
 	plugin := filepath.Join(repoRoot, "..", "..", "testdata", "plugins", "timeout", "plugin.py")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
-	defer cancel()
+	startCtx, startCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer startCancel()
 
 	f := NewFactory(FactoryOptions{HandshakeTimeout: 2 * time.Second, ShutdownTimeout: 2 * time.Second})
-	c, err := f.Start(ctx, PluginSpec{
+	c, err := f.Start(startCtx, PluginSpec{
 		ID:      "t",
 		Path:    "python3",
 		Args:    []string{plugin},
@@ -131,7 +131,9 @@ func TestRuntime_CallTimeout(t *testing.T) {
 	var out struct {
 		Pong bool `json:"pong"`
 	}
-	err = c.Call(ctx, "ping", map[string]any{"message": "hi"}, &out)
+	callCtx, callCancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer callCancel()
+	err = c.Call(callCtx, "ping", map[string]any{"message": "hi"}, &out)
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 }

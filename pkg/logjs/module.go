@@ -12,6 +12,7 @@ import (
 )
 
 var ErrNoRegister = errors.New("logjs: script did not call register()")
+var ErrHookTimeout = errors.New("logjs: js hook timeout")
 
 type Module struct {
 	vm     *goja.Runtime
@@ -280,7 +281,7 @@ func (m *Module) callHook(hook string, fn goja.Callable, args ...goja.Value) (go
 	var timer *time.Timer
 	if timeout > 0 {
 		timer = time.AfterFunc(timeout, func() {
-			m.vm.Interrupt(errors.New("js hook timeout"))
+			m.vm.Interrupt(ErrHookTimeout)
 		})
 		defer timer.Stop()
 		defer m.vm.ClearInterrupt()
@@ -288,7 +289,7 @@ func (m *Module) callHook(hook string, fn goja.Callable, args ...goja.Value) (go
 
 	v, err := fn(goja.Undefined(), args...)
 	if err != nil {
-		if timeout > 0 {
+		if isInterruptedByTimeout(err) {
 			m.stats.HookTimeouts++
 		}
 		return nil, err
@@ -466,4 +467,14 @@ func isNullish(v goja.Value) bool {
 		return true
 	}
 	return goja.IsUndefined(v) || goja.IsNull(v)
+}
+
+func isInterruptedByTimeout(err error) bool {
+	var interrupted *goja.InterruptedError
+	if errors.As(err, &interrupted) {
+		if v, ok := interrupted.Value().(error); ok && errors.Is(v, ErrHookTimeout) {
+			return true
+		}
+	}
+	return errors.Is(err, ErrHookTimeout)
 }
