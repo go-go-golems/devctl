@@ -160,3 +160,15 @@ Finalize M0 baseline: fix doc hygiene (numeric prefix) and land initial TUI skel
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/bus.go — M0 Watermill bus + NopLogger to keep UI clean
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/ttmp/2026/01/06/MO-006-DEVCTL-TUI--create-a-devctl-tui/sources/local/01-devctl-tui-layout.md — Renamed imported baseline to satisfy numeric-prefix policy
 
+
+## 2026-01-06
+
+Implement Milestone 1 log viewer + add in-TUI actions (up/down/restart) via Watermill UI actions topic (commit e2e407b).
+
+### Related Files
+
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/tui.go — Wire action runner + silence zerolog by default
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/action_runner.go — Run up/down/restart in-process and publish action.log events
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/models/service_model.go — Service log viewer (stdout/stderr
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/ttmp/2026/01/06/MO-006-DEVCTL-TUI--create-a-devctl-tui/playbook/01-playbook-testing-devctl-tui-in-tmux.md — Update playbook for logs/actions keys
+

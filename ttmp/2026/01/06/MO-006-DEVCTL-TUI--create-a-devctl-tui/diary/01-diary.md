@@ -580,3 +580,75 @@ This step also resolves the lingering docmgr warning about the imported layout s
 
 ### Technical details
 - Imported baseline (renamed): `devctl/ttmp/2026/01/06/MO-006-DEVCTL-TUI--create-a-devctl-tui/sources/local/01-devctl-tui-layout.md`
+
+## Step 15: Implement logs + in-TUI actions (Milestone 1 and start of Milestone 2)
+
+This step turns the “plumbing demo” into something you can actually use during a dev loop: the dashboard is now interactive, you can drill into a selected service, and you get a real log viewer with follow, scroll, and quick filtering. The event log also grew into a proper debugging surface (filter/clear), so it’s easier to see what the system thinks is happening without attaching a debugger.
+
+I also introduced the first “real action” path inside the TUI: up/down/restart requests are emitted from the UI, handled via a dedicated Watermill topic (`devctl.ui.actions`), executed in-process using existing `pkg/*` code, and then echoed back into the UI as action log events. To keep the UI readable while these operations run, the TUI command now disables zerolog output by default (with an escape hatch flag).
+
+**Commit (code):** e2e407b — "devctl tui: logs view + in-process actions"
+
+### What I did
+- Dashboard improvements:
+  - Added selection (`↑/↓`) and navigation to service detail (`enter` / `l`)
+  - Added a confirmable “kill selected service” action (`x` then `y`) to exercise exit detection
+- Service detail logs (first usable log viewer):
+  - stdout/stderr tabs (`tab`)
+  - follow toggle (`f`)
+  - filter (`/` then enter; `ctrl+l` clears)
+  - scroll via Bubble Tea viewport
+- Event log UX:
+  - filter (`/`), clear filter (`ctrl+l`), and clear events (`c`)
+- Actions via Watermill:
+  - Defined `devctl.ui.actions` topic + `tui.action.request` envelope
+  - Wired dashboard actions: `u` up, `d` down (confirm), `r` restart (confirm)
+  - Implemented an in-process action runner that reuses `pkg/config`, `pkg/discovery`, `pkg/runtime`, `pkg/engine`, `pkg/supervise`, `pkg/state`
+  - Published `action.log` domain events so actions show up as UI event lines
+- Log hygiene:
+  - Disabled zerolog output while `devctl tui` runs by default; added `--debug-logs` escape hatch
+- Validation:
+  - `cd devctl && go test ./...`
+  - Re-ran the tmux playbook patterns to confirm logs render and actions show up in the event view
+
+### Why
+- The fastest path to a “real” devctl TUI is to make logs + state navigation solid first; everything else (pipeline UX, plugin streams) is easier once those basics are reliable.
+- Routing UI actions through Watermill keeps the concurrency model simple: the UI emits requests, the runner emits domain events, and models only ever react to messages.
+
+### What worked
+- Logs are readable and controllable (tab/follow/filter/scroll) without leaving the TUI.
+- The `up/down/restart` path works end-to-end and produces visible action events in the event log.
+- Silencing zerolog prevents background library logs from corrupting the terminal UI.
+
+### What didn't work
+- Adding `bubbles/textinput` initially failed at runtime tooling level with a missing `go.sum` entry (`github.com/atotto/clipboard`); running `go get github.com/charmbracelet/bubbles/textinput@...` and `go mod tidy` fixed it.
+- With viewport “high performance rendering” enabled, tmux capture output was sometimes blank; switching it off makes `tmux capture-pane` reflect what we expect.
+
+### What I learned
+- For this repo’s workflow, tmux capture is part of the “test surface”, so rendering modes that look fine interactively can still be problematic.
+- It’s valuable to keep “action logs” as domain events: they’re debuggable, searchable, and don’t require special UI plumbing beyond the existing transformer.
+
+### What was tricky to build
+- Avoiding subtle state bugs: the service lookup originally returned a pointer to a loop-local copy of the service record, which can silently produce wrong data; returning a pointer to the slice element fixes it.
+- Keeping the UI clean while running operations that touch runtime/supervise code paths that normally log to stdout/stderr.
+
+### What warrants a second pair of eyes
+- The in-process “up” path currently mirrors the CLI default behavior (build + prepare + validate + launch); we should confirm this matches how people expect `u` to behave (especially for repos where build/prepare are expensive).
+- Whether we want a more structured action progress stream (phase start/end) rather than only “start/ok/failed” log lines.
+
+### What should be done in the future
+- Add PipelineModel progress messages (phase/step events) and a proper validation table view.
+- Consider an opt-in “skip build/prepare/validate” set of keys or toggles for faster iteration during development.
+
+### Code review instructions
+- Start at `devctl/cmd/devctl/cmds/tui.go` for wiring (`--debug-logs`, action runner registration).
+- Review the action runner in `devctl/pkg/tui/action_runner.go` and message types in `devctl/pkg/tui/actions.go`.
+- Review the log viewer in `devctl/pkg/tui/models/service_model.go`.
+- Validate with:
+  - `cd devctl && go test ./...`
+  - `docmgr doctor --ticket MO-006-DEVCTL-TUI`
+  - The tmux playbook in `devctl/ttmp/2026/01/06/MO-006-DEVCTL-TUI--create-a-devctl-tui/playbook/01-playbook-testing-devctl-tui-in-tmux.md`
+
+### Technical details
+- UI actions topic: `devctl.ui.actions` (`devctl/pkg/tui/topics.go`)
+- Action request envelope: `{type:\"tui.action.request\", payload:{kind,at}}`
