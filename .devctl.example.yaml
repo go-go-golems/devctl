@@ -22,3 +22,11 @@ plugins:
 #     args:
 #       - ./testdata/plugins/http-service/plugin.py
 #     priority: 10
+
+# Command example (provides a dynamic `devctl echo ...` command)
+# plugins:
+#   - id: cmd
+#     path: python3
+#     args:
+#       - ./testdata/plugins/command/plugin.py
+#     priority: 10
