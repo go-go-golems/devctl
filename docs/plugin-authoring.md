@@ -1,5 +1,9 @@
 # Plugin authoring (NDJSON stdio protocol v1)
 
+For the full playbook (protocol, patterns, examples, diagrams), see:
+
+- `pkg/doc/topics/devctl-plugin-authoring.md`
+
 ## Rules (non-negotiable)
 
 - **stdout is protocol only**: every line must be a single JSON object (NDJSON).
@@ -83,4 +87,3 @@ Run command:
 
 - `examples/plugins/python-minimal/plugin.py`
 - `examples/plugins/bash-minimal/plugin.sh`
-
