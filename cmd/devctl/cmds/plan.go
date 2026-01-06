@@ -29,6 +29,9 @@ func newPlanCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if !opts.Strict && cfg.Strictness == "error" {
+				opts.Strict = true
+			}
 			specs, err := discovery.Discover(cfg, discovery.Options{RepoRoot: opts.RepoRoot})
 			if err != nil {
 				return err
