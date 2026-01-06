@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	"time"
 
@@ -44,6 +46,7 @@ func NewFactory(opts FactoryOptions) *Factory {
 func (f *Factory) Start(ctx context.Context, spec PluginSpec) (Client, error) {
 	cmd := exec.CommandContext(ctx, spec.Path, spec.Args...)
 	cmd.Dir = spec.WorkDir
+	cmd.Env = mergeEnv(os.Environ(), spec.Env)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	stdin, err := cmd.StdinPipe()
@@ -73,6 +76,17 @@ func (f *Factory) Start(ctx context.Context, spec PluginSpec) (Client, error) {
 	c := newClient(spec, hs, cmd, stdin, reader, stderr, f.opts.ShutdownTimeout)
 	c.start()
 	return c, nil
+}
+
+func mergeEnv(base []string, extra map[string]string) []string {
+	if len(extra) == 0 {
+		return base
+	}
+	out := append([]string{}, base...)
+	for k, v := range extra {
+		out = append(out, k+"="+v)
+	}
+	return out
 }
 
 func readHandshake(ctx context.Context, r *bufio.Reader, timeout time.Duration) (protocol.Handshake, error) {
@@ -107,6 +121,7 @@ func readLine(ctx context.Context, r *bufio.Reader) ([]byte, error) {
 			if len(b) > 0 && b[len(b)-1] == '\n' {
 				b = b[:len(b)-1]
 			}
+			b = []byte(strings.TrimSpace(string(b)))
 		}
 		ch <- result{b: b, err: err}
 	}()

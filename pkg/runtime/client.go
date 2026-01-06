@@ -20,6 +20,7 @@ type Client interface {
 	Handshake() protocol.Handshake
 	SupportsOp(op string) bool
 	Call(ctx context.Context, op string, input any, output any) error
+	StartStream(ctx context.Context, op string, input any) (streamID string, events <-chan protocol.Event, err error)
 	Close(ctx context.Context) error
 }
 
@@ -78,17 +79,20 @@ func (c *client) Call(ctx context.Context, op string, input any, output any) err
 		Type:      protocol.FrameRequest,
 		RequestID: rid,
 		Op:        op,
-		Ctx:       protocol.RequestContext{},
+		Ctx:       requestContextFrom(ctx),
 		Input:     reqBytes,
 	}
 
 	if err := c.writeFrame(req); err != nil {
-		c.router.cancel(rid)
+		c.router.cancel(rid, err)
 		return err
 	}
 
 	select {
-	case resp := <-respCh:
+	case resp, ok := <-respCh:
+		if !ok {
+			return errors.New("request canceled")
+		}
 		if !resp.Ok {
 			if resp.Error != nil {
 				return errors.Errorf("%s: %s", resp.Error.Code, resp.Error.Message)
@@ -102,8 +106,58 @@ func (c *client) Call(ctx context.Context, op string, input any, output any) err
 		}
 		return nil
 	case <-ctx.Done():
-		c.router.cancel(rid)
+		c.router.cancel(rid, ctx.Err())
 		return ctx.Err()
+	}
+}
+
+func (c *client) StartStream(ctx context.Context, op string, input any) (string, <-chan protocol.Event, error) {
+	rid := c.nextRequestID()
+	respCh := c.router.register(rid)
+
+	reqBytes, err := json.Marshal(input)
+	if err != nil {
+		return "", nil, err
+	}
+
+	req := protocol.Request{
+		Type:      protocol.FrameRequest,
+		RequestID: rid,
+		Op:        op,
+		Ctx:       requestContextFrom(ctx),
+		Input:     reqBytes,
+	}
+	if err := c.writeFrame(req); err != nil {
+		c.router.cancel(rid, err)
+		return "", nil, err
+	}
+
+	select {
+	case resp, ok := <-respCh:
+		if !ok {
+			return "", nil, errors.New("request canceled")
+		}
+		if !resp.Ok {
+			if resp.Error != nil {
+				return "", nil, errors.Errorf("%s: %s", resp.Error.Code, resp.Error.Message)
+			}
+			return "", nil, errors.New("plugin returned ok=false without error")
+		}
+		var out struct {
+			StreamID string `json:"stream_id"`
+		}
+		if err := json.Unmarshal(resp.Output, &out); err != nil {
+			return "", nil, err
+		}
+		if out.StreamID == "" {
+			return "", nil, errors.New("missing stream_id in response output")
+		}
+		events := c.router.subscribe(out.StreamID)
+		return out.StreamID, events, nil
+
+	case <-ctx.Done():
+		c.router.cancel(rid, ctx.Err())
+		return "", nil, ctx.Err()
 	}
 }
 
@@ -157,7 +211,12 @@ func (c *client) readStdoutLoop() {
 			}
 			c.router.deliver(resp.RequestID, resp)
 		case protocol.FrameEvent:
-			// stream support not yet wired to caller-facing API; ignore for now
+			var ev protocol.Event
+			if err := json.Unmarshal(line, &ev); err != nil {
+				c.router.failAll(err)
+				return
+			}
+			c.router.publish(ev)
 		case protocol.FrameHandshake, protocol.FrameRequest:
 			c.router.failAll(errors.Errorf("%s: unexpected frame type %q", protocol.ErrProtocolUnexpectedFrame, envelope.Type))
 			return
@@ -204,4 +263,15 @@ func contains(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+func requestContextFrom(ctx context.Context) protocol.RequestContext {
+	rc := protocol.RequestContext{}
+	if deadline, ok := ctx.Deadline(); ok {
+		rc.DeadlineMs = time.Until(deadline).Milliseconds()
+		if rc.DeadlineMs < 0 {
+			rc.DeadlineMs = 0
+		}
+	}
+	return rc
 }
