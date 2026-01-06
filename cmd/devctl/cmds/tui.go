@@ -3,12 +3,15 @@ package cmds
 import (
 	"context"
 	stderrors "errors"
+	"io"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/go-go-golems/devctl/pkg/tui"
 	"github.com/go-go-golems/devctl/pkg/tui/models"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 )
@@ -16,6 +19,7 @@ import (
 func newTuiCmd() *cobra.Command {
 	var refresh time.Duration
 	var altScreen bool
+	var debugLogs bool
 
 	cmd := &cobra.Command{
 		Use:   "tui",
@@ -24,6 +28,11 @@ func newTuiCmd() *cobra.Command {
 			opts, err := getRootOptions(cmd)
 			if err != nil {
 				return err
+			}
+
+			if !debugLogs {
+				zerolog.SetGlobalLevel(zerolog.Disabled)
+				log.Logger = zerolog.New(io.Discard)
 			}
 
 			ctx, cancel := context.WithCancel(cmd.Context())
@@ -36,7 +45,19 @@ func newTuiCmd() *cobra.Command {
 
 			tui.RegisterDomainToUITransformer(bus)
 
-			model := models.NewRootModel()
+			tui.RegisterUIActionRunner(bus, tui.RootOptions{
+				RepoRoot: opts.RepoRoot,
+				Config:   opts.Config,
+				Strict:   opts.Strict,
+				DryRun:   opts.DryRun,
+				Timeout:  opts.Timeout,
+			})
+
+			model := models.NewRootModel(models.RootModelOptions{
+				PublishAction: func(req tui.ActionRequest) error {
+					return tui.PublishAction(bus.Publisher, req)
+				},
+			})
 			programOptions := []tea.ProgramOption{
 				tea.WithInput(cmd.InOrStdin()),
 				tea.WithOutput(cmd.OutOrStdout()),
@@ -86,5 +107,6 @@ func newTuiCmd() *cobra.Command {
 
 	cmd.Flags().DurationVar(&refresh, "refresh", 1*time.Second, "Refresh interval for state polling")
 	cmd.Flags().BoolVar(&altScreen, "alt-screen", true, "Use the terminal alternate screen buffer")
+	cmd.Flags().BoolVar(&debugLogs, "debug-logs", false, "Allow zerolog output to stdout/stderr while the TUI runs (may corrupt the UI)")
 	return cmd
 }

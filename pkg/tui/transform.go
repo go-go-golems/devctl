@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -45,6 +46,48 @@ func RegisterDomainToUITransformer(bus *Bus) {
 				}
 			}
 			entry := EventLogEntry{At: time.Now(), Text: text}
+			evEnv, err := NewEnvelope(UITypeEventAppend, entry)
+			if err != nil {
+				return err
+			}
+			evBytes, err := evEnv.MarshalJSONBytes()
+			if err != nil {
+				return err
+			}
+			if err := bus.Publisher.Publish(TopicUIMessages, message.NewMessage(watermill.NewUUID(), evBytes)); err != nil {
+				return errors.Wrap(err, "publish ui event")
+			}
+			return nil
+		case DomainTypeServiceExit:
+			var ev ServiceExitObserved
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
+				return errors.Wrap(err, "unmarshal service exit")
+			}
+
+			text := fmt.Sprintf("service exit: %s pid=%d", ev.Name, ev.PID)
+			if ev.Reason != "" {
+				text = fmt.Sprintf("%s (%s)", text, ev.Reason)
+			}
+			entry := EventLogEntry{At: ev.When, Text: text}
+			evEnv, err := NewEnvelope(UITypeEventAppend, entry)
+			if err != nil {
+				return err
+			}
+			evBytes, err := evEnv.MarshalJSONBytes()
+			if err != nil {
+				return err
+			}
+			if err := bus.Publisher.Publish(TopicUIMessages, message.NewMessage(watermill.NewUUID(), evBytes)); err != nil {
+				return errors.Wrap(err, "publish ui event")
+			}
+			return nil
+		case DomainTypeActionLog:
+			var logEv ActionLog
+			if err := json.Unmarshal(env.Payload, &logEv); err != nil {
+				return errors.Wrap(err, "unmarshal action log")
+			}
+
+			entry := EventLogEntry{At: logEv.At, Text: logEv.Text}
 			evEnv, err := NewEnvelope(UITypeEventAppend, entry)
 			if err != nil {
 				return err

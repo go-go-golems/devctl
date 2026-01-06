@@ -14,15 +14,16 @@
 
 ## Milestone 1 — Logs (service detail)
 
-- [ ] Implement service detail navigation and selection-driven service context (from dashboard)
-- [ ] Implement logs viewer model: stdout/stderr tabs, follow toggle, scrollback cap
-- [ ] Plumb log updates into the model (direct file tailing, or via Watermill messages if we want a single event path)
-- [ ] Add log search/filter UI (substring search + highlight; clear search)
+- [x] Implement service detail navigation and selection-driven service context (from dashboard)
+- [x] Implement logs viewer model: stdout/stderr tabs, follow toggle, scrollback cap
+- [x] Plumb log updates into the model (direct file tailing, or via Watermill messages if we want a single event path)
+- [x] Add log search/filter UI (substring search + highlight; clear search)
 
 ## Milestone 2 — Actions + pipeline UX
 
-- [ ] Implement an orchestrator that runs up/down/restart in-process and publishes domain events for phases/steps/validation (no shelling out)
-- [ ] Add a confirmation modal for destructive actions (down/restart), and respect `--timeout`, `--dry-run`, `--strict`
+- [x] Implement an orchestrator that runs up/down/restart in-process and publishes domain events for phases/steps/validation (no shelling out)
+- [x] Add a confirmation modal for destructive actions (down/restart), and respect `--timeout`, `--dry-run`, `--strict`
+- [x] Add a confirmation modal for destructive actions (kill selected service, for testing exit handling)
 - [ ] Implement PipelineModel: phase progress, build/prepare step lists, last run summary (durations + status)
 - [ ] Implement validation UX: errors/warnings table (code/message/details) and a clear “what to do next” affordance
 - [ ] Implement cancellation + cleanup: cancel in-flight up, ensure plugin clients closed, keep UI responsive during long phases

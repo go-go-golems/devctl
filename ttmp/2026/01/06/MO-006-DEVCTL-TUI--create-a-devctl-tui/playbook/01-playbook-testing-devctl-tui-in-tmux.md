@@ -109,6 +109,8 @@ ls -la "$REPO_ROOT/.devctl/state.json"
 go run ./cmd/devctl --repo-root "$REPO_ROOT" status
 ```
 
+Optional (new): you can now start from a stopped state and press `u` inside the TUI to run `up` in-process.
+
 ### 3) Run the TUI inside tmux (and capture output)
 
 ```bash
@@ -128,7 +130,19 @@ echo "Captured to /tmp/devctl-tui-capture.txt"
 tmux attach -t devctl-tui
 
 # Inside the TUI:
-# - press `tab` to switch to the event view
+# - use `↑/↓` to select a service
+# - press `enter` (or `l`) to open the service log view
+# - press `tab` to switch stdout/stderr within the service view
+# - press `f` to toggle follow
+# - press `/` to filter log lines (type and press enter; `ctrl+l` clears)
+# - press `esc` to go back to the dashboard
+# - press `x` (then `y`) on the dashboard to SIGTERM the selected service (useful to verify `service exit: ...` events)
+# - press `d` (then `y`) to run `down` in-process (stops services + removes state)
+# - press `u` to run `up` in-process (starts services + writes state)
+# - press `r` (then `y`) to run `restart` in-process (down then up)
+# - press `tab` from the dashboard to switch to the event view
+# - in the event view, press `/` to filter and `c` to clear the event log
+# - press `?` to toggle the help overlay
 # - press `q` to quit
 ```
 
@@ -154,8 +168,9 @@ Minimum success:
 - `.devctl/state.json` exists under `$REPO_ROOT/.devctl/`
 - `devctl tui` starts and shows:
   - `System: Running`
-  - a `Services:` list with `http` and `spewer` and their PIDs
-- `tab` switches to the event view and shows lines like `state: loaded`
+  - a `Services` list with `http` and `spewer` and their PIDs
+- `enter` opens a service detail view and shows log output (or a clear error if logs are missing)
+- `tab` switches to the event view and shows lines like `state: loaded` (and optionally `service exit: ...` if you kill a PID)
 - `q` exits the TUI without hanging
 - the TUI output is not polluted by router debug logs (e.g., no `[watermill] ...` lines)
 - the TUI uses the terminal alternate screen (quitting returns you to the original shell screen)

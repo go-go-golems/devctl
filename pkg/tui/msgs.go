@@ -7,3 +7,11 @@ type StateSnapshotMsg struct {
 type EventLogAppendMsg struct {
 	Entry EventLogEntry
 }
+
+type NavigateToServiceMsg struct {
+	Name string
+}
+
+type ActionRequestMsg struct {
+	Request ActionRequest
+}
