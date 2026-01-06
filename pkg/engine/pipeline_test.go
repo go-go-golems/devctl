@@ -121,3 +121,68 @@ func TestPipeline_LaunchPlan_CollisionStrict(t *testing.T) {
 	_, err := p.LaunchPlan(context.Background(), patch.Config{})
 	require.Error(t, err)
 }
+
+func TestPipeline_Validate_MergesErrorsAndANDsValid(t *testing.T) {
+	p := &Pipeline{
+		Clients: []runtime.Client{
+			&fakeClient{
+				spec: runtime.PluginSpec{ID: "v1", Priority: 1},
+				ops: map[string]func(input any) (any, error){
+					"validate.run": func(input any) (any, error) {
+						return ValidateResult{
+							Valid: true,
+							Warnings: []protocol.Error{
+								{Code: "W1", Message: "warn"},
+							},
+						}, nil
+					},
+				},
+			},
+			&fakeClient{
+				spec: runtime.PluginSpec{ID: "v2", Priority: 2},
+				ops: map[string]func(input any) (any, error){
+					"validate.run": func(input any) (any, error) {
+						return ValidateResult{
+							Valid: false,
+							Errors: []protocol.Error{
+								{Code: "E1", Message: "err"},
+							},
+						}, nil
+					},
+				},
+			},
+		},
+	}
+
+	out, err := p.Validate(context.Background(), patch.Config{})
+	require.NoError(t, err)
+	require.False(t, out.Valid)
+	require.Len(t, out.Errors, 1)
+	require.Len(t, out.Warnings, 1)
+}
+
+func TestPipeline_Build_StepCollisionStrict(t *testing.T) {
+	p := &Pipeline{
+		Opts: Options{Strict: true},
+		Clients: []runtime.Client{
+			&fakeClient{
+				spec: runtime.PluginSpec{ID: "b1", Priority: 1},
+				ops: map[string]func(input any) (any, error){
+					"build.run": func(input any) (any, error) {
+						return BuildResult{Steps: []StepResult{{Name: "backend", Ok: true}}}, nil
+					},
+				},
+			},
+			&fakeClient{
+				spec: runtime.PluginSpec{ID: "b2", Priority: 2},
+				ops: map[string]func(input any) (any, error){
+					"build.run": func(input any) (any, error) {
+						return BuildResult{Steps: []StepResult{{Name: "backend", Ok: true}}}, nil
+					},
+				},
+			},
+		},
+	}
+	_, err := p.Build(context.Background(), patch.Config{}, []string{"backend"})
+	require.Error(t, err)
+}

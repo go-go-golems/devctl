@@ -6,3 +6,11 @@ plugins:
       - ./testdata/plugins/ok-python/plugin.py
     priority: 10
 # strictness: warn   # or "error" (or use --strict)
+
+# Pipeline example (supports config.mutate + launch.plan)
+# plugins:
+#   - id: pipeline
+#     path: python3
+#     args:
+#       - ./testdata/plugins/pipeline/plugin.py
+#     priority: 10

@@ -33,7 +33,7 @@ func (r *router) register(rid string) chan protocol.Response {
 			RequestID: rid,
 			Ok:        false,
 			Error: &protocol.Error{
-				Code:    "E_RUNTIME",
+				Code:    protocol.ErrRuntime,
 				Message: errors.Wrap(r.fatal, "runtime").Error(),
 			},
 		}
@@ -74,7 +74,7 @@ func (r *router) cancel(rid string, err error) {
 			RequestID: rid,
 			Ok:        false,
 			Error: &protocol.Error{
-				Code:    "E_CANCELED",
+				Code:    protocol.ErrCanceled,
 				Message: msg,
 			},
 		}
@@ -100,7 +100,7 @@ func (r *router) failAll(err error) {
 			RequestID: rid,
 			Ok:        false,
 			Error: &protocol.Error{
-				Code:    "E_RUNTIME",
+				Code:    protocol.ErrRuntime,
 				Message: errors.Wrap(err, "runtime").Error(),
 			},
 		}
