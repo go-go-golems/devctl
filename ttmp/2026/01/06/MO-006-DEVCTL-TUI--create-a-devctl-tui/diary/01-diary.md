@@ -652,3 +652,56 @@ I also introduced the first “real action” path inside the TUI: up/down/resta
 ### Technical details
 - UI actions topic: `devctl.ui.actions` (`devctl/pkg/tui/topics.go`)
 - Action request envelope: `{type:\"tui.action.request\", payload:{kind,at}}`
+
+## Step 16: Make restart failures obvious (CLI prompt + TUI status line)
+
+After trying a “kill → restart” loop in the TUI, it was too easy to end up in a confusing state: `up` would be requested while `state.json` still existed, the operation would fail, and the failure was only visible if you happened to be watching the event log. The CLI had the same underlying sharp edge (`devctl up` errors if state exists), which made it hard to tell whether you should run `down`, use `--force`, or just clean up a stale state.
+
+This step tightens the ergonomics in two places: the TUI now keeps a small persistent status line for action results (so “action failed …” is hard to miss), and the CLI `devctl up` prompts interactively when state exists. If the state looks stale (no PIDs alive), it offers to remove it and continue; otherwise it offers a restart (down then up). Non-interactive runs keep the old behavior and require `--force`.
+
+**Commit (code):** 8677065 — "devctl up: prompt on existing state; tui: clearer errors"
+
+### What I did
+- TUI:
+  - Added a persistent `Status:` line for action failures/successes
+  - Changed `u` on the dashboard to prompt for restart if state already exists
+- CLI:
+  - Updated `devctl up` to prompt when state exists (TTY only), using:
+    - “remove stale state and continue?” if all PIDs are dead
+    - “restart (down then up)?” if any PID is alive
+  - Printed the prompt on stderr so it still shows up if stdout is redirected
+- Ran `cd devctl && go test ./...`
+
+### Why
+- A failed restart is a “high-salience” event in the dev loop; hiding it in a scrolling event tab is a poor default.
+- Prompting on existing state is a safer default than forcing users to remember `down`/`--force`, especially when state can become stale after crashes.
+
+### What worked
+- The TUI now makes action failures/successes visible immediately without leaving the dashboard/service views.
+- In an interactive terminal, `devctl up` now guides the user to the right next action instead of just erroring.
+
+### What didn't work
+- When I tried to test the CLI prompt by piping input (`printf "y\\n" | devctl up ...`), it intentionally did not prompt because stdin is not a TTY; it returned the old error. This is expected, and `--force` remains the automation-friendly path.
+
+### What I learned
+- “Interactive prompt only when stdin is a TTY” is the right compromise: it avoids hangs in CI/scripts while improving the human CLI.
+
+### What was tricky to build
+- Keeping the behavior consistent across three entry points:
+  - CLI `up` (interactive prompt)
+  - TUI `u` (restart prompt)
+  - TUI `d/r` (already-confirmed destructive actions)
+
+### What warrants a second pair of eyes
+- Whether we should add an explicit `--yes` flag for `devctl up` to accept the prompt in scripted environments without needing `--force`.
+
+### What should be done in the future
+- Consider surfacing richer action errors (e.g., validation failure details) in the TUI beyond the single-line status/event log.
+
+### Code review instructions
+- Review `devctl/cmd/devctl/cmds/up.go` for the prompt logic and stale-vs-running distinction.
+- Review `devctl/pkg/tui/models/root_model.go` and `devctl/pkg/tui/models/dashboard_model.go` for the new UX behavior.
+- Validate with `cd devctl && go test ./...` and by running `devctl up` twice in an interactive terminal to see the prompt.
+
+### Technical details
+- TTY detection is based on checking `os.ModeCharDevice` of stdin (TTY-only prompts).

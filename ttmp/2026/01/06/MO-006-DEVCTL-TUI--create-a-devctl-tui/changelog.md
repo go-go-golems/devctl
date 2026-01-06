@@ -172,3 +172,14 @@ Implement Milestone 1 log viewer + add in-TUI actions (up/down/restart) via Wate
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/models/service_model.go — Service log viewer (stdout/stderr
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/ttmp/2026/01/06/MO-006-DEVCTL-TUI--create-a-devctl-tui/playbook/01-playbook-testing-devctl-tui-in-tmux.md — Update playbook for logs/actions keys
 
+
+## 2026-01-06
+
+Improve restart ergonomics: devctl up prompts when state exists (stale vs running), and TUI shows a persistent status line + prompts restart on u when state exists (commit 8677065).
+
+### Related Files
+
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/up.go — Add interactive confirmation when state exists (TTY only)
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/models/dashboard_model.go — Prompt restart on u when state exists
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/models/root_model.go — Persistent Status line for action failures/success
+
