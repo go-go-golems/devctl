@@ -513,7 +513,129 @@ for line in sys.stdin:
               "error": {"code": "E_UNSUPPORTED", "message": f"unsupported op: {op}"}})
 ```
 
-## 9. Wiring your plugin into a repo (`.devctl.yaml`)
+## 9. A minimal Bash plugin skeleton (with `jq`)
+
+Bash is a perfectly reasonable choice for a plugin when your repo already uses shell scripts heavily. The main pitfall is JSON handling: if you build JSON by hand with string concatenation, you will eventually ship broken escaping and accidentally contaminate stdout. The safest approach is to use `jq` to both parse requests and construct responses.
+
+This skeleton keeps stdout protocol-clean and sends all human output to stderr.
+
+```bash
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+log() { echo "[myrepo-plugin] $*" >&2; }
+
+emit() {
+  # Always emit exactly one JSON object (NDJSON) to stdout.
+  jq -cn "$1"
+}
+
+emit_handshake() {
+  emit '{
+    type: "handshake",
+    protocol_version: "v1",
+    plugin_name: "myrepo",
+    capabilities: { ops: ["config.mutate", "validate.run", "launch.plan"] }
+  }'
+}
+
+emit_handshake
+
+while IFS= read -r line; do
+  [[ -z "${line}" ]] && continue
+
+  # Parse common fields safely.
+  request_id="$(jq -r '.request_id // ""' <<<"$line")"
+  op="$(jq -r '.op // ""' <<<"$line")"
+  dry_run="$(jq -r '.ctx.dry_run // false' <<<"$line")"
+  repo_root="$(jq -r '.ctx.repo_root // ""' <<<"$line")"
+
+  if [[ -z "${request_id}" || -z "${op}" ]]; then
+    emit --arg rid "${request_id}" '{
+      type: "response",
+      request_id: $rid,
+      ok: false,
+      error: { code: "E_PROTOCOL_INVALID", message: "missing request_id or op" }
+    }'
+    continue
+  fi
+
+  case "${op}" in
+    config.mutate)
+      emit --arg rid "${request_id}" '{
+        type: "response",
+        request_id: $rid,
+        ok: true,
+        output: {
+          config_patch: {
+            set: { "services.app.port": 8080 },
+            unset: []
+          }
+        }
+      }'
+      ;;
+
+    validate.run)
+      if ! command -v jq >/dev/null 2>&1; then
+        emit --arg rid "${request_id}" '{
+          type: "response",
+          request_id: $rid,
+          ok: true,
+          output: {
+            valid: false,
+            errors: [{ code: "E_MISSING_TOOL", message: "missing tools: jq" }],
+            warnings: []
+          }
+        }'
+        continue
+      fi
+
+      emit --arg rid "${request_id}" '{
+        type: "response",
+        request_id: $rid,
+        ok: true,
+        output: { valid: true, errors: [], warnings: [] }
+      }'
+      ;;
+
+    launch.plan)
+      # If you *need* to run shell pipelines, keep them inside the service command,
+      # not inside the plugin protocol loop.
+      log "launch.plan (repo_root=${repo_root:-} dry_run=${dry_run:-false})"
+      emit --arg rid "${request_id}" '{
+        type: "response",
+        request_id: $rid,
+        ok: true,
+        output: {
+          services: [{
+            name: "app",
+            command: ["bash", "-lc", "python3 -m http.server 8080"],
+            health: { type: "tcp", address: "127.0.0.1:8080", timeout_ms: 30000 }
+          }]
+        }
+      }'
+      ;;
+
+    *)
+      emit --arg rid "${request_id}" --arg op "${op}" '{
+        type: "response",
+        request_id: $rid,
+        ok: false,
+        error: { code: "E_UNSUPPORTED", message: ("unsupported op: " + $op) }
+      }'
+      ;;
+  esac
+done
+```
+
+**Bash plugin tips:**
+
+- Treat `jq` as required; if your repo can’t depend on it, write the plugin in Python or Go instead.
+- Never `echo` JSON by hand; use `jq -cn` so escaping is correct.
+- Never write anything to stdout except protocol frames; use `>&2` for all logs.
+- Prefer to keep heavy process work in devctl supervision (via `launch.plan`) rather than inside the plugin loop.
+
+## 10. Wiring your plugin into a repo (`.devctl.yaml`)
 
 devctl discovers plugins from a config file at the repo root (by default `.devctl.yaml`). This keeps plugin configuration close to the repo, which is usually what you want for dev environments.
 
@@ -539,7 +661,73 @@ devctl logs --service <name> --follow
 devctl down
 ```
 
-## 10. Timeouts, cancellation, and dry-run
+## 11. Designing stable config schemas (keys and conventions)
+
+Plugins don’t just start processes; they define the “shape” of the dev environment through config keys. If you treat config keys as an API, teams can safely build on them: scripts can read them, other plugins can extend them, and developers can learn them once and reuse that knowledge across repos.
+
+The goal is stability and predictability. A key name should answer: “what is this?” without requiring the reader to reverse-engineer the plugin.
+
+### 11.1. Recommended key layout
+
+The most common patterns are:
+
+- `env.<NAME>`: environment variables you want to pass to services (or to the frontend dev server).
+- `services.<service>.port`: a service’s configured port (even if the service command doesn’t use it directly, humans will).
+- `services.<service>.url`: a service’s public URL (useful for other services and for validations).
+- `artifacts.<name>`: stable paths to build outputs (only if you want other tools to consume them).
+
+Here is a representative “config tree” for a typical repo:
+
+```mermaid
+flowchart TD
+  R[config] --> E[env]
+  R --> S[services]
+  R --> A[artifacts]
+
+  E --> E1[VITE_BACKEND_URL]
+  E --> E2[DATABASE_URL]
+
+  S --> B[backend]
+  S --> W[web]
+
+  B --> BP[port]
+  B --> BU[url]
+
+  W --> WP[port]
+
+  A --> AB[backend_bin]
+```
+
+### 11.2. Naming guidelines that keep you out of trouble
+
+- Prefer “nouns” over “verbs” for keys:
+  - good: `services.backend.url`
+  - less good: `services.backend.start-command` (that belongs in `launch.plan`)
+- Keep service names stable:
+  - your service `name` in `launch.plan` is the identity for `devctl logs --service <name>`
+  - don’t rename it casually
+- Don’t overload `env.*`:
+  - use `env.*` for values you actually intend to export to processes
+  - keep internal plugin-only values under `services.*` or `artifacts.*`
+- Treat keys as an API:
+  - changing a key is a breaking change
+  - adding a new key is usually safe
+  - removing a key should be done with a deprecation window and a clear migration note
+
+### 11.3. Versioning and deprecation (a practical approach)
+
+You don’t need a formal semver scheme inside config, but you do need a plan for change.
+
+- When introducing a replacement key:
+  - continue writing the old key for a short period (if you must), and document the planned removal
+  - emit a warning from `validate.run` telling developers what changed
+- When removing a key:
+  - do it as a deliberate change with a clear changelog entry
+  - ensure any dependent scripts are updated in the same PR
+
+If you have multiple plugins stacking on each other, favor compatibility at the edges (stable keys) rather than compatibility inside service commands.
+
+## 12. Timeouts, cancellation, and dry-run
 
 Plugins operate in messy environments: someone’s machine is slow, a subprocess hangs, Docker isn’t running, or a developer just wants to see what would happen without actually changing anything. devctl provides `ctx.deadline_ms` and `ctx.dry_run`, but your plugin still needs to enforce timeouts and safe behavior explicitly.
 
@@ -553,7 +741,7 @@ Plugins operate in messy environments: someone’s machine is slow, a subprocess
   - skip `docker compose up`, `pnpm install`, DB resets, etc.
   - it is fine to compute plans and print intended actions to stderr
 
-## 11. Debugging and test strategy
+## 13. Debugging and test strategy
 
 Good plugins are boring: they behave deterministically and fail loudly with actionable messages.
 
@@ -566,7 +754,7 @@ Good plugins are boring: they behave deterministically and fail loudly with acti
 
 In this repo, the fixture patterns live under `devctl/testdata/plugins/` and smoke tests are runnable via `go run ./cmd/devctl smoketest-*`.
 
-## 12. Troubleshooting: the common failure modes
+## 14. Troubleshooting: the common failure modes
 
 Most plugin failures are protocol failures. This section is a checklist for the issues that tend to bite in real use.
 
@@ -587,7 +775,7 @@ Most plugin failures are protocol failures. This section is a checklist for the 
   - cause: service never bound, bound the wrong address, or HTTP never returns 2xx–4xx
   - fix: validate ports/URLs when producing `launch.plan` and log the readiness target
 
-## 13. Reference: schema cheatsheet
+## 15. Reference: schema cheatsheet
 
 This section summarizes what devctl expects at the JSON boundary. Use it when you’re implementing a plugin in a new language and just need the “shape of things”.
 
