@@ -112,3 +112,14 @@ Kickoff protocol v2 cleanup pass: expanded implementation plan and created docmg
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/ttmp/2026/01/07/MO-010-DEVCTL-CLEANUP-PASS--devctl-cleanup-pass/design-doc/02-protocol-v2-handshake-command-specs-repository-context-capability-enforced-calls.md — Detailed phased implementation plan
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/ttmp/2026/01/07/MO-010-DEVCTL-CLEANUP-PASS--devctl-cleanup-pass/tasks.md — Created concrete task checklist aligned to plan
 
+
+## 2026-01-07
+
+Implement protocol v2 handshake command specs, repository meta, and capability-enforced runtime calls (commit 7fce1bc)
+
+### Related Files
+
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/protocol/types.go — Protocol v2 + CommandSpec schema
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/repository/repository.go — Repository container for config/specs/meta
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/runtime/client.go — Call/StartStream capability enforcement + request ctx from meta
+

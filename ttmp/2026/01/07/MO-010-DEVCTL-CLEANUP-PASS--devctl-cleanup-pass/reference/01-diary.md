@@ -753,3 +753,74 @@ The immediate outcome is that MO-010 now has a detailed plan embedded in the v2 
   - `docmgr task list --ticket MO-010-DEVCTL-CLEANUP-PASS`
   - `docmgr task edit --ticket MO-010-DEVCTL-CLEANUP-PASS --id 1 --text "..."`
   - `docmgr task add --ticket MO-010-DEVCTL-CLEANUP-PASS --text "..."`
+
+## Step 13: Implemented Protocol v2 Handshake + Capability Enforcement + Repository Meta
+
+This step implemented the core “no-compat” protocol v2 changes in code: handshake v2 validation, structured `capabilities.commands`, handshake-driven dynamic command registration, explicit request metadata (no `context.Value`), and runtime-level capability enforcement for both calls and streams.
+
+The result is that devctl no longer issues `commands.list` requests at startup, unsupported ops fail fast locally with `E_UNSUPPORTED`, and all in-repo example/test plugins have been updated to speak protocol v2 so `go test ./...` remains green.
+
+**Commit (code):** 7fce1bc — "Protocol v2: handshake command specs and safe runtime calls"
+
+### What I did
+- Protocol v2 + handshake schema:
+  - Changed `devctl/pkg/protocol/types.go` to add `ProtocolV2` and structured `Capabilities.Commands` (`CommandSpec`/`CommandArg`).
+  - Updated `devctl/pkg/protocol/validate.go` to accept only v2 and to validate command specs (names/uniqueness/arg fields).
+- Runtime safety defaults:
+  - Updated `devctl/pkg/runtime/client.go` so `Call`/`StartStream` fail fast with `E_UNSUPPORTED` when an op is not declared in handshake capabilities.
+  - Added `devctl/pkg/runtime/errors.go` (`OpError` + `ErrUnsupported`) so callers/tests can detect `E_UNSUPPORTED` without string parsing.
+- Explicit request metadata (no ambient context values):
+  - Added `devctl/pkg/runtime/meta.go` (`RequestMeta`) and plumbed it through `runtime.Factory.Start(..., StartOptions{Meta: ...})`.
+  - Deleted `devctl/pkg/runtime/context.go` and updated call sites (CLI + TUI) to pass explicit request meta at client start.
+- Repository container + dynamic commands:
+  - Added `devctl/pkg/repository/repository.go` to centralize repo root/config/spec discovery and request meta.
+  - Refactored `devctl/cmd/devctl/cmds/dynamic_commands.go` to read command specs from handshake and to stop re-discovering providers at runtime.
+- Plugin updates + tests:
+  - Updated all in-repo example/test plugins to emit `protocol_version: "v2"` and (where applicable) advertise commands via handshake.
+  - Added `devctl/testdata/plugins/ignore-unknown/plugin.py` and `TestRuntime_CallUnsupportedFailsFast` to prove “unsupported op” no longer hangs on misbehaving plugins.
+- Validation:
+  - `go test ./...` (from `devctl/`) after updating plugins and call sites.
+
+### Why
+- Removing `commands.list` eliminates a common startup stall and removes a fragile “discovery request” surface from the protocol.
+- Runtime capability enforcement makes “forgot to gate” bugs structurally hard to reintroduce.
+- Explicit meta removes hidden dependency on `context.Value`, so repo_root/cwd/dry_run cannot be silently dropped.
+
+### What worked
+- The existing `cmds/dynamic_commands_test.go` became a good regression test once the command plugin was migrated to handshake-advertised commands.
+- Adding an “ignore unknown ops” plugin fixture made it straightforward to validate that runtime short-circuits unsupported calls.
+
+### What didn't work
+- N/A (no unexpected failures after the v2 migration; tests passed once in-repo plugins were updated).
+
+### What I learned
+- The “request ctx metadata” and “capability enforcement” changes compose well: once `Start` carries `RequestMeta`, there is no need for context mutation helpers anywhere.
+
+### What was tricky to build
+- Refactoring `dynamic_commands.go` to avoid provider re-discovery while still respecting user flags (`--repo-root`, `--config`, `--dry-run`, `--timeout`) required splitting “startup discovery metadata” (handshake/commands) from “per-invocation meta” (dry-run/timeout).
+
+### What warrants a second pair of eyes
+- The decision to reject protocol v1 entirely in `protocol.ValidateHandshake` (intentional no-compat): review that every in-repo fixture and any expected plugin ecosystem is migrated before rollout.
+
+### What should be done in the future
+- N/A (remaining work is tracked in MO-010 tasks, primarily ongoing doc polish and any follow-on ergonomics).
+
+### Code review instructions
+- Start with protocol + runtime invariants:
+  - `devctl/pkg/protocol/types.go`
+  - `devctl/pkg/protocol/validate.go`
+  - `devctl/pkg/runtime/client.go`
+  - `devctl/pkg/runtime/errors.go`
+  - `devctl/pkg/runtime/factory.go`
+- Then review wiring and bootstraps:
+  - `devctl/pkg/repository/repository.go`
+  - `devctl/cmd/devctl/cmds/dynamic_commands.go`
+  - `devctl/cmd/devctl/cmds/up.go`
+  - `devctl/pkg/tui/action_runner.go`
+- Validate:
+  - `cd devctl && go test ./...`
+
+### Technical details
+- Commands executed (selection):
+  - `cd devctl && go test ./...`
+  - `cd devctl && go fmt ./...` (then reverted unrelated gofmt-only diffs before committing)
