@@ -3,6 +3,7 @@ package tui
 import (
 	"time"
 
+	"github.com/go-go-golems/devctl/pkg/proc"
 	"github.com/go-go-golems/devctl/pkg/state"
 )
 
@@ -13,11 +14,33 @@ type ServiceExitObserved struct {
 	Reason string    `json:"reason,omitempty"`
 }
 
+// HealthStatus represents the health check status of a service.
+type HealthStatus string
+
+const (
+	HealthUnknown   HealthStatus = "unknown"
+	HealthHealthy   HealthStatus = "healthy"
+	HealthUnhealthy HealthStatus = "unhealthy"
+)
+
+// HealthCheckResult contains the result of a service health check.
+type HealthCheckResult struct {
+	ServiceName string       `json:"service_name"`
+	Status      HealthStatus `json:"status"`
+	LastCheck   time.Time    `json:"last_check"`
+	CheckType   string       `json:"check_type,omitempty"` // "tcp", "http", "exec"
+	Endpoint    string       `json:"endpoint,omitempty"`   // e.g., "http://localhost:8080/health"
+	Error       string       `json:"error,omitempty"`
+	ResponseMs  int64        `json:"response_ms,omitempty"`
+}
+
 type StateSnapshot struct {
-	RepoRoot string          `json:"repo_root"`
-	At       time.Time       `json:"at"`
-	Exists   bool            `json:"exists"`
-	State    *state.State    `json:"state,omitempty"`
-	Alive    map[string]bool `json:"alive,omitempty"`
-	Error    string          `json:"error,omitempty"`
+	RepoRoot     string                        `json:"repo_root"`
+	At           time.Time                     `json:"at"`
+	Exists       bool                          `json:"exists"`
+	State        *state.State                  `json:"state,omitempty"`
+	Alive        map[string]bool               `json:"alive,omitempty"`
+	Error        string                        `json:"error,omitempty"`
+	ProcessStats map[int]*proc.Stats           `json:"process_stats,omitempty"` // PID -> stats
+	Health       map[string]*HealthCheckResult `json:"health,omitempty"`        // service name -> health
 }

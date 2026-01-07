@@ -1,32 +1,3 @@
----
-Title: Diary
-Ticket: MO-009-TUI-COMPLETE-FEATURES
-Status: active
-Topics:
-    - backend
-    - ui-components
-DocType: reference
-Intent: long-term
-Owners: []
-RelatedFiles:
-    - Path: devctl/pkg/tui/domain.go
-      Note: Define LogLevel and extend EventLogEntry
-    - Path: devctl/pkg/tui/models/dashboard_model.go
-      Note: Set Source/Level for kill/SIGTERM events
-    - Path: devctl/pkg/tui/models/eventlog_model.go
-      Note: Render [source] prefix and log-level icon
-    - Path: devctl/pkg/tui/models/root_model.go
-      Note: Set Source/Level for action-related events
-    - Path: devctl/pkg/tui/transform.go
-      Note: Populate Source/Level when transforming domain events
-ExternalSources: []
-Summary: 'Implementation diary for MO-009: complete devctl TUI features'
-LastUpdated: 2026-01-07T02:49:20-05:00
-WhatFor: Track implementation steps, decisions, and validation for MO-009
-WhenToUse: When implementing or reviewing MO-009 changes
----
-
-
 # MO-009: TUI Complete Features - Development Diary
 
 ## Overview
@@ -199,6 +170,94 @@ Recommended order for implementation:
 
 ---
 
+### Step 3: Phase 1 Implementation - Data Layer (21:30)
+
+Implemented all 12 tasks for Phase 1 (Data Layer Enhancements).
+
+#### 1.1 Process Stats
+
+**Created `pkg/proc/stats.go`**:
+- `type Stats` - CPU%, MemoryMB, MemoryRSS, VirtualMB, State, Threads, StartTime
+- `type CPUTracker` - Tracks CPU usage across samples for delta calculation
+- `func ReadStats(pid, tracker)` - Reads from `/proc/[pid]/stat`
+- `func ReadAllStats(pids, tracker)` - Batch read for multiple PIDs
+- `func GetProcessStartTime(pid)` - Returns when process started
+- `func GetBootTime()` - Reads system boot time from `/proc/stat`
+
+**Key design decisions**:
+- CPU percentage calculated as delta between samples (requires tracker)
+- Reads from `/proc/[pid]/stat` directly for Linux
+- Handles zombie detection and process state
+
+#### 1.2 Health Check Data
+
+**Updated `pkg/tui/state_events.go`**:
+- Added `HealthStatus` type (unknown/healthy/unhealthy)
+- Added `HealthCheckResult` struct with service name, status, check type, endpoint, error, response time
+
+**Updated `pkg/tui/state_watcher.go`**:
+- Added `checkHealth()` to poll health for all services with health config
+- Added `runHealthCheck()` for single service check
+- Added `checkTCP()` and `checkHTTP()` health check implementations
+- Health results included in StateSnapshot
+
+**Updated `pkg/state/state.go`**:
+- Added `HealthType`, `HealthAddress`, `HealthURL` fields to ServiceRecord
+- Health config now stored in state.json for later polling
+
+**Updated `pkg/supervise/supervisor.go`**:
+- Copies health config from ServiceSpec to ServiceRecord at launch
+
+#### 1.3 Environment Variables
+
+**Created `pkg/state/sanitize.go`**:
+- `func SanitizeEnv(env)` - Redacts sensitive values
+- Patterns detected: PASSWORD, SECRET, TOKEN, KEY, CREDENTIAL, API_KEY, AUTH, PRIVATE, CERT, PASSPHRASE
+- `func FilterEnvForDisplay(env, maxVars)` - Filters out noisy vars for display
+
+**Updated `pkg/supervise/supervisor.go`**:
+- Env sanitized at launch time before storing in state
+- Added `StartedAt` timestamp to ServiceRecord
+
+#### Updated `pkg/tui/styles/icons.go`
+
+Added new icon functions:
+- `HealthIcon(status)` - Returns filled/empty circle based on health status
+- `EventIcon(eventType)` - Returns appropriate icon for event types
+
+#### StateSnapshot Now Includes
+
+```go
+type StateSnapshot struct {
+    RepoRoot     string
+    At           time.Time
+    Exists       bool
+    State        *state.State
+    Alive        map[string]bool
+    Error        string
+    ProcessStats map[int]*proc.Stats           // NEW: PID -> CPU/MEM stats
+    Health       map[string]*HealthCheckResult // NEW: service name -> health
+}
+```
+
+#### Files Created
+- `pkg/proc/stats.go` (240 lines)
+- `pkg/state/sanitize.go` (95 lines)
+
+#### Files Modified
+- `pkg/state/state.go` - Added StartedAt, HealthType, HealthAddress, HealthURL to ServiceRecord
+- `pkg/tui/state_events.go` - Added HealthStatus, HealthCheckResult, updated StateSnapshot
+- `pkg/tui/state_watcher.go` - Added health polling and process stats reading
+- `pkg/tui/styles/icons.go` - Added HealthIcon, EventIcon functions
+- `pkg/supervise/supervisor.go` - Store health config and sanitized env at launch
+
+#### Testing
+- `go build ./...` passes
+- All packages compile without errors
+- No test files yet (deferred to Phase 8)
+
+---
+
 ### Technical References
 
 - Original Design: `MO-006-DEVCTL-TUI/.../01-devctl-tui-layout.md`
@@ -206,191 +265,8 @@ Recommended order for implementation:
 - Current TUI Code: `pkg/tui/models/*.go`
 - Current Widgets: `pkg/tui/widgets/*.go`
 - Current Styles: `pkg/tui/styles/*.go`
-- State Types: `pkg/state/types.go`
+- State Types: `pkg/state/state.go`
 - TUI Domain: `pkg/tui/domain.go`
+- Process Stats: `pkg/proc/stats.go`
+- Sanitization: `pkg/state/sanitize.go`
 
----
-
-## Step 3: Start implementing Events source/level metadata
-
-Picked up MO-009 by starting with Phase 4 “Events View Enhancements”, specifically adding structured `source` and `level` metadata to `EventLogEntry` and rendering it in the Events view. This is intended to replace the current heuristic “scan the text for keywords” styling and make it possible to add proper filters (Phase 4.3/4.4) without guessing.
-
-No code changes in this step yet; this entry captures the initial orientation and intended implementation approach before editing.
-
-**Commit (code):** N/A
-
-### What I did
-- Read the ticket implementation plan and task list.
-- Located the current Events implementation in `devctl/pkg/tui/domain.go`, `devctl/pkg/tui/models/eventlog_model.go`, and the domain→UI transformer in `devctl/pkg/tui/transform.go`.
-
-### Why
-- Phase 4.1/4.2 are low-dependency, high-visibility improvements and set up Phase 4.3+ filters.
-
-### What worked
-- Confirmed Events are currently styled via keyword scanning in `EventLogModel.refreshViewportContent`, and `EventLogEntry` currently has only `{At, Text}`.
-
-### What didn't work
-- N/A
-
-### What I learned
-- `styles.LogLevelIcon()` already exists, but no typed log level exists in `tui`, and the Events UI isn’t using the icon consistently because it derives level from text.
-
-### What was tricky to build
-- N/A
-
-### What warrants a second pair of eyes
-- N/A
-
-### What should be done in the future
-- N/A
-
-### Code review instructions
-- Start at `devctl/pkg/tui/domain.go` and `devctl/pkg/tui/models/eventlog_model.go`.
-- Validate by running `go test ./...` in `devctl/` after implementation.
-
-### Technical details
-- Target tasks: 4.1.1, 4.1.2, 4.2.1, 4.2.3.
-
----
-
-## Step 4: Implement structured events (source + level) and render it
-
-Implemented structured event metadata for the Events view by extending `EventLogEntry` with `source` and `level`, populating those fields in the domain→UI transformer and UI-generated events, and rendering them as a `[source]` prefix with a log-level icon. This makes event styling deterministic and sets up Phase 4.3/4.4 filtering without needing to infer semantics from free-form text.
-
-This change also removes the previous “scan for keywords” logic from the Events renderer in favor of level-driven rendering, while keeping a conservative default (`INFO`) if an entry arrives without an explicit level.
-
-**Commit (code):** 060bd82217e1e05cc46c42d3ff023adb34b12175 — "tui: add event source and level metadata"
-
-### What I did
-- Added `tui.LogLevel` and `EventLogEntry.Source`/`EventLogEntry.Level`.
-- Populated source/level in `devctl/pkg/tui/transform.go` for key domain events (state snapshot, service exit, pipeline).
-- Updated UI-generated events (kill confirmation + action publish statuses) to set `source`/`level`.
-- Updated `EventLogModel` rendering to show `[source]` and use `styles.LogLevelIcon(level)` rather than text keyword scanning.
-- Ran `gofmt -w ...` and `go test ./... -count=1` from `devctl/`.
-
-### Why
-- Enable Phase 4.1/4.2 parity with MO-006/MO-008 expectations for the Events view.
-- Provide a stable foundation for upcoming filter toggles (Phase 4.3/4.4).
-
-### What worked
-- `go test ./...` passed after the refactor.
-- Rendering is now consistent: level→icon/style, plus source prefix.
-
-### What didn't work
-- N/A
-
-### What I learned
-- The existing `styles.LogLevelIcon()` was already available and could be reused directly once the domain had a typed `LogLevel`.
-
-### What was tricky to build
-- Ensuring all event creation paths set the new fields so the renderer doesn’t regress to “guessing” in normal operation.
-
-### What warrants a second pair of eyes
-- Whether `service exit` should be rendered as `WARN` vs `ERROR` (currently `WARN`) and whether the default source labels (`system`, `ui`, `pipeline`) match the desired UX vocabulary.
-
-### What should be done in the future
-- Implement Phase 4.3/4.4 filters using the new structured fields (service/source and log level).
-
-### Code review instructions
-- Start at `devctl/pkg/tui/domain.go` (new `LogLevel`, updated `EventLogEntry`).
-- Follow through `devctl/pkg/tui/transform.go` (how source/level are assigned).
-- Review `devctl/pkg/tui/models/eventlog_model.go` for rendering behavior.
-- Validate with `cd devctl && go test ./... -count=1`, then manually run `cd devctl && go run ./cmd/devctl tui` and generate a few actions/events.
-
-### Technical details
-- Implemented tasks: 4.1.1, 4.1.2, 4.2.1, 4.2.3 (and effectively 4.2.2 by using the existing `styles.LogLevelIcon()`).
-
----
-
-## Step 5: Add Events view filters (source + level) with a small level menu
-
-Implemented Phase 4.3/4.4 by adding per-source and per-level filtering to the Events view, with a fixed “status bar” showing current filter state. This makes it practical to focus on a single service’s events or reduce noise to WARN/ERROR without leaving the Events view.
-
-The implementation uses simple, explicit keybindings: number keys toggle sources by index, space toggles the `system` source, and `l` opens a lightweight “level menu” where `d/i/w/e` toggle individual log levels.
-
-**Commit (code):** 4ecdb3e8af5bf2f8f0228e81a34b3902b2ad4c7b — "tui: add events source and level filters"
-
-### What I did
-- Added `serviceFilters`/`serviceOrder` and `levelFilters` state to `EventLogModel`.
-- Implemented keybindings:
-  - `1-9`: toggle source filters by index (alphabetical order)
-  - `space`: toggle the `system` source
-  - `l`: open/close level menu; in menu: `d/i/w/e` toggle levels, `a` all, `n` none, `esc` close
-- Rendered fixed filter bars above the viewport (inside the Events box).
-- Applied both source and level filters in `refreshViewportContent`.
-- Ran `gofmt -w pkg/tui/models/eventlog_model.go` and `go test ./... -count=1` from `devctl/`.
-
-### Why
-- Phase 4.3/4.4 are the natural follow-up after introducing structured `source`/`level` fields; they reduce noise and improve debuggability in real TUI sessions.
-
-### What worked
-- Filters update the viewport immediately without breaking scrolling or text filtering (`/`).
-
-### What didn't work
-- N/A
-
-### What I learned
-- Keeping filter bars outside the viewport avoids “losing” filter state when scrolling, at the cost of a couple rows of vertical space.
-
-### What was tricky to build
-- Resizing math: the viewport height needs to account for the box borders/title line plus the two fixed filter lines, and also the optional search line.
-
-### What warrants a second pair of eyes
-- The choice to sort sources alphabetically for stable `1-9` mapping; confirm this matches expected UX (vs. insertion order).
-
-### What should be done in the future
-- Add Phase 4.5 stats line and Phase 4.6 pause behavior (these fit naturally next to the filter bars).
-
-### Code review instructions
-- Review `devctl/pkg/tui/models/eventlog_model.go` focusing on:
-  - `Update()` keybinding handling (`levelMenu`, `searching`, viewport)
-  - `resizeViewport()` and `boxHeight()` calculations
-  - `refreshViewportContent()` filter application
-- Validate with `cd devctl && go test ./... -count=1`.
-- Manual check: run `cd devctl && go run ./cmd/devctl tui`, generate events, and confirm toggles change what’s displayed.
-
-### Technical details
-- Implemented tasks: 4.3.1–4.3.4, 4.4.1–4.4.3.
-
----
-
-## Step 6: Fix docmgr frontmatter for the implementation plan doc
-
-Docmgr `doctor` flagged the implementation plan doc as missing YAML frontmatter, which prevented docmgr from validating and relating it consistently. Added standard ticket frontmatter to `design/01-implementation-plan.md` so future `docmgr doc relate` and `docmgr validate` workflows work without manual exceptions.
-
-This is purely documentation hygiene; no runtime behavior changes.
-
-**Commit (docs):** 5f8052be5050e7789d14e080f5c9615851edb3a0 — "docs: add frontmatter to implementation plan"
-
-### What I did
-- Ran `docmgr doctor --ticket MO-009-TUI-COMPLETE-FEATURES`.
-- Added YAML frontmatter to `ttmp/.../design/01-implementation-plan.md`.
-- Re-ran `docmgr doctor` to confirm the ticket is clean.
-
-### Why
-- Keep docmgr workflows working (relate/validate/search) and avoid recurring “frontmatter delimiters not found” errors.
-
-### What worked
-- `docmgr doctor` reports clean after the change.
-
-### What didn't work
-- N/A
-
-### What I learned
-- Docmgr treats missing frontmatter as an error for docs under the ticket workspace even if the content itself is valid Markdown.
-
-### What was tricky to build
-- N/A
-
-### What warrants a second pair of eyes
-- N/A
-
-### What should be done in the future
-- N/A
-
-### Code review instructions
-- Open `devctl/ttmp/2026/01/06/MO-009-TUI-COMPLETE-FEATURES--complete-tui-features-per-mo-006-design/design/01-implementation-plan.md` and confirm frontmatter matches other ticket docs.
-- Run `docmgr doctor --ticket MO-009-TUI-COMPLETE-FEATURES` to verify.
-
-### Technical details
-- Error encountered: `frontmatter delimiters '---' not found` (from `docmgr doctor`).

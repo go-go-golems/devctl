@@ -141,18 +141,26 @@ func (s *Supervisor) startService(ctx context.Context, svc engine.ServiceSpec) (
 		}
 
 		pid := cmd.Process.Pid
+		startedAt := time.Now()
 		log.Info().Str("service", svc.Name).Int("pid", pid).Msg("service started")
 		go func() { _ = cmd.Wait() }()
 
-		return state.ServiceRecord{
+		rec := state.ServiceRecord{
 			Name:      svc.Name,
 			PID:       pid,
 			Command:   svc.Command,
 			Cwd:       cwd,
-			Env:       svc.Env,
+			Env:       state.SanitizeEnv(svc.Env),
 			StdoutLog: stdoutPath,
 			StderrLog: stderrPath,
-		}, nil
+			StartedAt: startedAt,
+		}
+		if svc.Health != nil {
+			rec.HealthType = svc.Health.Type
+			rec.HealthAddress = svc.Health.Address
+			rec.HealthURL = svc.Health.URL
+		}
+		return rec, nil
 	}
 
 	args := []string{
@@ -194,16 +202,23 @@ func (s *Supervisor) startService(ctx context.Context, svc engine.ServiceSpec) (
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	return state.ServiceRecord{
+	rec := state.ServiceRecord{
 		Name:      svc.Name,
 		PID:       pid,
 		Command:   svc.Command,
 		Cwd:       cwd,
-		Env:       svc.Env,
+		Env:       state.SanitizeEnv(svc.Env),
 		StdoutLog: stdoutPath,
 		StderrLog: stderrPath,
 		ExitInfo:  exitInfoPath,
-	}, nil
+		StartedAt: time.Now(),
+	}
+	if svc.Health != nil {
+		rec.HealthType = svc.Health.Type
+		rec.HealthAddress = svc.Health.Address
+		rec.HealthURL = svc.Health.URL
+	}
+	return rec, nil
 }
 
 func mergeEnv(base []string, extra map[string]string) []string {

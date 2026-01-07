@@ -34,6 +34,12 @@ type ServiceRecord struct {
 	StdoutLog string            `json:"stdout_log"`
 	StderrLog string            `json:"stderr_log"`
 	ExitInfo  string            `json:"exit_info,omitempty"`
+	StartedAt time.Time         `json:"started_at,omitempty"` // When the process was started
+
+	// Health check configuration (if any)
+	HealthType    string `json:"health_type,omitempty"`    // "tcp"|"http"
+	HealthAddress string `json:"health_address,omitempty"` // For TCP checks
+	HealthURL     string `json:"health_url,omitempty"`     // For HTTP checks
 }
 
 func StatePath(repoRoot string) string {

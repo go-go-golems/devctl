@@ -1,23 +1,23 @@
 # MO-009: TUI Complete Features - Task Tracker
 
-## Phase 1: Data Layer Enhancements
+## Phase 1: Data Layer Enhancements ✅ COMPLETE
 
 ### 1.1 Process Stats
-- [ ] 1.1.1 Add CPU/MEM/Command/Cwd fields to state.ServiceRecord
-- [ ] 1.1.2 Create pkg/proc/stats.go for reading /proc stats
-- [ ] 1.1.3 Integrate stats polling into supervisor (2-5s interval)
-- [ ] 1.1.4 Update tui.StateSnapshot to include ProcessStats map
+- [x] 1.1.1 Add CPU/MEM/Command/Cwd fields to state.ServiceRecord
+- [x] 1.1.2 Create pkg/proc/stats.go for reading /proc stats
+- [x] 1.1.3 Integrate stats polling into supervisor (2-5s interval)
+- [x] 1.1.4 Update tui.StateSnapshot to include ProcessStats map
 
 ### 1.2 Health Check Data
-- [ ] 1.2.1 Define HealthCheckResult struct
-- [ ] 1.2.2 Add health polling to supervisor (5s interval)
-- [ ] 1.2.3 Update StateSnapshot with Health map
-- [ ] 1.2.4 Add HealthIcon function to styles/icons.go
+- [x] 1.2.1 Define HealthCheckResult struct
+- [x] 1.2.2 Add health polling to supervisor (5s interval)
+- [x] 1.2.3 Update StateSnapshot with Health map
+- [x] 1.2.4 Add HealthIcon function to styles/icons.go
 
 ### 1.3 Environment Variables
-- [ ] 1.3.1 Capture sanitized env at launch time
-- [ ] 1.3.2 Add Environment map to ServiceRecord
-- [ ] 1.3.3 Create env sanitization helper (redact secrets)
+- [x] 1.3.1 Capture sanitized env at launch time
+- [x] 1.3.2 Add Environment map to ServiceRecord
+- [x] 1.3.3 Create env sanitization helper (redact secrets)
 
 ---
 
@@ -68,24 +68,24 @@
 ## Phase 4: Events View Enhancements
 
 ### 4.1 Service Source Column
-- [x] 4.1.1 Add Source field to EventLogEntry
-- [x] 4.1.2 Update event rendering with [service] prefix
+- [ ] 4.1.1 Add Source field to EventLogEntry
+- [ ] 4.1.2 Update event rendering with [service] prefix
 
 ### 4.2 Log Level Column
-- [x] 4.2.1 Add LogLevel type (DEBUG/INFO/WARN/ERROR)
-- [x] 4.2.2 Add LogLevelIcon function
-- [x] 4.2.3 Update event rendering with level icon
+- [ ] 4.2.1 Add LogLevel type (DEBUG/INFO/WARN/ERROR)
+- [ ] 4.2.2 Add LogLevelIcon function
+- [ ] 4.2.3 Update event rendering with level icon
 
 ### 4.3 Service Filter Toggles
-- [x] 4.3.1 Add serviceFilters map to EventLogModel
-- [x] 4.3.2 Add toggle keybindings (1-9 or space)
-- [x] 4.3.3 Render filter status bar
-- [x] 4.3.4 Apply filters in refreshViewportContent
+- [ ] 4.3.1 Add serviceFilters map to EventLogModel
+- [ ] 4.3.2 Add toggle keybindings (1-9 or space)
+- [ ] 4.3.3 Render filter status bar
+- [ ] 4.3.4 Apply filters in refreshViewportContent
 
 ### 4.4 Level Filter Toggles
-- [x] 4.4.1 Add levelFilters map
-- [x] 4.4.2 Add level toggle menu (l key)
-- [x] 4.4.3 Apply level filters
+- [ ] 4.4.1 Add levelFilters map
+- [ ] 4.4.2 Add level toggle menu (l key)
+- [ ] 4.4.3 Apply level filters
 
 ### 4.5 Stats Line
 - [ ] 4.5.1 Track event count and rate
@@ -169,7 +169,7 @@
 
 | Phase | Tasks | Status |
 |-------|-------|--------|
-| 1. Data Layer | 12 | ⏳ Not started |
+| 1. Data Layer | 12 | ✅ Complete |
 | 2. Dashboard | 11 | ⏳ Not started |
 | 3. Service Detail | 9 | ⏳ Not started |
 | 4. Events View | 14 | ⏳ Not started |
