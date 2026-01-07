@@ -1,6 +1,6 @@
 ---
 Title: 'Analysis: Sandboxing goja_nodejs require()'
-Ticket: MO-007-LOG-PARSER
+Ticket: MO-008-REQUIRE-SANDBOX
 Status: active
 Topics:
     - backend
@@ -22,6 +22,7 @@ LastUpdated: 2026-01-06T18:56:23-05:00
 WhatFor: Enable Node-style require() for ergonomics (console/util and local modules) without granting arbitrary filesystem module loading.
 WhenToUse: Use when adding require() to devctl/pkg/logjs or when reviewing sandbox/security constraints for embedded JS.
 ---
+
 
 
 # Analysis: Sandboxing goja_nodejs require()
