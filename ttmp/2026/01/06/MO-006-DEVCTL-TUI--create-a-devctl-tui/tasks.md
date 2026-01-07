@@ -25,19 +25,57 @@
 - [x] Implement an orchestrator that runs up/down/restart in-process and publishes domain events for phases/steps/validation (no shelling out)
 - [x] Add a confirmation modal for destructive actions (down/restart), and respect `--timeout`, `--dry-run`, `--strict`
 - [x] Add a confirmation modal for destructive actions (kill selected service, for testing exit handling)
-- [ ] Implement PipelineModel: phase progress, build/prepare step lists, last run summary (durations + status)
-- [ ] Implement validation UX: errors/warnings table (code/message/details) and a clear “what to do next” affordance
-- [ ] Implement cancellation + cleanup: cancel in-flight up, ensure plugin clients closed, keep UI responsive during long phases
+- [ ] Implement PipelineModel: phase progress + steps list + last run summary (durations + status)
+  - [ ] Define UI message types for pipeline lifecycle:
+    - `PipelineRunStarted{RunID, RepoRoot, At}`
+    - `PipelinePhaseStarted{RunID, Phase, At}`
+    - `PipelinePhaseFinished{RunID, Phase, Status, Duration, Err?}`
+    - `PipelineBuildStep{RunID, StepIndex, Name, Status, Duration, Err?}`
+    - `PipelinePrepareStep{RunID, StepIndex, Name, Status, Duration, Err?}`
+  - [ ] Extend the action runner to publish those messages at natural boundaries (before/after each engine call and per-step).
+  - [ ] Render a stable “pipeline timeline” header: current phase, last completed phase, total duration so far.
+  - [ ] Render build/prepare step tables with selection + a right-side details pane (or a bottom details section).
+  - [ ] Add a “last run result” summary that survives view switching until the next run.
+- [ ] Implement validation UX: errors/warnings table + “what to do next”
+  - [ ] Define `ValidationResultMsg{RunID, Valid, Errors[], Warnings[]}` with a compact `ValidationIssue` struct:
+    - `Code string`
+    - `Message string`
+    - `Source string` (plugin id / op, if known)
+    - `Details map[string]any` (kept small; JSON-ish)
+  - [ ] Add a validation view/pane that:
+    - shows errors and warnings in separate lists (or a filterable combined list),
+    - supports selection + details,
+    - provides an explicit next action (e.g., “Fix config and press r to restart”).
+  - [ ] Ensure the dashboard status line and event log include a crisp validation summary (e.g. `validate: 3 errors, 1 warning`).
+- [ ] Implement cancellation + cleanup for in-flight actions
+  - [ ] Add a UI-level “cancel current action” keybinding (e.g. `ctrl+k` or `esc` in modal) that cancels the action context.
+  - [ ] Ensure cancellation is propagated through pipeline, runtime plugin clients, and supervisor start/stop.
+  - [ ] Publish explicit cancellation events so the UI can reset state cleanly (`ActionCanceled{Kind, RunID}`).
+
+## Milestone 2.1 — Failure UX polish (fast feedback)
+
+- [ ] Improve exit diagnostics ergonomics in the TUI
+  - [ ] Cache `*.exit.json` reads (avoid re-parsing on every snapshot tick if unchanged).
+  - [ ] Add an expand/collapse toggle for the stderr excerpt in the service view (default collapsed to ~8 lines).
+  - [ ] Enrich the event log entry for service exits to include `exit=…` / `sig=…` when known.
+- [ ] Add a `--tail-lines` flag to `devctl tui` to control:
+  - [ ] initial log viewport tail size
+  - [ ] exit stderr excerpt size
+  - [ ] `status`-like fallback when exit info is missing
 
 ## Milestone 3 — Plugins + richer event streams
 
 - [ ] Implement plugins view: discovery + handshake capabilities, caching, manual refresh; publish a `PluginList` event so both dashboard and plugins view can consume it
+- [ ] Implement a plugin “capabilities summary” for the dashboard header (ops present: mutate/validate/build/prepare/plan)
 - [ ] Optional: implement a plugin stream adapter (`runtime.Client.StartStream`) that turns `protocol.Event` into domain events and renders them in the EventLogModel
+  - [ ] Define a minimal mapping for common plugin stream events (log-ish text, progress, warnings)
+  - [ ] Ensure stream shutdown is tied to action lifecycle (no orphan goroutines)
 
 ## Docs
 
 - [ ] Document `devctl tui`: usage, keybindings, and the message architecture (bus → transform → forward → models)
 - [ ] Troubleshooting doc: stale state, plugin stdout contamination, cancellations/timeouts
+- [ ] Update the tmux playbook with a “failure reproduction” section (dead service, stale state, restart prompt)
 
 ## Optional — Telemetry & polish
 
