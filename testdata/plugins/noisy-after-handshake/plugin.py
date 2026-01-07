@@ -8,7 +8,7 @@ def emit(obj):
 
 emit({
     "type": "handshake",
-    "protocol_version": "v1",
+    "protocol_version": "v2",
     "plugin_name": "noisy-after-handshake",
     "capabilities": {"ops": ["ping"]},
 })
@@ -21,4 +21,3 @@ for line in sys.stdin:
     req = json.loads(line)
     rid = req.get("request_id", "")
     emit({"type": "response", "request_id": rid, "ok": True, "output": {"pong": True}})
-

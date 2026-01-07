@@ -5,6 +5,7 @@ import "encoding/json"
 type ProtocolVersion string
 
 const ProtocolV1 ProtocolVersion = "v1"
+const ProtocolV2 ProtocolVersion = "v2"
 
 type FrameType string
 
@@ -16,9 +17,20 @@ const (
 )
 
 type Capabilities struct {
-	Ops      []string `json:"ops,omitempty"`
-	Streams  []string `json:"streams,omitempty"`
-	Commands []string `json:"commands,omitempty"`
+	Ops      []string      `json:"ops,omitempty"`
+	Streams  []string      `json:"streams,omitempty"`
+	Commands []CommandSpec `json:"commands,omitempty"`
+}
+
+type CommandSpec struct {
+	Name     string       `json:"name"`
+	Help     string       `json:"help,omitempty"`
+	ArgsSpec []CommandArg `json:"args_spec,omitempty"`
+}
+
+type CommandArg struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
 }
 
 type Handshake struct {

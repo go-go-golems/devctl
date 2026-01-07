@@ -9,7 +9,7 @@ def emit(obj):
 
 emit({
     "type": "handshake",
-    "protocol_version": "v1",
+    "protocol_version": "v2",
     "plugin_name": "stream-plugin",
     "capabilities": {"ops": ["stream.start"]},
 })
@@ -32,4 +32,3 @@ for line in sys.stdin:
     time.sleep(0.01)
     emit({"type": "event", "stream_id": stream_id, "event": "log", "level": "info", "message": "world"})
     emit({"type": "event", "stream_id": stream_id, "event": "end", "ok": True})
-

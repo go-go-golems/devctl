@@ -16,7 +16,7 @@ HTTP_ECHO_PORT = int(os.environ.get("DEVCTL_HTTP_ECHO_PORT", "0"))
 emit(
     {
         "type": "handshake",
-        "protocol_version": "v1",
+        "protocol_version": "v2",
         "plugin_name": "e2e-plugin",
         "capabilities": {
             "ops": ["config.mutate", "validate.run", "build.run", "prepare.run", "launch.plan"]
@@ -124,4 +124,3 @@ for line in sys.stdin:
                 "error": {"code": "E_UNSUPPORTED", "message": "unsupported op"},
             }
         )
-

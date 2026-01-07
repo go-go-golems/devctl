@@ -2,17 +2,20 @@
 import json
 import sys
 
+
 def emit(obj):
     sys.stdout.write(json.dumps(obj) + "\n")
     sys.stdout.flush()
 
-emit({
-    "type": "handshake",
-    "protocol_version": "v2",
-    "plugin_name": "ok-python",
-    "capabilities": {"ops": ["ping"]},
-    "declares": {"side_effects": "none", "idempotent": True},
-})
+
+emit(
+    {
+        "type": "handshake",
+        "protocol_version": "v2",
+        "plugin_name": "ignore-unknown",
+        "capabilities": {"ops": ["ping"]},
+    }
+)
 
 for line in sys.stdin:
     line = line.strip()
@@ -21,8 +24,9 @@ for line in sys.stdin:
     req = json.loads(line)
     rid = req.get("request_id", "")
     op = req.get("op", "")
-
     if op == "ping":
         emit({"type": "response", "request_id": rid, "ok": True, "output": {"pong": True}})
     else:
-        emit({"type": "response", "request_id": rid, "ok": False, "error": {"code": "E_UNSUPPORTED", "message": "unsupported op"}})
+        # Intentionally ignore unknown ops (no response).
+        pass
+

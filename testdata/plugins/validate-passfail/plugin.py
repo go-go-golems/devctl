@@ -14,7 +14,7 @@ FAIL = os.environ.get("DEVCTL_VALIDATE_FAIL", "") in ("1", "true", "yes")
 emit(
     {
         "type": "handshake",
-        "protocol_version": "v1",
+        "protocol_version": "v2",
         "plugin_name": "validate-passfail",
         "capabilities": {"ops": ["config.mutate", "validate.run", "launch.plan"]},
     }
@@ -71,4 +71,3 @@ for line in sys.stdin:
                 "error": {"code": "E_UNSUPPORTED", "message": "unsupported op"},
             }
         )
-

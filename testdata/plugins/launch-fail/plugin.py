@@ -14,7 +14,7 @@ HEALTH_PORT = int(os.environ.get("DEVCTL_FAIL_HEALTH_PORT", "19099"))
 emit(
     {
         "type": "handshake",
-        "protocol_version": "v1",
+        "protocol_version": "v2",
         "plugin_name": "launch-fail",
         "capabilities": {"ops": ["config.mutate", "validate.run", "launch.plan"]},
     }
@@ -76,4 +76,3 @@ for line in sys.stdin:
                 "error": {"code": "E_UNSUPPORTED", "message": "unsupported op"},
             }
         )
-

@@ -5,7 +5,7 @@ emit() {
   printf '%s\n' "$1"
 }
 
-emit '{"type":"handshake","protocol_version":"v1","plugin_name":"bash-minimal","capabilities":{"ops":["config.mutate"]}}'
+emit '{"type":"handshake","protocol_version":"v2","plugin_name":"bash-minimal","capabilities":{"ops":["config.mutate"]}}'
 
 while IFS= read -r line; do
   op="$(printf '%s' "$line" | jq -r '.op')"
@@ -23,4 +23,3 @@ while IFS= read -r line; do
     }')"
   fi
 done
-

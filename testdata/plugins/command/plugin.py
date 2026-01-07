@@ -8,9 +8,14 @@ def emit(obj):
 
 emit({
     "type": "handshake",
-    "protocol_version": "v1",
+    "protocol_version": "v2",
     "plugin_name": "command-plugin",
-    "capabilities": {"ops": ["commands.list", "command.run"]},
+    "capabilities": {
+        "ops": ["command.run"],
+        "commands": [
+            {"name": "echo", "help": "Echo arguments to stderr", "args_spec": []},
+        ],
+    },
 })
 
 for line in sys.stdin:
@@ -22,18 +27,7 @@ for line in sys.stdin:
     op = req.get("op", "")
     inp = req.get("input", {})
 
-    if op == "commands.list":
-        emit({
-            "type": "response",
-            "request_id": rid,
-            "ok": True,
-            "output": {
-                "commands": [
-                    {"name": "echo", "help": "Echo arguments to stderr", "args_spec": []},
-                ]
-            },
-        })
-    elif op == "command.run":
+    if op == "command.run":
         name = inp.get("name", "")
         argv = inp.get("argv", [])
         if name != "echo":
@@ -43,4 +37,3 @@ for line in sys.stdin:
         emit({"type": "response", "request_id": rid, "ok": True, "output": {"exit_code": 0}})
     else:
         emit({"type": "response", "request_id": rid, "ok": False, "error": {"code": "E_UNSUPPORTED", "message": "unsupported op"}})
-

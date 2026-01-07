@@ -1,7 +1,6 @@
 package cmds
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"time"
@@ -83,8 +82,14 @@ func getRootOptions(cmd *cobra.Command) (rootOptions, error) {
 	}, nil
 }
 
-func withPluginRequestContext(ctx context.Context, opts rootOptions) context.Context {
-	ctx = runtime.WithRepoRoot(ctx, opts.RepoRoot)
-	ctx = runtime.WithDryRun(ctx, opts.DryRun)
-	return ctx
+func requestMetaFromRootOptions(opts rootOptions) (runtime.RequestMeta, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return runtime.RequestMeta{}, err
+	}
+	return runtime.RequestMeta{
+		RepoRoot: opts.RepoRoot,
+		Cwd:      cwd,
+		DryRun:   opts.DryRun,
+	}, nil
 }

@@ -12,7 +12,7 @@ def emit(obj):
 emit(
     {
         "type": "handshake",
-        "protocol_version": "v1",
+        "protocol_version": "v2",
         "plugin_name": "timeout-plugin",
         "capabilities": {"ops": ["ping"]},
     }
@@ -26,4 +26,3 @@ for line in sys.stdin:
     # intentionally never respond within reasonable time
     _ = req.get("request_id", "")
     time.sleep(60)
-

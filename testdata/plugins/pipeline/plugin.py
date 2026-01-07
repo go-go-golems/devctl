@@ -8,7 +8,7 @@ def emit(obj):
 
 emit({
     "type": "handshake",
-    "protocol_version": "v1",
+    "protocol_version": "v2",
     "plugin_name": "pipeline-plugin",
     "capabilities": {"ops": ["config.mutate", "validate.run", "launch.plan"]},
 })
@@ -49,4 +49,3 @@ for line in sys.stdin:
             "ok": False,
             "error": {"code": "E_UNSUPPORTED", "message": "unsupported op"},
         })
-

@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-go-golems/devctl/pkg/config"
-	"github.com/go-go-golems/devctl/pkg/discovery"
 	"github.com/go-go-golems/devctl/pkg/engine"
 	"github.com/go-go-golems/devctl/pkg/patch"
+	"github.com/go-go-golems/devctl/pkg/repository"
 	"github.com/go-go-golems/devctl/pkg/runtime"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -25,46 +24,37 @@ func newPlanCmd() *cobra.Command {
 				return err
 			}
 
-			cfg, err := config.LoadOptional(opts.Config)
+			meta, err := requestMetaFromRootOptions(opts)
 			if err != nil {
 				return err
 			}
-			if !opts.Strict && cfg.Strictness == "error" {
+			repo, err := repository.Load(repository.Options{RepoRoot: opts.RepoRoot, ConfigPath: opts.Config, Cwd: meta.Cwd, DryRun: opts.DryRun})
+			if err != nil {
+				return err
+			}
+			if !opts.Strict && repo.Config.Strictness == "error" {
 				opts.Strict = true
 			}
-			specs, err := discovery.Discover(cfg, discovery.Options{RepoRoot: opts.RepoRoot})
-			if err != nil {
-				return err
-			}
-			if len(specs) == 0 {
+			if len(repo.Specs) == 0 {
 				log.Warn().Msg("no plugins configured (add .devctl.yaml)")
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "{}")
 				return nil
 			}
 
-			ctx := withPluginRequestContext(cmd.Context(), opts)
+			ctx := cmd.Context()
 			factory := runtime.NewFactory(runtime.FactoryOptions{
 				HandshakeTimeout: 2 * time.Second,
 				ShutdownTimeout:  2 * time.Second,
 			})
 
-			clients := make([]runtime.Client, 0, len(specs))
-			for _, spec := range specs {
-				c, err := factory.Start(ctx, spec)
-				if err != nil {
-					for _, cc := range clients {
-						_ = cc.Close(ctx)
-					}
-					return err
-				}
-				clients = append(clients, c)
+			clients, err := repo.StartClients(ctx, factory)
+			if err != nil {
+				return err
 			}
 			defer func() {
 				closeCtx, cancel := context.WithTimeout(context.Background(), opts.Timeout)
 				defer cancel()
-				for _, c := range clients {
-					_ = c.Close(closeCtx)
-				}
+				_ = repository.CloseClients(closeCtx, clients)
 			}()
 
 			p := &engine.Pipeline{

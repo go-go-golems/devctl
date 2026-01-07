@@ -1,4 +1,4 @@
-# Plugin authoring (NDJSON stdio protocol v1)
+# Plugin authoring (NDJSON stdio protocol v2)
 
 For the full playbook (protocol, patterns, examples, diagrams), see:
 
@@ -17,7 +17,7 @@ If you print anything non-JSON to stdout (even a single character), `devctl` tre
 First frame (stdout):
 
 ```json
-{"type":"handshake","protocol_version":"v1","plugin_name":"example","capabilities":{"ops":["config.mutate","launch.plan","commands.list","command.run"]}}
+{"type":"handshake","protocol_version":"v2","plugin_name":"example","capabilities":{"ops":["config.mutate","launch.plan","command.run"],"commands":[{"name":"db-reset","help":"Reset local DB"}]}}
 ```
 
 - `capabilities.ops` declares which `op` values the plugin can handle.
@@ -69,12 +69,12 @@ Return services to run:
 {"services":[{"name":"backend","cwd":"backend","command":["go","run","./cmd/server"],"health":{"type":"http","url":"http://127.0.0.1:8083/health"}}]}
 ```
 
-### `commands.list` / `command.run`
+### `command.run`
 
-Declare commands:
+Declare commands in the handshake:
 
 ```json
-{"commands":[{"name":"db-reset","help":"Reset local DB"}]}
+{"type":"handshake","protocol_version":"v2","plugin_name":"example","capabilities":{"ops":["command.run"],"commands":[{"name":"db-reset","help":"Reset local DB"}]}}
 ```
 
 Run command:

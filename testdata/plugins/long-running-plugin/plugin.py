@@ -13,7 +13,7 @@ def emit(obj):
 emit(
     {
         "type": "handshake",
-        "protocol_version": "v1",
+        "protocol_version": "v2",
         "plugin_name": "long-running-plugin",
         "capabilities": {"ops": ["logs.follow"]},
     }

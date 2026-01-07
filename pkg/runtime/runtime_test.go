@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,7 +25,7 @@ func TestRuntime_HandshakeAndCall(t *testing.T) {
 		Path:    "python3",
 		Args:    []string{plugin},
 		WorkDir: repoRoot,
-	})
+	}, StartOptions{})
 	require.NoError(t, err)
 	defer func() { _ = c.Close(context.Background()) }()
 
@@ -49,7 +50,7 @@ func TestRuntime_NoiseBeforeHandshakeFailsStart(t *testing.T) {
 		Path:    "python3",
 		Args:    []string{plugin},
 		WorkDir: repoRoot,
-	})
+	}, StartOptions{})
 	require.Error(t, err)
 }
 
@@ -67,7 +68,7 @@ func TestRuntime_NoiseAfterHandshakeFailsCall(t *testing.T) {
 		Path:    "python3",
 		Args:    []string{plugin},
 		WorkDir: repoRoot,
-	})
+	}, StartOptions{})
 	require.NoError(t, err)
 	defer func() { _ = c.Close(context.Background()) }()
 
@@ -94,7 +95,7 @@ func TestRuntime_Stream(t *testing.T) {
 		Path:    "python3",
 		Args:    []string{plugin},
 		WorkDir: repoRoot,
-	})
+	}, StartOptions{})
 	require.NoError(t, err)
 	defer func() { _ = c.Close(context.Background()) }()
 
@@ -124,7 +125,7 @@ func TestRuntime_CallTimeout(t *testing.T) {
 		Path:    "python3",
 		Args:    []string{plugin},
 		WorkDir: repoRoot,
-	})
+	}, StartOptions{})
 	require.NoError(t, err)
 	defer func() { _ = c.Close(context.Background()) }()
 
@@ -150,7 +151,7 @@ func TestRuntime_StreamClosesOnClientClose(t *testing.T) {
 		Path:    "python3",
 		Args:    []string{plugin},
 		WorkDir: repoRoot,
-	})
+	}, StartOptions{})
 	require.NoError(t, err)
 
 	_, events, err := c.StartStream(ctx, "logs.follow", map[string]any{})
@@ -177,4 +178,37 @@ func TestRuntime_StreamClosesOnClientClose(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestRuntime_CallUnsupportedFailsFast(t *testing.T) {
+	repoRoot, err := os.Getwd()
+	require.NoError(t, err)
+	plugin := filepath.Join(repoRoot, "..", "..", "testdata", "plugins", "ignore-unknown", "plugin.py")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	f := NewFactory(FactoryOptions{HandshakeTimeout: 2 * time.Second, ShutdownTimeout: 2 * time.Second})
+	c, err := f.Start(ctx, PluginSpec{
+		ID:      "t",
+		Path:    "python3",
+		Args:    []string{plugin},
+		WorkDir: repoRoot,
+	}, StartOptions{})
+	require.NoError(t, err)
+	defer func() { _ = c.Close(context.Background()) }()
+
+	callCtx, callCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer callCancel()
+
+	err = c.Call(callCtx, "unknown.op", map[string]any{}, nil)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ErrUnsupported))
+	require.False(t, errors.Is(err, context.DeadlineExceeded))
+
+	var opErr *OpError
+	require.True(t, errors.As(err, &opErr))
+	require.Equal(t, "unknown.op", opErr.Op)
+	require.Equal(t, "t", opErr.PluginID)
+	require.Equal(t, "E_UNSUPPORTED", opErr.Code)
 }

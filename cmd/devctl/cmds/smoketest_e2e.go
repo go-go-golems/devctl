@@ -79,7 +79,7 @@ func newSmokeTestE2ECmd() *cobra.Command {
 				return err
 			}
 
-			ctx = runtime.WithRepoRoot(ctx, repoRoot)
+			meta := runtime.RequestMeta{RepoRoot: repoRoot, Cwd: repoRoot}
 
 			cfg, err := config.LoadFromFile(cfgPath)
 			if err != nil {
@@ -93,7 +93,7 @@ func newSmokeTestE2ECmd() *cobra.Command {
 			factory := runtime.NewFactory(runtime.FactoryOptions{HandshakeTimeout: 2 * time.Second, ShutdownTimeout: 2 * time.Second})
 			var clients []runtime.Client
 			for _, spec := range specs {
-				c, err := factory.Start(ctx, spec)
+				c, err := factory.Start(ctx, spec, runtime.StartOptions{Meta: meta})
 				if err != nil {
 					return err
 				}

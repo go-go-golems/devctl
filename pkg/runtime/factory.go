@@ -33,6 +33,10 @@ type Factory struct {
 	opts FactoryOptions
 }
 
+type StartOptions struct {
+	Meta RequestMeta
+}
+
 func NewFactory(opts FactoryOptions) *Factory {
 	if opts.HandshakeTimeout <= 0 {
 		opts.HandshakeTimeout = 2 * time.Second
@@ -43,7 +47,7 @@ func NewFactory(opts FactoryOptions) *Factory {
 	return &Factory{opts: opts}
 }
 
-func (f *Factory) Start(ctx context.Context, spec PluginSpec) (Client, error) {
+func (f *Factory) Start(ctx context.Context, spec PluginSpec, opts StartOptions) (Client, error) {
 	cmd := exec.CommandContext(ctx, spec.Path, spec.Args...)
 	cmd.Dir = spec.WorkDir
 	cmd.Env = mergeEnv(os.Environ(), spec.Env)
@@ -73,7 +77,7 @@ func (f *Factory) Start(ctx context.Context, spec PluginSpec) (Client, error) {
 		return nil, err
 	}
 
-	c := newClient(spec, hs, cmd, stdin, reader, stderr, f.opts.ShutdownTimeout)
+	c := newClient(spec, hs, opts.Meta, cmd, stdin, reader, stderr, f.opts.ShutdownTimeout)
 	c.start()
 	return c, nil
 }

@@ -7,7 +7,7 @@ sys.stdout.flush()
 
 sys.stdout.write(json.dumps({
     "type": "handshake",
-    "protocol_version": "v1",
+    "protocol_version": "v2",
     "plugin_name": "noisy-handshake",
     "capabilities": {"ops": ["ping"]},
 }) + "\n")
@@ -15,4 +15,3 @@ sys.stdout.flush()
 
 for line in sys.stdin:
     pass
-

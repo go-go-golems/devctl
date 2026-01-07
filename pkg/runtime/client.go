@@ -28,6 +28,7 @@ type Client interface {
 type client struct {
 	spec PluginSpec
 	hs   protocol.Handshake
+	meta RequestMeta
 
 	cmd             *exec.Cmd
 	stdin           io.WriteCloser
@@ -43,10 +44,11 @@ type client struct {
 	closing   atomic.Bool
 }
 
-func newClient(spec PluginSpec, hs protocol.Handshake, cmd *exec.Cmd, stdin io.WriteCloser, stdout *bufio.Reader, stderr io.ReadCloser, shutdownTimeout time.Duration) *client {
+func newClient(spec PluginSpec, hs protocol.Handshake, meta RequestMeta, cmd *exec.Cmd, stdin io.WriteCloser, stdout *bufio.Reader, stderr io.ReadCloser, shutdownTimeout time.Duration) *client {
 	return &client{
 		spec:            spec,
 		hs:              hs,
+		meta:            meta,
 		cmd:             cmd,
 		stdin:           stdin,
 		stdout:          stdout,
@@ -69,6 +71,15 @@ func (c *client) SupportsOp(op string) bool       { return contains(c.hs.Capabil
 func (c *client) Close(ctx context.Context) error { return c.close(ctx) }
 
 func (c *client) Call(ctx context.Context, op string, input any, output any) error {
+	if !c.SupportsOp(op) {
+		return &OpError{
+			PluginID: c.spec.ID,
+			Op:       op,
+			Code:     protocol.ErrUnsupported,
+			Message:  "op not declared in handshake capabilities",
+		}
+	}
+
 	rid := c.nextRequestID()
 	respCh := c.router.register(rid)
 
@@ -81,7 +92,7 @@ func (c *client) Call(ctx context.Context, op string, input any, output any) err
 		Type:      protocol.FrameRequest,
 		RequestID: rid,
 		Op:        op,
-		Ctx:       requestContextFrom(ctx),
+		Ctx:       requestContextFrom(ctx, c.meta),
 		Input:     reqBytes,
 	}
 
@@ -97,7 +108,13 @@ func (c *client) Call(ctx context.Context, op string, input any, output any) err
 		}
 		if !resp.Ok {
 			if resp.Error != nil {
-				return errors.Errorf("%s: %s", resp.Error.Code, resp.Error.Message)
+				return &OpError{
+					PluginID: c.spec.ID,
+					Op:       op,
+					Code:     resp.Error.Code,
+					Message:  resp.Error.Message,
+					Details:  resp.Error.Details,
+				}
 			}
 			return errors.New("plugin returned ok=false without error")
 		}
@@ -114,6 +131,15 @@ func (c *client) Call(ctx context.Context, op string, input any, output any) err
 }
 
 func (c *client) StartStream(ctx context.Context, op string, input any) (string, <-chan protocol.Event, error) {
+	if !contains(c.hs.Capabilities.Ops, op) && !contains(c.hs.Capabilities.Streams, op) {
+		return "", nil, &OpError{
+			PluginID: c.spec.ID,
+			Op:       op,
+			Code:     protocol.ErrUnsupported,
+			Message:  "op not declared in handshake capabilities",
+		}
+	}
+
 	rid := c.nextRequestID()
 	respCh := c.router.register(rid)
 
@@ -126,7 +152,7 @@ func (c *client) StartStream(ctx context.Context, op string, input any) (string,
 		Type:      protocol.FrameRequest,
 		RequestID: rid,
 		Op:        op,
-		Ctx:       requestContextFrom(ctx),
+		Ctx:       requestContextFrom(ctx, c.meta),
 		Input:     reqBytes,
 	}
 	if err := c.writeFrame(req); err != nil {
@@ -141,7 +167,13 @@ func (c *client) StartStream(ctx context.Context, op string, input any) (string,
 		}
 		if !resp.Ok {
 			if resp.Error != nil {
-				return "", nil, errors.Errorf("%s: %s", resp.Error.Code, resp.Error.Message)
+				return "", nil, &OpError{
+					PluginID: c.spec.ID,
+					Op:       op,
+					Code:     resp.Error.Code,
+					Message:  resp.Error.Message,
+					Details:  resp.Error.Details,
+				}
 			}
 			return "", nil, errors.New("plugin returned ok=false without error")
 		}
@@ -269,7 +301,7 @@ func contains(list []string, v string) bool {
 	return false
 }
 
-func requestContextFrom(ctx context.Context) protocol.RequestContext {
+func requestContextFrom(ctx context.Context, meta RequestMeta) protocol.RequestContext {
 	rc := protocol.RequestContext{}
 	if deadline, ok := ctx.Deadline(); ok {
 		rc.DeadlineMs = time.Until(deadline).Milliseconds()
@@ -277,8 +309,8 @@ func requestContextFrom(ctx context.Context) protocol.RequestContext {
 			rc.DeadlineMs = 0
 		}
 	}
-	rc.RepoRoot = repoRootFromContext(ctx)
-	rc.Cwd = cwdFromContext(ctx)
-	rc.DryRun = dryRunFromContext(ctx)
+	rc.RepoRoot = meta.RepoRoot
+	rc.Cwd = meta.Cwd
+	rc.DryRun = meta.DryRun
 	return rc
 }

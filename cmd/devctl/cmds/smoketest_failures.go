@@ -76,11 +76,11 @@ func smoketestValidateFails(ctx context.Context) error {
 		return err
 	}
 
-	opCtx, cancel := context.WithTimeout(runtime.WithRepoRoot(ctx, repoRoot), 3*time.Second)
+	opCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
 	factory := runtime.NewFactory(runtime.FactoryOptions{HandshakeTimeout: 2 * time.Second, ShutdownTimeout: 2 * time.Second})
-	clients, err := startClients(opCtx, factory, specs)
+	clients, err := startClients(opCtx, factory, specs, runtime.RequestMeta{RepoRoot: repoRoot, Cwd: repoRoot})
 	if err != nil {
 		return err
 	}
@@ -126,11 +126,11 @@ func smoketestLaunchFails(ctx context.Context) error {
 		return err
 	}
 
-	opCtx, cancel := context.WithTimeout(runtime.WithRepoRoot(ctx, repoRoot), 5*time.Second)
+	opCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	factory := runtime.NewFactory(runtime.FactoryOptions{HandshakeTimeout: 2 * time.Second, ShutdownTimeout: 2 * time.Second})
-	clients, err := startClients(opCtx, factory, specs)
+	clients, err := startClients(opCtx, factory, specs, runtime.RequestMeta{RepoRoot: repoRoot, Cwd: repoRoot})
 	if err != nil {
 		return err
 	}
@@ -167,7 +167,7 @@ func smoketestPluginTimeout(ctx context.Context) error {
 		Path:    "python3",
 		Args:    []string{plugin},
 		WorkDir: devctlRoot,
-	})
+	}, runtime.StartOptions{Meta: runtime.RequestMeta{RepoRoot: devctlRoot, Cwd: devctlRoot}})
 	if err != nil {
 		return err
 	}
@@ -186,10 +186,10 @@ func smoketestPluginTimeout(ctx context.Context) error {
 	return nil
 }
 
-func startClients(ctx context.Context, factory *runtime.Factory, specs []runtime.PluginSpec) ([]runtime.Client, error) {
+func startClients(ctx context.Context, factory *runtime.Factory, specs []runtime.PluginSpec, meta runtime.RequestMeta) ([]runtime.Client, error) {
 	clients := make([]runtime.Client, 0, len(specs))
 	for _, spec := range specs {
-		c, err := factory.Start(ctx, spec)
+		c, err := factory.Start(ctx, spec, runtime.StartOptions{Meta: meta})
 		if err != nil {
 			closeClients(context.Background(), clients)
 			return nil, err

@@ -55,12 +55,12 @@ func newSmokeTestSuperviseCmd() *cobra.Command {
 				return err
 			}
 
-			ctx = plugruntime.WithRepoRoot(ctx, repoRoot)
+			meta := plugruntime.RequestMeta{RepoRoot: repoRoot, Cwd: repoRoot}
 
 			factory := plugruntime.NewFactory(plugruntime.FactoryOptions{HandshakeTimeout: 2 * time.Second, ShutdownTimeout: 2 * time.Second})
 			var clients []plugruntime.Client
 			for _, spec := range specs {
-				c, err := factory.Start(ctx, spec)
+				c, err := factory.Start(ctx, spec, plugruntime.StartOptions{Meta: meta})
 				if err != nil {
 					return err
 				}

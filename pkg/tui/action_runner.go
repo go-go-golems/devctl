@@ -8,10 +8,9 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/go-go-golems/devctl/pkg/config"
-	"github.com/go-go-golems/devctl/pkg/discovery"
 	"github.com/go-go-golems/devctl/pkg/engine"
 	"github.com/go-go-golems/devctl/pkg/patch"
+	"github.com/go-go-golems/devctl/pkg/repository"
 	"github.com/go-go-golems/devctl/pkg/runtime"
 	"github.com/go-go-golems/devctl/pkg/state"
 	"github.com/go-go-golems/devctl/pkg/supervise"
@@ -347,47 +346,30 @@ func runUp(ctx context.Context, opts RootOptions, pub message.Publisher, runID s
 		}
 	}
 
-	cfg, err := config.LoadOptional(opts.Config)
+	repo, err := repository.Load(repository.Options{RepoRoot: opts.RepoRoot, ConfigPath: opts.Config, Cwd: opts.RepoRoot, DryRun: opts.DryRun})
 	if err != nil {
 		return err
 	}
-	if !opts.Strict && cfg.Strictness == "error" {
+	if !opts.Strict && repo.Config.Strictness == "error" {
 		opts.Strict = true
 	}
-
-	specs, err := discovery.Discover(cfg, discovery.Options{RepoRoot: opts.RepoRoot})
-	if err != nil {
-		return err
-	}
-	if len(specs) == 0 {
+	if len(repo.Specs) == 0 {
 		return errors.New("no plugins configured (add .devctl.yaml)")
 	}
-
-	ctx = runtime.WithRepoRoot(ctx, opts.RepoRoot)
-	ctx = runtime.WithDryRun(ctx, opts.DryRun)
 
 	factory := runtime.NewFactory(runtime.FactoryOptions{
 		HandshakeTimeout: 2 * time.Second,
 		ShutdownTimeout:  3 * time.Second,
 	})
 
-	clients := make([]runtime.Client, 0, len(specs))
-	for _, spec := range specs {
-		c, err := factory.Start(ctx, spec)
-		if err != nil {
-			for _, cc := range clients {
-				_ = cc.Close(ctx)
-			}
-			return err
-		}
-		clients = append(clients, c)
+	clients, err := repo.StartClients(ctx, factory)
+	if err != nil {
+		return err
 	}
 	defer func() {
 		closeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		for _, c := range clients {
-			_ = c.Close(closeCtx)
-		}
+		_ = repository.CloseClients(closeCtx, clients)
 	}()
 
 	p := &engine.Pipeline{

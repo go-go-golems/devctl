@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-go-golems/devctl/pkg/config"
-	"github.com/go-go-golems/devctl/pkg/discovery"
+	"github.com/go-go-golems/devctl/pkg/protocol"
+	"github.com/go-go-golems/devctl/pkg/repository"
 	"github.com/go-go-golems/devctl/pkg/runtime"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -30,19 +30,18 @@ func newPluginsListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			ctx := withPluginRequestContext(cmd.Context(), opts)
-
-			cfg, err := config.LoadOptional(opts.Config)
+			meta, err := requestMetaFromRootOptions(opts)
 			if err != nil {
 				return err
 			}
-			specs, err := discovery.Discover(cfg, discovery.Options{RepoRoot: opts.RepoRoot})
+			repo, err := repository.Load(repository.Options{RepoRoot: opts.RepoRoot, ConfigPath: opts.Config, Cwd: meta.Cwd, DryRun: opts.DryRun})
 			if err != nil {
 				return err
 			}
-			if len(specs) == 0 {
+			if len(repo.Specs) == 0 {
 				return errors.New("no plugins configured (add .devctl.yaml)")
 			}
+			ctx := cmd.Context()
 
 			factory := runtime.NewFactory(runtime.FactoryOptions{
 				HandshakeTimeout: 2 * time.Second,
@@ -50,22 +49,22 @@ func newPluginsListCmd() *cobra.Command {
 			})
 
 			type pluginInfo struct {
-				ID           string   `json:"id"`
-				Path         string   `json:"path"`
-				Args         []string `json:"args,omitempty"`
-				WorkDir      string   `json:"workdir"`
-				Priority     int      `json:"priority"`
-				PluginName   string   `json:"plugin_name"`
-				Protocol     string   `json:"protocol_version"`
-				Ops          []string `json:"ops,omitempty"`
-				Streams      []string `json:"streams,omitempty"`
-				Commands     []string `json:"commands,omitempty"`
-				HandshakeRaw any      `json:"handshake_raw,omitempty"`
+				ID           string                 `json:"id"`
+				Path         string                 `json:"path"`
+				Args         []string               `json:"args,omitempty"`
+				WorkDir      string                 `json:"workdir"`
+				Priority     int                    `json:"priority"`
+				PluginName   string                 `json:"plugin_name"`
+				Protocol     string                 `json:"protocol_version"`
+				Ops          []string               `json:"ops,omitempty"`
+				Streams      []string               `json:"streams,omitempty"`
+				Commands     []protocol.CommandSpec `json:"commands,omitempty"`
+				HandshakeRaw any                    `json:"handshake_raw,omitempty"`
 			}
 
-			infos := make([]pluginInfo, 0, len(specs))
-			for _, spec := range specs {
-				c, err := factory.Start(ctx, spec)
+			infos := make([]pluginInfo, 0, len(repo.Specs))
+			for _, spec := range repo.Specs {
+				c, err := factory.Start(ctx, spec, runtime.StartOptions{Meta: repo.Request})
 				if err != nil {
 					return err
 				}
