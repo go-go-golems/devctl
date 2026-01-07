@@ -988,3 +988,55 @@ This step adds a small, ticket-local setup script that creates that fixture repo
 
 ### Technical details
 - The script prints only the repo-root path to stdout so it can be used as `REPO_ROOT="$(...)"` without parsing.
+
+## Step 23: Add focus + step selection in the Pipeline view
+
+As soon as the Pipeline view started showing more than one kind of structured output (phases, build steps, prepare steps, validation issues), a single cursor model wasn’t enough. You want to be able to quickly say “I’m looking at build”, arrow around a list, and pop open details — without those keys accidentally moving some other cursor or toggling some other section.
+
+This step introduces an explicit “focus” concept in the Pipeline view (`b` build, `p` prepare, `v` validation). Each section keeps its own cursor and details toggle. That makes the view feel more like a real UI panel and less like a static report, and it sets us up nicely for the next iteration (turning the details section into a scrollable viewport, adding artifact inspection, and so on).
+
+**Commit (code):** 94f2486 — "tui: add focus + step details in pipeline view"
+
+### What I did
+- Added a focus selector (`b`/`p`/`v`) and per-section cursors for:
+  - build steps
+  - prepare steps
+  - validation issues
+- Kept the interaction consistent across sections:
+  - `↑/↓` moves within the focused section
+  - `enter` toggles a details section for the selected item
+- Included build/prepare artifact maps in the published pipeline result messages (not fully rendered yet, but counted in the details section).
+- Updated the tmux playbook with the Pipeline view navigation keys.
+
+### Why
+- Without an explicit focus model, arrow keys either do “the wrong thing” or we end up with too many ad-hoc keybindings.
+- A small, consistent interaction pattern is easier to learn and makes future UI polish straightforward.
+
+### What worked
+- Build/prepare step lists are now navigable in the Pipeline view and show a small details section.
+- Validation issues continue to be navigable, but now live cleanly under the same focus pattern.
+
+### What didn't work
+- The details sections are still “static text”; for large payloads (e.g. long validation details), we’ll eventually want a viewport instead of truncation.
+
+### What I learned
+- The Pipeline view benefits from being treated like a multi-panel UI, even if we render it as a single text view initially.
+
+### What was tricky to build
+- Keeping the key handling clean given that `tab` is reserved for global view switching (so focus selection uses explicit keys instead).
+
+### What warrants a second pair of eyes
+- Whether `b`/`p`/`v` are the right bindings long-term, or if we should add an on-screen hint/footer once we add more sections (launch plan, artifacts, etc.).
+
+### What should be done in the future
+- Add an “artifacts inspector” section (keys + list) so users can see the artifact paths returned by plugins.
+- Add a viewport for details so large content is scrollable instead of truncated.
+
+### Code review instructions
+- Review `devctl/pkg/tui/models/pipeline_model.go` for focus handling, cursor bounds, and details rendering.
+- Validate by running the fixture and using `tab` to reach pipeline view:
+  - press `b` and `p` to switch focus between step lists
+  - use `↑/↓` and `enter` to verify selection + details
+
+### Technical details
+- Focus is stored as a small enum (`pipelineFocus`), and each section maintains its own cursor and “show details” flag.

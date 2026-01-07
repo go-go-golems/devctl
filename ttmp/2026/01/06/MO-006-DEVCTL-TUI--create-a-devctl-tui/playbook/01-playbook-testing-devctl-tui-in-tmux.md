@@ -153,6 +153,8 @@ tmux attach -t devctl-tui
 # - press `u` to run `up` in-process (starts services + writes state)
 # - press `r` (then `y`) to run `restart` in-process (down then up)
 # - press `tab` from the dashboard to switch to the event view
+#   - press `tab` again to reach the pipeline view (pipeline phases + validation issues + step results)
+#     - in the pipeline view: `b` focuses build, `p` focuses prepare, `v` focuses validation, `↑/↓` selects, `enter` toggles details
 # - in the event view, press `/` to filter and `c` to clear the event log
 # - press `?` to toggle the help overlay
 # - press `q` to quit

@@ -34,7 +34,7 @@
     - `PipelineLaunchPlan`
   - [x] Extend the action runner to publish those messages at natural boundaries (before/after each engine call).
   - [x] Add a basic Pipeline view (tab from dashboard → events → pipeline) that renders phases, step results, validation summary, and last-run status.
-  - [ ] Render build/prepare step tables with selection + a details pane (right or bottom).
+  - [x] Render build/prepare step tables with selection + a details section (bottom).
   - [x] Render validation issues as a navigable list (selection + details), not just a summary.
 - [ ] Implement validation UX: errors/warnings table + “what to do next”
   - [ ] Define `ValidationResultMsg{RunID, Valid, Errors[], Warnings[]}` with a compact `ValidationIssue` struct:

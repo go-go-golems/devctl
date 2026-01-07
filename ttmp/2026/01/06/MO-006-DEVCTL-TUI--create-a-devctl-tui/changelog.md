@@ -197,6 +197,16 @@ Add a ticket-local fixture setup script to create a realistic devctl repo-root f
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/ttmp/2026/01/06/MO-006-DEVCTL-TUI--create-a-devctl-tui/scripts/setup-fixture-repo-root.sh — Creates a temp repo-root with e2e plugin + fixture services
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/ttmp/2026/01/06/MO-006-DEVCTL-TUI--create-a-devctl-tui/playbook/01-playbook-testing-devctl-tui-in-tmux.md — Uses the setup script as the preferred path
 
+## 2026-01-07
+
+Improve the Pipeline view with a focus model (`b`/`p`/`v`) so build/prepare step results and validation issues can be selected, and show a small details section for the selected item (commit 94f2486).
+
+### Related Files
+
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/models/pipeline_model.go — Focus, cursor selection, and details rendering for steps/issues
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/action_runner.go — Include artifacts in build/prepare result messages
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/pipeline_events.go — Add artifacts to build/prepare result payloads
+
 ## 2026-01-06
 
 Finalize M0 baseline: fix doc hygiene (numeric prefix) and land initial TUI skeleton (commit 2e22243).
