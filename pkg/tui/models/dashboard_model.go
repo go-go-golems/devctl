@@ -35,6 +35,13 @@ type DashboardModel struct {
 
 	// Recent events for preview
 	recentEvents []tui.EventLogEntry
+
+	// Pipeline status
+	pipelineRunning bool
+	pipelineKind    tui.ActionKind
+	pipelinePhase   tui.PipelinePhase
+	pipelineStarted time.Time
+	pipelineOk      *bool // nil = running, true = ok, false = failed
 }
 
 func NewDashboardModel() DashboardModel { return DashboardModel{} }
@@ -272,6 +279,12 @@ func (m DashboardModel) View() string {
 	startedInfo := repoStyle.Render(fmt.Sprintf("Started: %s", s.State.CreatedAt.Format("2006-01-02 15:04:05")))
 	sections = append(sections, lipgloss.JoinVertical(lipgloss.Left, repoInfo, startedInfo, ""))
 
+	// Pipeline status (if running)
+	if m.pipelineRunning {
+		sections = append(sections, m.renderPipelineStatus(theme))
+		sections = append(sections, "")
+	}
+
 	// Services box
 	sections = append(sections, servicesBox.Render())
 
@@ -313,6 +326,59 @@ func (m DashboardModel) View() string {
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+}
+
+func (m DashboardModel) renderPipelineStatus(theme styles.Theme) string {
+	// Determine status icon and style
+	var statusIcon string
+	var statusStyle lipgloss.Style
+	var statusText string
+
+	if m.pipelineOk == nil {
+		// Still running
+		statusIcon = styles.IconRunning
+		statusStyle = theme.StatusRunning
+		statusText = "Running"
+	} else if *m.pipelineOk {
+		statusIcon = styles.IconSuccess
+		statusStyle = theme.StatusRunning
+		statusText = "Complete"
+	} else {
+		statusIcon = styles.IconError
+		statusStyle = theme.StatusDead
+		statusText = "Failed"
+	}
+
+	// Build content
+	var lines []string
+
+	// Status line
+	statusLine := lipgloss.JoinHorizontal(lipgloss.Center,
+		statusStyle.Render(statusIcon),
+		" ",
+		theme.Title.Render(fmt.Sprintf("Pipeline: %s", m.pipelineKind)),
+		"  ",
+		statusStyle.Render(statusText),
+	)
+	lines = append(lines, statusLine)
+
+	// Phase line (if running)
+	if m.pipelinePhase != "" && m.pipelineOk == nil {
+		elapsed := time.Since(m.pipelineStarted)
+		phaseLine := lipgloss.JoinHorizontal(lipgloss.Center,
+			theme.TitleMuted.Render("Phase: "),
+			theme.KeybindKey.Render(string(m.pipelinePhase)),
+			theme.TitleMuted.Render(fmt.Sprintf("  (%.1fs)", elapsed.Seconds())),
+		)
+		lines = append(lines, phaseLine)
+	}
+
+	box := widgets.NewBox("Pipeline").
+		WithTitleRight("[tab] to pipeline view").
+		WithContent(lipgloss.JoinVertical(lipgloss.Left, lines...)).
+		WithSize(m.width, len(lines)+3)
+
+	return box.Render()
 }
 
 func (m DashboardModel) renderStopped(theme styles.Theme) string {
@@ -480,6 +546,32 @@ func (m DashboardModel) AppendEvent(e tui.EventLogEntry) DashboardModel {
 	m.recentEvents = append(m.recentEvents, e)
 	if len(m.recentEvents) > 5 {
 		m.recentEvents = m.recentEvents[len(m.recentEvents)-5:]
+	}
+	return m
+}
+
+// WithPipelineStarted updates the model when a pipeline starts.
+func (m DashboardModel) WithPipelineStarted(run tui.PipelineRunStarted) DashboardModel {
+	m.pipelineRunning = true
+	m.pipelineKind = run.Kind
+	m.pipelinePhase = ""
+	m.pipelineStarted = run.At
+	m.pipelineOk = nil
+	return m
+}
+
+// WithPipelinePhase updates the current pipeline phase.
+func (m DashboardModel) WithPipelinePhase(phase tui.PipelinePhase) DashboardModel {
+	m.pipelinePhase = phase
+	return m
+}
+
+// WithPipelineFinished updates the model when a pipeline finishes.
+func (m DashboardModel) WithPipelineFinished(ok bool) DashboardModel {
+	m.pipelineOk = &ok
+	// Keep showing for a bit, then clear
+	if ok {
+		m.pipelineRunning = false
 	}
 	return m
 }

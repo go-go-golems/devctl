@@ -6,6 +6,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -148,13 +150,24 @@ func (w *StateWatcher) readPlugins() []PluginSummary {
 	plugins := make([]PluginSummary, 0, len(cfg.Plugins))
 	for _, p := range cfg.Plugins {
 		status := "active"
-		// Check if plugin path exists
+
+		// Check if plugin path/command is available
 		pluginPath := p.Path
-		if pluginPath != "" && pluginPath[0] != '/' {
-			pluginPath = w.RepoRoot + "/" + pluginPath
-		}
-		if _, err := os.Stat(pluginPath); err != nil {
-			status = "error"
+		if pluginPath != "" {
+			if isCommandPath(pluginPath) {
+				// It's a command name (no slashes), check if it exists in PATH
+				if _, err := exec.LookPath(pluginPath); err != nil {
+					status = "error"
+				}
+			} else {
+				// It's a file path
+				if !filepath.IsAbs(pluginPath) {
+					pluginPath = filepath.Join(w.RepoRoot, pluginPath)
+				}
+				if _, err := os.Stat(pluginPath); err != nil {
+					status = "error"
+				}
+			}
 		}
 
 		plugins = append(plugins, PluginSummary{
@@ -166,6 +179,11 @@ func (w *StateWatcher) readPlugins() []PluginSummary {
 	}
 
 	return plugins
+}
+
+// isCommandPath returns true if the path looks like a command name (no slashes).
+func isCommandPath(path string) bool {
+	return !strings.Contains(path, "/")
 }
 
 // checkHealth runs health checks for services with health config.

@@ -170,14 +170,17 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tui.PipelineRunStartedMsg:
+		m.dashboard = m.dashboard.WithPipelineStarted(v.Run)
 		var cmd tea.Cmd
 		m.pipeline, cmd = m.pipeline.Update(v)
 		return m, cmd
 	case tui.PipelineRunFinishedMsg:
+		m.dashboard = m.dashboard.WithPipelineFinished(v.Run.Ok)
 		var cmd tea.Cmd
 		m.pipeline, cmd = m.pipeline.Update(v)
 		return m, cmd
 	case tui.PipelinePhaseStartedMsg:
+		m.dashboard = m.dashboard.WithPipelinePhase(v.Event.Phase)
 		var cmd tea.Cmd
 		m.pipeline, cmd = m.pipeline.Update(v)
 		return m, cmd

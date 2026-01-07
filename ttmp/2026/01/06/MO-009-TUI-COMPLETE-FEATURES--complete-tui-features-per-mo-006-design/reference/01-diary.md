@@ -704,6 +704,63 @@ Created `scripts/setup-comprehensive-fixture.sh`:
 
 ---
 
+## Bug Fixes from Comprehensive Fixture Testing
+
+**Date**: 2026-01-07 ~05:00
+
+### Issue 2 Fix: Plugins View Empty
+
+**Problem**: `readPlugins()` in `state_watcher.go` was treating command names like `python3` as file paths, prepending the repo root and failing the `os.Stat()` check.
+
+**Solution**: 
+- Added `isCommandPath()` helper to detect command names (no slashes)
+- Use `exec.LookPath()` for commands, `os.Stat()` for file paths
+- Added `path/filepath` and `os/exec` imports
+
+```go
+func isCommandPath(path string) bool {
+    return !strings.Contains(path, "/")
+}
+
+// In readPlugins():
+if isCommandPath(pluginPath) {
+    if _, err := exec.LookPath(pluginPath); err != nil {
+        status = "error"
+    }
+} else {
+    // It's a file path...
+}
+```
+
+### Issue 3 Fix: Dashboard Pipeline Status
+
+**Problem**: Dashboard didn't show when a pipeline was running.
+
+**Solution**:
+1. Added fields to `DashboardModel`:
+   - `pipelineRunning bool`
+   - `pipelineKind tui.ActionKind`
+   - `pipelinePhase tui.PipelinePhase`
+   - `pipelineStarted time.Time`
+   - `pipelineOk *bool`
+
+2. Added methods:
+   - `WithPipelineStarted(run tui.PipelineRunStarted)`
+   - `WithPipelinePhase(phase tui.PipelinePhase)`
+   - `WithPipelineFinished(ok bool)`
+
+3. Added `renderPipelineStatus()` to show:
+   - Pipeline kind and status (Running/Complete/Failed)
+   - Current phase and elapsed time
+   - Hint to switch to pipeline view
+
+4. Updated `RootModel.Update()` to forward:
+   - `PipelineRunStartedMsg` → `WithPipelineStarted()`
+   - `PipelinePhaseStartedMsg` → `WithPipelinePhase()`
+   - `PipelineRunFinishedMsg` → `WithPipelineFinished()`
+
+---
+
 ### Technical References
 
 - Original Design: `MO-006-DEVCTL-TUI/.../01-devctl-tui-layout.md`
