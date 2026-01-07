@@ -115,7 +115,7 @@ PORT_FLAKY = os.environ.get("PORT_FLAKY", "8082")
 # Handshake
 emit({
     "type": "handshake",
-    "protocol_version": "v1",
+    "protocol_version": "v2",
     "plugin_name": "comprehensive-plugin",
     "capabilities": {
         "ops": ["config.mutate", "validate.run", "build.run", "prepare.run", "launch.plan"]
@@ -317,7 +317,7 @@ def emit(obj):
 
 emit({
     "type": "handshake",
-    "protocol_version": "v1",
+    "protocol_version": "v2",
     "plugin_name": "logger-plugin",
     "capabilities": {
         "ops": [],
@@ -346,12 +346,12 @@ def emit(obj):
 
 emit({
     "type": "handshake",
-    "protocol_version": "v1",
+    "protocol_version": "v2",
     "plugin_name": "metrics-plugin",
     "capabilities": {
         "ops": ["metrics.collect"],
         "streams": ["metrics.stream"],
-        "commands": ["metrics"],
+        "commands": [{"name": "metrics"}],
     },
 })
 
@@ -434,4 +434,3 @@ INFO
 
 # Output just the path to stdout (for scripting)
 echo "$REPO_ROOT"
-
