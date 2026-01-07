@@ -940,3 +940,51 @@ This step upgrades the Pipeline view’s validation section into a small, naviga
 
 ### Technical details
 - The details renderer uses `json.MarshalIndent` and truncates to ~12 lines to keep the screen stable.
+
+## Step 22: Add a repeatable fixture repo-root setup script for testing
+
+As the TUI grows beyond a single screen, testing it well becomes a little annoying: you need a repo-root with a realistic `.devctl.yaml`, at least one plugin, and a couple of services that generate logs and can fail. Up to now we’ve been copy/pasting the “fixture repo-root” shell snippet from the tmux playbook, which works, but it’s not the kind of thing you want to maintain by hand forever.
+
+This step adds a small, ticket-local setup script that creates that fixture repo-root in one command. The playbook now points at the script as the preferred path, so you can iterate quickly and have a consistent place to tweak the fixture as we add new UI features.
+
+**Commit (docs):** e6ec818 — "MO-006: add fixture repo-root setup script"
+
+### What I did
+- Added `setup-fixture-repo-root.sh` under the ticket `scripts/` folder:
+  - builds `http-echo` and `log-spewer` into `$REPO_ROOT/bin`
+  - writes `$REPO_ROOT/.devctl.yaml` pointing at the built-in `testdata/plugins/e2e/plugin.py`
+  - picks a free port for the http service
+  - prints the created `$REPO_ROOT` path for copy/paste-friendly usage
+- Updated the tmux playbook to reference the script (and keep the old inline steps as an equivalent manual path).
+
+### Why
+- Repeatability: “setup fixture repo-root” should be a stable one-liner, not a wall of shell.
+- Drift control: as we add features that need new fixture behavior, the script is the single place to evolve it.
+
+### What worked
+- The script successfully creates a repo-root that works with `devctl plugins list`, `devctl up`, `devctl tui`, and `devctl down`.
+
+### What didn't work
+- N/A
+
+### What I learned
+- Keeping the fixture logic close to the ticket (instead of in /tmp or in memory) makes it much easier to collaborate and iterate.
+
+### What was tricky to build
+- Ensuring it works from a `go.work` workspace: we explicitly set `GOWORK=off` for the tiny fixture builds so it behaves consistently.
+
+### What warrants a second pair of eyes
+- Whether we should add an optional “validation failure mode” toggle (e.g. omit one env var) directly in the script so we can quickly test the validation issue UI without editing `.devctl.yaml` by hand.
+
+### What should be done in the future
+- Add a sibling script that intentionally produces a validation failure (for the Pipeline validation list), and one that produces a crashing service (for exit diagnostics), so we can test all the failure UX paths with zero manual edits.
+
+### Code review instructions
+- Review `devctl/ttmp/2026/01/06/MO-006-DEVCTL-TUI--create-a-devctl-tui/scripts/setup-fixture-repo-root.sh`.
+- Validate by running it from the devctl repo root, then:
+  - `devctl --repo-root "$REPO_ROOT" up`
+  - `devctl --repo-root "$REPO_ROOT" tui`
+  - `devctl --repo-root "$REPO_ROOT" down`
+
+### Technical details
+- The script prints only the repo-root path to stdout so it can be used as `REPO_ROOT="$(...)"` without parsing.
