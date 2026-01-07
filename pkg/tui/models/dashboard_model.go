@@ -3,13 +3,16 @@ package models
 import (
 	"fmt"
 	"os"
-	"strings"
 	"syscall"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/go-go-golems/devctl/pkg/state"
 	"github.com/go-go-golems/devctl/pkg/tui"
+	"github.com/go-go-golems/devctl/pkg/tui/styles"
+	"github.com/go-go-golems/devctl/pkg/tui/widgets"
 )
 
 type DashboardModel struct {
@@ -168,59 +171,143 @@ func (m DashboardModel) Update(msg tea.Msg) (DashboardModel, tea.Cmd) {
 }
 
 func (m DashboardModel) View() string {
+	theme := styles.DefaultTheme()
+
 	if m.last == nil {
-		return "Loading state...\n"
+		return theme.TitleMuted.Render("Loading state...")
 	}
 
 	s := m.last
 	if !s.Exists {
-		return "System: Stopped (no state)\n"
+		return m.renderStopped(theme)
 	}
 	if s.Error != "" {
-		return fmt.Sprintf("System: Error (state)\n\n%s\n", s.Error)
+		return m.renderError(theme, s.Error)
 	}
 	if s.State == nil {
-		return "System: Unknown (state missing)\n"
+		return theme.TitleMuted.Render("System: Unknown (state missing)")
 	}
 
-	var b strings.Builder
-	b.WriteString("System: Running\n\n")
-	b.WriteString(fmt.Sprintf("RepoRoot: %s\n", s.RepoRoot))
-	b.WriteString(fmt.Sprintf("Started: %s\n\n", s.State.CreatedAt.Format("2006-01-02 15:04:05")))
-
+	// Build services table
 	services := s.State.Services
-	b.WriteString(fmt.Sprintf("Services (%d):  (↑/↓ select, enter logs, u up, d down, r restart, x kill)\n", len(services)))
+	rows := make([]widgets.TableRow, len(services))
 	for i, svc := range services {
-		a := false
+		alive := false
 		if s.Alive != nil {
-			a = s.Alive[svc.Name]
+			alive = s.Alive[svc.Name]
 		}
-		status := "dead"
-		if a {
-			status = "alive"
-		}
-		if !a {
+
+		icon := styles.StatusIcon(alive)
+		status := "Running"
+		if !alive {
+			status = "Dead"
 			if extra, ok := m.exitSummary[svc.Name]; ok && extra != "" {
-				status = status + " (" + extra + ")"
+				status = fmt.Sprintf("Dead (%s)", extra)
 			}
 		}
-		cursor := " "
-		if i == m.selected {
-			cursor = ">"
+
+		pidText := fmt.Sprintf("PID %d", svc.PID)
+
+		rows[i] = widgets.TableRow{
+			Icon:     icon,
+			Cells:    []string{svc.Name, status, pidText},
+			Selected: i == m.selected,
 		}
-		b.WriteString(fmt.Sprintf("%s %-20s pid=%-6d %s\n", cursor, svc.Name, svc.PID, status))
 	}
 
+	serviceColumns := []widgets.TableColumn{
+		{Header: "Name", Width: 18},
+		{Header: "Status", Width: 16},
+		{Header: "PID", Width: 10},
+	}
+
+	table := widgets.NewTable(serviceColumns).
+		WithRows(rows).
+		WithCursor(m.selected).
+		WithSize(m.width-4, 0)
+
+	// Calculate box height based on service count
+	tableHeight := len(services) + 2 // rows + header + padding
+	if tableHeight < 5 {
+		tableHeight = 5
+	}
+
+	servicesBox := widgets.NewBox(fmt.Sprintf("Services (%d)", len(services))).
+		WithTitleRight("[l] logs  [r] restart  [x] kill").
+		WithContent(table.Render()).
+		WithSize(m.width, tableHeight)
+
+	// Build main layout
+	var sections []string
+
+	// Repo info
+	repoStyle := theme.TitleMuted
+	repoInfo := repoStyle.Render(fmt.Sprintf("RepoRoot: %s", s.RepoRoot))
+	startedInfo := repoStyle.Render(fmt.Sprintf("Started: %s", s.State.CreatedAt.Format("2006-01-02 15:04:05")))
+	sections = append(sections, lipgloss.JoinVertical(lipgloss.Left, repoInfo, startedInfo, ""))
+
+	// Services box
+	sections = append(sections, servicesBox.Render())
+
+	// Confirmation dialogs
 	if m.confirmKill {
-		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf("Kill %s pid=%d? (y/n)\n", m.confirmName, m.confirmPID))
+		confirmStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(theme.Warning).
+			Padding(0, 1)
+		confirmBox := confirmStyle.Render(fmt.Sprintf("%s Kill %s pid=%d? %s",
+			styles.IconWarning,
+			m.confirmName,
+			m.confirmPID,
+			theme.KeybindKey.Render("[y/n]")))
+		sections = append(sections, "", confirmBox)
 	}
 	if m.confirmAction {
-		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf("%s? (y/n)\n", m.confirmText))
+		confirmStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(theme.Warning).
+			Padding(0, 1)
+		confirmBox := confirmStyle.Render(fmt.Sprintf("%s %s? %s",
+			styles.IconWarning,
+			m.confirmText,
+			theme.KeybindKey.Render("[y/n]")))
+		sections = append(sections, "", confirmBox)
 	}
 
-	return b.String()
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+}
+
+func (m DashboardModel) renderStopped(theme styles.Theme) string {
+	icon := theme.StatusPending.Render(styles.IconSystem)
+	status := theme.Title.Render("System: Stopped")
+	hint := theme.TitleMuted.Render("Press [u] to start")
+
+	box := widgets.NewBox("Dashboard").
+		WithContent(lipgloss.JoinVertical(lipgloss.Left,
+			lipgloss.JoinHorizontal(lipgloss.Center, icon, " ", status),
+			"",
+			hint,
+		)).
+		WithSize(m.width, 6)
+
+	return box.Render()
+}
+
+func (m DashboardModel) renderError(theme styles.Theme, errText string) string {
+	icon := theme.StatusDead.Render(styles.IconError)
+	status := theme.Title.Render("System: Error")
+	errStyle := theme.StatusDead
+	errMsg := errStyle.Render(errText)
+
+	box := widgets.NewBox("Dashboard").
+		WithContent(lipgloss.JoinVertical(lipgloss.Left,
+			lipgloss.JoinHorizontal(lipgloss.Center, icon, " ", status),
+			"",
+			errMsg,
+		)).
+		WithSize(m.width, 8)
+
+	return box.Render()
 }
 
 func (m DashboardModel) selectedServiceName() string {

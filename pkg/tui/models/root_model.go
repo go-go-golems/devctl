@@ -5,8 +5,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/go-go-golems/devctl/pkg/tui"
+	"github.com/go-go-golems/devctl/pkg/tui/styles"
+	"github.com/go-go-golems/devctl/pkg/tui/widgets"
 )
 
 type ViewID string
@@ -32,7 +36,10 @@ type RootModel struct {
 
 	publishAction func(tui.ActionRequest) error
 
-	statusLine string
+	statusLine   string
+	statusOk     bool
+	startedAt    time.Time
+	systemStatus string
 }
 
 type RootModelOptions struct {
@@ -122,6 +129,17 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tui.StateSnapshotMsg:
 		m.dashboard = m.dashboard.WithSnapshot(v.Snapshot)
 		m.service = m.service.WithSnapshot(v.Snapshot)
+		// Update system status for header
+		if v.Snapshot.Exists && v.Snapshot.State != nil {
+			m.startedAt = v.Snapshot.State.CreatedAt
+			m.systemStatus = "Running"
+		} else if !v.Snapshot.Exists {
+			m.systemStatus = "Stopped"
+			m.startedAt = time.Time{}
+		} else if v.Snapshot.Error != "" {
+			m.systemStatus = "Error"
+			m.startedAt = time.Time{}
+		}
 		return m, nil
 	case tui.EventLogAppendMsg:
 		m.events = m.events.Append(v.Entry)
@@ -130,10 +148,12 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				strings.HasPrefix(s, "action publish failed:") ||
 				strings.HasPrefix(s, "failed SIGTERM") {
 				m.statusLine = s
+				m.statusOk = false
 				m = m.applyChildSizes()
 			} else if strings.HasPrefix(s, "action ok:") ||
 				strings.HasPrefix(s, "sent SIGTERM") {
 				m.statusLine = s
+				m.statusOk = true
 				m = m.applyChildSizes()
 			}
 		}
@@ -214,41 +234,163 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m RootModel) View() string {
-	var b strings.Builder
+	theme := styles.DefaultTheme()
 
-	b.WriteString(fmt.Sprintf("devctl tui — %s  (tab switch, ? help, q quit)\n\n", m.active))
-	if m.statusLine != "" {
-		b.WriteString(fmt.Sprintf("Status: %s\n\n", m.statusLine))
+	// Build header
+	statusIcon := styles.IconSystem
+	statusOk := true
+	switch m.systemStatus {
+	case "Running":
+		statusIcon = styles.IconSuccess
+		statusOk = true
+	case "Stopped":
+		statusIcon = styles.IconPending
+		statusOk = false
+	case "Error":
+		statusIcon = styles.IconError
+		statusOk = false
 	}
+
+	var uptime time.Duration
+	if !m.startedAt.IsZero() {
+		uptime = time.Since(m.startedAt)
+	}
+
+	viewLabel := string(m.active)
+	header := widgets.NewHeader(fmt.Sprintf("DevCtl — %s", viewLabel)).
+		WithStatus(statusIcon, m.systemStatus, statusOk).
+		WithUptime(uptime).
+		WithKeybinds([]widgets.Keybind{
+			{Key: "tab", Label: "switch"},
+			{Key: "?", Label: "help"},
+			{Key: "q", Label: "quit"},
+		}).
+		WithWidth(m.width)
+
+	// Build status line if present
+	var statusSection string
+	if m.statusLine != "" {
+		statusStyle := theme.StatusRunning
+		icon := styles.IconSuccess
+		if !m.statusOk {
+			statusStyle = theme.StatusDead
+			icon = styles.IconError
+		}
+		statusSection = lipgloss.JoinHorizontal(lipgloss.Center,
+			statusStyle.Render(icon),
+			" ",
+			theme.TitleMuted.Render(m.statusLine),
+		)
+	}
+
+	// Build main content
+	var content string
 	switch m.active {
 	case ViewService:
-		b.WriteString(m.service.View())
+		content = m.service.View()
 	case ViewEvents:
-		b.WriteString(m.events.View())
+		content = m.events.View()
 	case ViewPipeline:
-		b.WriteString(m.pipeline.View())
+		content = m.pipeline.View()
 	default:
-		b.WriteString(m.dashboard.View())
+		content = m.dashboard.View()
 	}
 
+	// Build footer
+	footerKeybinds := m.footerKeybinds()
+	footer := widgets.NewFooter(footerKeybinds).WithWidth(m.width)
+
+	// Help overlay
+	var helpSection string
 	if m.help {
-		b.WriteString("\n--- help ---\n")
-		b.WriteString("global: tab switch view, ? toggle help, q quit\n")
-		b.WriteString("dashboard: ↑/↓ select service, enter/l open service logs, x kill (y/n)\n")
-		b.WriteString("service: tab switch stdout/stderr, f follow, / filter, ctrl+l clear, esc back\n")
-		b.WriteString("events: / filter, ctrl+l clear filter, c clear events\n")
-		b.WriteString("pipeline: (read-only for now)\n")
+		helpStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(theme.Secondary).
+			Padding(1, 2)
+
+		helpContent := lipgloss.JoinVertical(lipgloss.Left,
+			theme.Title.Render("Help"),
+			"",
+			theme.KeybindKey.Render("Global")+":",
+			"  "+theme.TitleMuted.Render("tab switch view, ? toggle help, q quit"),
+			"",
+			theme.KeybindKey.Render("Dashboard")+":",
+			"  "+theme.TitleMuted.Render("↑/↓ select, enter/l logs, u up, d down, r restart, x kill"),
+			"",
+			theme.KeybindKey.Render("Service")+":",
+			"  "+theme.TitleMuted.Render("tab stdout/stderr, f follow, / filter, esc back"),
+			"",
+			theme.KeybindKey.Render("Events")+":",
+			"  "+theme.TitleMuted.Render("/ filter, ctrl+l clear, c clear events"),
+			"",
+			theme.KeybindKey.Render("Pipeline")+":",
+			"  "+theme.TitleMuted.Render("b build, p prepare, v validation, ↑/↓ select, enter details"),
+		)
+		helpSection = helpStyle.Render(helpContent)
 	}
-	return b.String()
+
+	// Compose layout
+	sections := []string{header.Render()}
+
+	if statusSection != "" {
+		sections = append(sections, "", statusSection)
+	}
+
+	sections = append(sections, "", content)
+
+	if helpSection != "" {
+		sections = append(sections, "", helpSection)
+	}
+
+	sections = append(sections, footer.Render())
+
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+}
+
+func (m RootModel) footerKeybinds() []widgets.Keybind {
+	switch m.active {
+	case ViewDashboard:
+		return []widgets.Keybind{
+			{Key: "↑/↓", Label: "select"},
+			{Key: "l", Label: "logs"},
+			{Key: "u", Label: "up"},
+			{Key: "d", Label: "down"},
+			{Key: "r", Label: "restart"},
+		}
+	case ViewService:
+		return []widgets.Keybind{
+			{Key: "tab", Label: "stream"},
+			{Key: "f", Label: "follow"},
+			{Key: "/", Label: "filter"},
+			{Key: "esc", Label: "back"},
+		}
+	case ViewEvents:
+		return []widgets.Keybind{
+			{Key: "/", Label: "filter"},
+			{Key: "c", Label: "clear"},
+			{Key: "↑/↓", Label: "scroll"},
+		}
+	case ViewPipeline:
+		return []widgets.Keybind{
+			{Key: "b", Label: "build"},
+			{Key: "p", Label: "prepare"},
+			{Key: "v", Label: "validate"},
+			{Key: "↑/↓", Label: "select"},
+		}
+	default:
+		return nil
+	}
 }
 
 func (m RootModel) headerLines() int {
-	// Title line + blank line.
-	lines := 2
+	// Header (2 lines: title + separator) + blank
+	lines := 3
 	if m.statusLine != "" {
-		// Status line + blank line.
+		// Status line + blank
 		lines += 2
 	}
+	// Footer (2 lines: separator + keybinds)
+	lines += 2
 	return lines
 }
 

@@ -33,6 +33,8 @@ topics:
       description: Chat backend and frontend surfaces
     - slug: websocket
       description: WebSocket lifecycle & events
+    - slug: tui
+      description: Terminal user interface (TUI) components and styling
 docTypes:
     - slug: index
       description: Ticket index document
