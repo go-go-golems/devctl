@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/go-go-golems/devctl/pkg/tui"
@@ -29,6 +30,19 @@ type PipelineModel struct {
 	prepareArtifacts map[string]string
 	validate         *tui.PipelineValidateResult
 	launchPlan       *tui.PipelineLaunchPlan
+
+	// Live output viewport
+	liveOutput   []string
+	liveVp       viewport.Model
+	liveVpReady  bool
+	showLiveVp   bool
+	liveVpHeight int
+
+	// Config patches applied by plugins
+	configPatches []tui.ConfigPatch
+
+	// Step progress tracking (step name -> percent)
+	stepProgress map[string]int
 
 	focus            pipelineFocus
 	buildCursor      int
@@ -57,12 +71,18 @@ type pipelinePhaseState struct {
 
 func NewPipelineModel() PipelineModel {
 	return PipelineModel{
-		phases: map[tui.PipelinePhase]*pipelinePhaseState{},
+		phases:       map[tui.PipelinePhase]*pipelinePhaseState{},
+		stepProgress: map[string]int{},
+		liveVpHeight: 8,
 	}
 }
 
 func (m PipelineModel) WithSize(width, height int) PipelineModel {
 	m.width, m.height = width, height
+	if m.liveVpReady {
+		m.liveVp.Width = width - 4 // account for box borders
+		m.liveVp.Height = m.liveVpHeight - 3
+	}
 	return m
 }
 
@@ -81,6 +101,9 @@ func (m PipelineModel) Update(msg tea.Msg) (PipelineModel, tea.Cmd) {
 		case "v":
 			m.focus = pipelineFocusValidation
 			m.validationShow = true
+			return m, nil
+		case "o": // toggle live output
+			m.showLiveVp = !m.showLiveVp
 			return m, nil
 		case "up", "k":
 			m = m.moveCursor(-1)
@@ -111,6 +134,16 @@ func (m PipelineModel) Update(msg tea.Msg) (PipelineModel, tea.Cmd) {
 		m.prepareShow = false
 		m.validationCursor = 0
 		m.validationShow = false
+
+		// Reset new state
+		m.liveOutput = nil
+		m.configPatches = nil
+		m.stepProgress = map[string]int{}
+		m.showLiveVp = false
+
+		// Initialize live viewport
+		m.liveVp = viewport.New(m.width-4, m.liveVpHeight-3)
+		m.liveVpReady = true
 
 		m.phases = map[tui.PipelinePhase]*pipelinePhaseState{}
 		if len(run.Phases) > 0 {
@@ -189,6 +222,29 @@ func (m PipelineModel) Update(msg tea.Msg) (PipelineModel, tea.Cmd) {
 		plan := v.Plan
 		m.launchPlan = &plan
 		return m, nil
+	case tui.PipelineLiveOutputMsg:
+		if m.runStarted == nil || m.runStarted.RunID != v.Output.RunID {
+			return m, nil
+		}
+		m.liveOutput = append(m.liveOutput, formatLiveOutputLine(v.Output))
+		m.showLiveVp = true
+		m = m.refreshLiveViewport()
+		return m, nil
+	case tui.PipelineConfigPatchesMsg:
+		if m.runStarted == nil || m.runStarted.RunID != v.Patches.RunID {
+			return m, nil
+		}
+		m.configPatches = append(m.configPatches, v.Patches.Patches...)
+		return m, nil
+	case tui.PipelineStepProgressMsg:
+		if m.runStarted == nil || m.runStarted.RunID != v.RunID {
+			return m, nil
+		}
+		if m.stepProgress == nil {
+			m.stepProgress = map[string]int{}
+		}
+		m.stepProgress[v.Step] = v.Percent
+		return m, nil
 	default:
 		return m, nil
 	}
@@ -243,7 +299,7 @@ func (m PipelineModel) View() string {
 		focusLine := lipgloss.JoinHorizontal(lipgloss.Center,
 			theme.TitleMuted.Render("Focus: "),
 			theme.KeybindKey.Render(string(m.focus)),
-			theme.TitleMuted.Render("  [b] build  [p] prepare  [v] validation  [↑/↓] select  [enter] details"),
+			theme.TitleMuted.Render("  [b] build  [p] prepare  [v] validation  [o] output  [↑/↓] select"),
 		)
 		headerLines = append(headerLines, "", focusLine)
 	}
@@ -285,6 +341,16 @@ func (m PipelineModel) View() string {
 	// Validation
 	if m.validate != nil {
 		sections = append(sections, m.renderStyledValidation(theme))
+	}
+
+	// Config patches (show after validation, before launch plan)
+	if len(m.configPatches) > 0 {
+		sections = append(sections, m.renderConfigPatches(theme))
+	}
+
+	// Live output viewport
+	if m.showLiveVp && len(m.liveOutput) > 0 {
+		sections = append(sections, m.renderLiveOutput(theme))
 	}
 
 	// Launch plan
@@ -367,6 +433,12 @@ func (m PipelineModel) renderStyledSteps(title string, steps []tui.PipelineStepR
 			style = theme.StatusDead
 		}
 
+		// Check for in-progress step with progress
+		progressPct := s.ProgressPercent
+		if pct, ok := m.stepProgress[s.Name]; ok && pct > 0 {
+			progressPct = pct
+		}
+
 		cursorStr := "  "
 		nameStyle := theme.TitleMuted
 		if focused && i == clampInt(cursor, 0, maxInt(0, len(steps)-1)) {
@@ -379,11 +451,23 @@ func (m PipelineModel) renderStyledSteps(title string, steps []tui.PipelineStepR
 			durationText = theme.TitleMuted.Render(fmt.Sprintf(" (%s)", formatDurationMs(s.DurationMs)))
 		}
 
+		// Add progress bar for in-progress steps
+		progressText := ""
+		if progressPct > 0 && progressPct < 100 {
+			bar := widgets.NewProgressBar(progressPct).
+				WithWidth(15).
+				WithStyle(theme.StatusRunning)
+			progressText = " " + bar.Render()
+			icon = styles.IconRunning
+			style = theme.StatusRunning
+		}
+
 		line := lipgloss.JoinHorizontal(lipgloss.Center,
 			cursorStr,
 			style.Render(icon),
 			" ",
 			nameStyle.Width(20).Render(s.Name),
+			progressText,
 			durationText,
 		)
 		lines = append(lines, line)
@@ -495,6 +579,39 @@ func (m PipelineModel) renderStyledValidation(theme styles.Theme) string {
 		WithTitleRight("[v] focus  [enter] details").
 		WithContent(lipgloss.JoinVertical(lipgloss.Left, headerLines...)).
 		WithSize(m.width, len(headerLines)+3)
+	return box.Render()
+}
+
+func (m PipelineModel) renderConfigPatches(theme styles.Theme) string {
+	var lines []string
+	for _, p := range m.configPatches {
+		line := lipgloss.JoinHorizontal(lipgloss.Left,
+			theme.TitleMuted.Render(" • "),
+			theme.Title.Render(p.Key),
+			theme.TitleMuted.Render(" → "),
+			theme.StatusRunning.Render(p.Value),
+			theme.TitleMuted.Render("  ("),
+			theme.KeybindKey.Render(p.Plugin),
+			theme.TitleMuted.Render(")"),
+		)
+		lines = append(lines, line)
+	}
+	box := widgets.NewBox("Applied Config Patches").
+		WithTitleRight(fmt.Sprintf("%d patches", len(m.configPatches))).
+		WithContent(lipgloss.JoinVertical(lipgloss.Left, lines...)).
+		WithSize(m.width, len(lines)+3)
+	return box.Render()
+}
+
+func (m PipelineModel) renderLiveOutput(theme styles.Theme) string {
+	title := "Live Output"
+	if len(m.liveOutput) > 0 {
+		title = fmt.Sprintf("Live Output (%d lines)", len(m.liveOutput))
+	}
+	box := widgets.NewBox(title).
+		WithTitleRight("[o] toggle").
+		WithContent(m.liveVp.View()).
+		WithSize(m.width, m.liveVpHeight)
 	return box.Render()
 }
 
@@ -659,4 +776,31 @@ func formatDurationMs(ms int64) string {
 		return fmt.Sprintf("%.1fs", sec)
 	}
 	return fmt.Sprintf("%.0fs", sec)
+}
+
+func formatLiveOutputLine(out tui.PipelineLiveOutput) string {
+	prefix := out.Source
+	if len(prefix) > 15 {
+		prefix = prefix[:15]
+	}
+	stream := ""
+	if out.Stream == "stderr" {
+		stream = " (err)"
+	}
+	return fmt.Sprintf("[%-15s]%s %s", prefix, stream, out.Line)
+}
+
+func (m PipelineModel) refreshLiveViewport() PipelineModel {
+	if !m.liveVpReady {
+		return m
+	}
+	// Keep only last N lines to prevent unbounded growth
+	const maxLines = 500
+	if len(m.liveOutput) > maxLines {
+		m.liveOutput = m.liveOutput[len(m.liveOutput)-maxLines:]
+	}
+	content := strings.Join(m.liveOutput, "\n")
+	m.liveVp.SetContent(content)
+	m.liveVp.GotoBottom()
+	return m
 }

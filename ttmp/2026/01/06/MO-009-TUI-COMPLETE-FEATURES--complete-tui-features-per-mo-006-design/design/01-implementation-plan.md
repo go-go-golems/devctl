@@ -40,7 +40,7 @@ Before implementing UI features, we need to ensure the data layer provides all r
 
 ### Tasks
 
-- [ ] **1.1.1** Add process stats fields to `state.ServiceRecord`
+- [x] **1.1.1** Add process stats fields to `state.ServiceRecord`
   ```go
   type ServiceRecord struct {
       // existing fields...
@@ -52,7 +52,7 @@ Before implementing UI features, we need to ensure the data layer provides all r
   }
   ```
 
-- [ ] **1.1.2** Create `pkg/proc/stats.go` for reading process stats
+- [x] **1.1.2** Create `pkg/proc/stats.go` for reading process stats
   ```go
   type ProcessStats struct {
       PID        int
@@ -66,12 +66,12 @@ Before implementing UI features, we need to ensure the data layer provides all r
   func ReadAllProcessStats(pids []int) (map[int]*ProcessStats, error)
   ```
 
-- [ ] **1.1.3** Integrate stats reading into supervisor state polling
+- [x] **1.1.3** Integrate stats reading into supervisor state polling
   - Read from `/proc/[pid]/stat` for CPU/MEM on Linux
   - Fallback to `ps` command for macOS
   - Poll every 2-5 seconds
 
-- [ ] **1.1.4** Update `tui.StateSnapshot` to include stats
+- [x] **1.1.4** Update `tui.StateSnapshot` to include stats
   ```go
   type StateSnapshot struct {
       // existing...
@@ -93,7 +93,7 @@ Before implementing UI features, we need to ensure the data layer provides all r
 
 ### Tasks
 
-- [ ] **1.2.1** Define health check result structure
+- [x] **1.2.1** Define health check result structure
   ```go
   type HealthCheckResult struct {
       ServiceName string
@@ -113,12 +113,12 @@ Before implementing UI features, we need to ensure the data layer provides all r
   )
   ```
 
-- [ ] **1.2.2** Add health check polling to supervisor
+- [x] **1.2.2** Add health check polling to supervisor
   - Read health endpoints from service config
   - Poll every 5 seconds
   - Store results in state or separate file
 
-- [ ] **1.2.3** Update `StateSnapshot` with health data
+- [x] **1.2.3** Update `StateSnapshot` with health data
   ```go
   type StateSnapshot struct {
       // existing...
@@ -126,7 +126,7 @@ Before implementing UI features, we need to ensure the data layer provides all r
   }
   ```
 
-- [ ] **1.2.4** Create health check icons/styles
+- [x] **1.2.4** Create health check icons/styles
   ```go
   // styles/icons.go
   const (
@@ -150,11 +150,11 @@ Before implementing UI features, we need to ensure the data layer provides all r
 
 ### Tasks
 
-- [ ] **1.3.1** Capture environment at launch time
+- [x] **1.3.1** Capture environment at launch time
   - Store sanitized env vars (redact secrets)
   - Save to `state.json` or separate file
 
-- [ ] **1.3.2** Add env to ServiceRecord
+- [x] **1.3.2** Add env to ServiceRecord
   ```go
   type ServiceRecord struct {
       // existing...
@@ -162,7 +162,7 @@ Before implementing UI features, we need to ensure the data layer provides all r
   }
   ```
 
-- [ ] **1.3.3** Create env sanitization helper
+- [x] **1.3.3** Create env sanitization helper
   ```go
   func SanitizeEnv(env map[string]string) map[string]string {
       // Redact keys containing: PASSWORD, SECRET, TOKEN, KEY, CREDENTIAL
@@ -184,7 +184,7 @@ Before implementing UI features, we need to ensure the data layer provides all r
 
 ### Tasks
 
-- [ ] **2.1.1** Update `DashboardModel.View()` to include new columns
+- [x] **2.1.1** Update `DashboardModel.View()` to include new columns
   ```go
   serviceColumns := []widgets.TableColumn{
       {Header: "Name", Width: 16},
@@ -775,7 +775,7 @@ Before implementing UI features, we need to ensure the data layer provides all r
 
 ### Tasks
 
-- [ ] **5.1.1** Create progress bar widget
+- [x] **5.1.1** Create progress bar widget
   ```go
   // widgets/progress.go
   type ProgressBar struct {
@@ -791,7 +791,7 @@ Before implementing UI features, we need to ensure the data layer provides all r
   }
   ```
 
-- [ ] **5.1.2** Add progress to step display
+- [x] **5.1.2** Add progress to step display
   ```go
   if step.ProgressPercent > 0 {
       bar := widgets.NewProgressBar(step.ProgressPercent).
@@ -800,7 +800,7 @@ Before implementing UI features, we need to ensure the data layer provides all r
   }
   ```
 
-- [ ] **5.1.3** Wire up PipelineStepProgress messages
+- [x] **5.1.3** Wire up PipelineStepProgress messages
 
 **Files to create**:
 - `pkg/tui/widgets/progress.go`
@@ -821,7 +821,7 @@ Before implementing UI features, we need to ensure the data layer provides all r
 
 ### Tasks
 
-- [ ] **5.2.1** Add live output state to PipelineModel
+- [x] **5.2.1** Add live output state to PipelineModel
   ```go
   type PipelineModel struct {
       // existing...
@@ -830,7 +830,7 @@ Before implementing UI features, we need to ensure the data layer provides all r
   }
   ```
 
-- [ ] **5.2.2** Handle LiveOutputLine messages
+- [x] **5.2.2** Handle LiveOutputLine messages
   ```go
   type PipelineLiveOutputMsg struct {
       Source string // step name
@@ -843,7 +843,7 @@ Before implementing UI features, we need to ensure the data layer provides all r
       m = m.refreshLiveViewport()
   ```
 
-- [ ] **5.2.3** Render live output box
+- [x] **5.2.3** Render live output box
   ```go
   if len(m.liveOutput) > 0 {
       liveBox := widgets.NewBox("Live Output").
@@ -853,7 +853,7 @@ Before implementing UI features, we need to ensure the data layer provides all r
   }
   ```
 
-- [ ] **5.2.4** Wire up streaming from build executor
+- [x] **5.2.4** Wire up streaming from build executor
 
 **Files to modify**:
 - `pkg/tui/models/pipeline_model.go`
@@ -878,7 +878,7 @@ Before implementing UI features, we need to ensure the data layer provides all r
 
 ### Tasks
 
-- [ ] **5.3.1** Add config patches to pipeline state
+- [x] **5.3.1** Add config patches to pipeline state
   ```go
   type ConfigPatch struct {
       Plugin string
@@ -892,13 +892,13 @@ Before implementing UI features, we need to ensure the data layer provides all r
   }
   ```
 
-- [ ] **5.3.2** Handle ConfigPatchApplied messages
+- [x] **5.3.2** Handle ConfigPatchApplied messages
   ```go
   case tui.PipelineConfigPatchMsg:
       m.configPatches = append(m.configPatches, v.Patch)
   ```
 
-- [ ] **5.3.3** Render patches section
+- [x] **5.3.3** Render patches section
   ```go
   if len(m.configPatches) > 0 {
       var lines []string

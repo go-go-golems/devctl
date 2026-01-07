@@ -55,9 +55,31 @@ type PipelinePhaseFinished struct {
 }
 
 type PipelineStepResult struct {
-	Name       string `json:"name"`
-	Ok         bool   `json:"ok"`
-	DurationMs int64  `json:"duration_ms,omitempty"`
+	Name            string `json:"name"`
+	Ok              bool   `json:"ok"`
+	DurationMs      int64  `json:"duration_ms,omitempty"`
+	ProgressPercent int    `json:"progress_percent,omitempty"` // 0-100, for in-progress steps
+}
+
+// PipelineLiveOutput represents a line of live output from a build step.
+type PipelineLiveOutput struct {
+	RunID  string `json:"run_id"`
+	Source string `json:"source"` // step name
+	Line   string `json:"line"`
+	Stream string `json:"stream"` // "stdout" or "stderr"
+}
+
+// ConfigPatch represents a configuration mutation applied by a plugin.
+type ConfigPatch struct {
+	Plugin string `json:"plugin"`
+	Key    string `json:"key"`   // dotted path, e.g., "services.backend.port"
+	Value  string `json:"value"` // string representation of the value
+}
+
+// PipelineConfigPatches represents config patches applied during a pipeline run.
+type PipelineConfigPatches struct {
+	RunID   string        `json:"run_id"`
+	Patches []ConfigPatch `json:"patches"`
 }
 
 type PipelineBuildResult struct {

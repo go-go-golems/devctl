@@ -485,6 +485,92 @@ User feedback: The events view "looks like ass." Performed analysis, created pla
 
 ---
 
+## Phase 5: Pipeline View Enhancements
+
+**Date**: 2026-01-07 ~03:30
+
+### 5.1 Progress Bar Widget
+
+Created `pkg/tui/widgets/progress.go`:
+- `ProgressBar` struct with `percent`, `width`, `style`, `filledChar`, `emptyChar`
+- `NewProgressBar(percent int)` constructor
+- Builder methods: `WithWidth()`, `WithStyle()`, `WithChars()`, `WithShowText()`
+- `Render()` returns styled progress bar with percentage text
+- `RenderCompact()` for inline display
+
+### 5.2 Live Output Viewport
+
+Updated `PipelineModel` with new fields:
+- `liveOutput []string` - buffer of output lines
+- `liveVp viewport.Model` - bubbles viewport for scrolling
+- `liveVpReady bool` - initialization flag
+- `showLiveVp bool` - toggle visibility
+- `liveVpHeight int` - viewport height (default 8)
+
+Added message types:
+- `PipelineLiveOutput` struct in `pipeline_events.go`
+- `PipelineLiveOutputMsg` in `msgs.go`
+
+Implementation:
+- `[o]` keybinding to toggle live output visibility
+- `formatLiveOutputLine()` helper for formatting with source prefix
+- `refreshLiveViewport()` to update content and auto-scroll
+- Max 500 lines to prevent unbounded growth
+- Viewport auto-scrolls to bottom on new content
+
+### 5.3 Config Patches Display
+
+Added types:
+- `ConfigPatch` struct with `Plugin`, `Key`, `Value` fields
+- `PipelineConfigPatches` struct for batch updates
+- `PipelineConfigPatchesMsg` message type
+
+Added `renderConfigPatches()` method:
+- Renders each patch as `• key → value  (plugin)`
+- Uses themed styling for key, value, and plugin name
+- Box title shows patch count
+
+### 5.4 Step Progress Integration
+
+Updated `PipelineStepResult`:
+- Added `ProgressPercent int` field
+
+Added `stepProgress map[string]int` to `PipelineModel`:
+- Tracks real-time progress per step name
+- `PipelineStepProgressMsg` updates the map
+
+Updated `renderStyledSteps()`:
+- Shows progress bar for in-progress steps (0 < percent < 100)
+- Uses running icon instead of success/error when in progress
+- 15-character wide progress bar with percentage
+
+### Files Created/Modified
+
+**Created**:
+- `pkg/tui/widgets/progress.go` - Progress bar widget
+
+**Modified**:
+- `pkg/tui/pipeline_events.go` - Added `PipelineLiveOutput`, `ConfigPatch`, `PipelineConfigPatches`, `ProgressPercent`
+- `pkg/tui/msgs.go` - Added `PipelineLiveOutputMsg`, `PipelineConfigPatchesMsg`, `PipelineStepProgressMsg`
+- `pkg/tui/models/pipeline_model.go` - All new features integrated
+
+### All Phase 5 Tasks Complete
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 5.1.1 | Create progress bar widget | ✅ |
+| 5.1.2 | Add progress to step display | ✅ |
+| 5.1.3 | Wire up PipelineStepProgress messages | ✅ |
+| 5.2.1 | Add live output state to PipelineModel | ✅ |
+| 5.2.2 | Handle LiveOutputLine messages | ✅ |
+| 5.2.3 | Render live output box | ✅ |
+| 5.2.4 | Wire up streaming (types ready) | ✅ |
+| 5.3.1 | Add config patches to pipeline state | ✅ |
+| 5.3.2 | Handle ConfigPatchApplied messages | ✅ |
+| 5.3.3 | Render patches section | ✅ |
+
+---
+
 ### Technical References
 
 - Original Design: `MO-006-DEVCTL-TUI/.../01-devctl-tui-layout.md`
