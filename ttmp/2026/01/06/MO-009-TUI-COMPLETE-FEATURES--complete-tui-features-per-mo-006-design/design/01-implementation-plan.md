@@ -1,3 +1,21 @@
+---
+Title: Implementation Plan
+Ticket: MO-009-TUI-COMPLETE-FEATURES
+Status: active
+Topics:
+    - backend
+    - ui-components
+DocType: design
+Intent: long-term
+Owners: []
+RelatedFiles: []
+ExternalSources: []
+Summary: "Implementation plan for completing all missing devctl TUI features"
+LastUpdated: 2026-01-07T02:50:20-05:00
+WhatFor: "Provide an ordered plan and task breakdown for MO-009"
+WhenToUse: "When implementing or reviewing MO-009 tasks"
+---
+
 # MO-009: Complete TUI Features Implementation Plan
 
 ## Overview
@@ -1142,4 +1160,3 @@ Phase 8 (Polish) - After all features complete
 6. **Phase 5** (Pipeline) - Medium effort, good polish
 7. **Phase 6** (Plugins) - Lower priority, nice to have
 8. **Phase 7-8** (Navigation + Polish) - Final pass
-
