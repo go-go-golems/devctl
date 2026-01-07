@@ -824,3 +824,50 @@ The result is that devctl no longer issues `commands.list` requests at startup, 
 - Commands executed (selection):
   - `cd devctl && go test ./...`
   - `cd devctl && go fmt ./...` (then reverted unrelated gofmt-only diffs before committing)
+
+## Step 14: Added an Exhaustive Real-World Test Task Matrix (CLI + Fixtures + TUI)
+
+This step translated the protocol v2 refactor into a long, explicit “what to actually try” checklist that leans on existing in-repo fixtures and smoke commands. The goal is to validate behavior the way users experience it (CLI + state files + wrapper + TUI), not just via unit tests.
+
+The outcome is a large set of MO-010 tasks covering: core CLI flows (`plan/up/status/logs/down/plugins`), negative protocol cases (handshake contamination, v1 rejection, invalid commands), both fixture generators (MO-006 and MO-009), wrapper edge cases, and TUI behavior tested via `tmux` with concrete keybindings for each view.
+
+**Commit (code):** N/A
+
+### What I did
+- Enumerated fixtures and test surfaces:
+  - CLI smoketests (`smoketest`, `smoketest-e2e`, `smoketest-failures`, `smoketest-logs`, `smoketest-supervise`)
+  - Fixture scripts:
+    - `devctl/ttmp/2026/01/06/MO-006-DEVCTL-TUI--create-a-devctl-tui/scripts/setup-fixture-repo-root.sh`
+    - `devctl/ttmp/2026/01/06/MO-009-TUI-COMPLETE-FEATURES--complete-tui-features-per-mo-006-design/scripts/setup-comprehensive-fixture.sh`
+  - Plugin fixtures (`devctl/testdata/plugins/*`) used for protocol validation and negative cases.
+- Added an exhaustive task list for “real world tests” and TUI testing (via `tmux`) to:
+  - `devctl/ttmp/2026/01/07/MO-010-DEVCTL-CLEANUP-PASS--devctl-cleanup-pass/tasks.md`
+
+### Why
+- Protocol v2 is intentionally breaking; the safest way to ship it is to validate the user-facing loop (CLI + wrapper + state + TUI) against realistic fixtures and failure modes.
+
+### What worked
+- The fixture scripts already define a “feature coverage matrix”; converting them into tasks makes the validation path explicit and repeatable.
+
+### What didn't work
+- N/A (task creation only).
+
+### What I learned
+- The TUI surface is large enough that the only sane validation approach is “view-by-view + keybinding-by-keybinding” on both a basic fixture and a high-entropy comprehensive fixture.
+
+### What was tricky to build
+- Keeping tasks actionable without burying them in prose: the compromise is consistent prefixes (`[Fixture/...], [TUI/...], [CLI/...]`) and referencing the canonical fixture scripts.
+
+### What warrants a second pair of eyes
+- The wrapper regression tasks around “slow handshake” vs “dynamic discovery runs before __wrap-service”: if this becomes a real risk, it likely requires a design change (skip discovery for internal commands), not just more tests.
+
+### What should be done in the future
+- If we keep accumulating TUI features, promote the task list into a dedicated “manual test matrix” doc so tasks stay short and the matrix holds the details.
+
+### Code review instructions
+- Review the task matrix in:
+  - `devctl/ttmp/2026/01/07/MO-010-DEVCTL-CLEANUP-PASS--devctl-cleanup-pass/tasks.md`
+
+### Technical details
+- Commands executed (selection):
+  - `docmgr task add --ticket MO-010-DEVCTL-CLEANUP-PASS --text "..."`

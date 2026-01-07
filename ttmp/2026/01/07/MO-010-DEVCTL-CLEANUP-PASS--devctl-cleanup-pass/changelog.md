@@ -123,3 +123,13 @@ Implement protocol v2 handshake command specs, repository meta, and capability-e
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/repository/repository.go — Repository container for config/specs/meta
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/runtime/client.go — Call/StartStream capability enforcement + request ctx from meta
 
+
+## 2026-01-07
+
+Add exhaustive real-world test tasks (fixtures + CLI + TUI via tmux)
+
+### Related Files
+
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/ttmp/2026/01/07/MO-010-DEVCTL-CLEANUP-PASS--devctl-cleanup-pass/reference/01-diary.md — Recorded Step 14
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/ttmp/2026/01/07/MO-010-DEVCTL-CLEANUP-PASS--devctl-cleanup-pass/tasks.md — Added extensive manual validation matrix
+
