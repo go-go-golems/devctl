@@ -1,0 +1,4 @@
+INFO [api] startup trace_id=abc
+DEBUG [api] debug noise trace_id=def
+ERROR [api] boom trace_id=abc code=500
+

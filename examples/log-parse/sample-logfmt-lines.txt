@@ -1,0 +1,4 @@
+ts=2026-01-06T18:00:00Z level=INFO service=api msg="startup" trace_id=abc
+ts=2026-01-06T18:00:01Z level=DEBUG service=api msg="debug noise" trace_id=def
+ts=2026-01-06T18:00:02Z level=ERROR service=api msg="boom" trace_id=abc code=500
+
