@@ -61,24 +61,27 @@ func (w *StateWatcher) Run(ctx context.Context) error {
 
 func (w *StateWatcher) emitSnapshot(ctx context.Context) error {
 	_ = ctx
+	// Always read plugins from config, regardless of state existence
+	plugins := w.readPlugins()
+
 	path := state.StatePath(w.RepoRoot)
 	_, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			w.lastAlive = nil
 			w.lastExists = false
-			return w.publishSnapshot(StateSnapshot{RepoRoot: w.RepoRoot, At: time.Now(), Exists: false})
+			return w.publishSnapshot(StateSnapshot{RepoRoot: w.RepoRoot, At: time.Now(), Exists: false, Plugins: plugins})
 		}
 		w.lastAlive = nil
 		w.lastExists = true
-		return w.publishSnapshot(StateSnapshot{RepoRoot: w.RepoRoot, At: time.Now(), Exists: true, Error: errors.Wrap(err, "stat state").Error()})
+		return w.publishSnapshot(StateSnapshot{RepoRoot: w.RepoRoot, At: time.Now(), Exists: true, Error: errors.Wrap(err, "stat state").Error(), Plugins: plugins})
 	}
 
 	st, err := state.Load(w.RepoRoot)
 	if err != nil {
 		w.lastAlive = nil
 		w.lastExists = true
-		return w.publishSnapshot(StateSnapshot{RepoRoot: w.RepoRoot, At: time.Now(), Exists: true, Error: errors.Wrap(err, "load state").Error()})
+		return w.publishSnapshot(StateSnapshot{RepoRoot: w.RepoRoot, At: time.Now(), Exists: true, Error: errors.Wrap(err, "load state").Error(), Plugins: plugins})
 	}
 
 	alive := map[string]bool{}
@@ -123,9 +126,6 @@ func (w *StateWatcher) emitSnapshot(ctx context.Context) error {
 
 	// Check health for services with health config
 	health := w.checkHealth(st.Services, alive)
-
-	// Read plugin info from config
-	plugins := w.readPlugins()
 
 	return w.publishSnapshot(StateSnapshot{
 		RepoRoot:     w.RepoRoot,

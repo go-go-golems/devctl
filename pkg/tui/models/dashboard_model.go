@@ -382,6 +382,8 @@ func (m DashboardModel) renderPipelineStatus(theme styles.Theme) string {
 }
 
 func (m DashboardModel) renderStopped(theme styles.Theme) string {
+	var sections []string
+
 	icon := theme.StatusPending.Render(styles.IconSystem)
 	status := theme.Title.Render("System: Stopped")
 	hint := theme.TitleMuted.Render("Press [u] to start")
@@ -393,11 +395,26 @@ func (m DashboardModel) renderStopped(theme styles.Theme) string {
 			hint,
 		)).
 		WithSize(m.width, 6)
+	sections = append(sections, box.Render())
 
-	return box.Render()
+	// Show pipeline status if running
+	if m.pipelineRunning {
+		sections = append(sections, "")
+		sections = append(sections, m.renderPipelineStatus(theme))
+	}
+
+	// Show plugins summary if available
+	if m.last != nil && len(m.last.Plugins) > 0 {
+		sections = append(sections, "")
+		sections = append(sections, m.renderPluginsSummary(theme, m.last.Plugins))
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
 func (m DashboardModel) renderError(theme styles.Theme, errText string) string {
+	var sections []string
+
 	icon := theme.StatusDead.Render(styles.IconError)
 	status := theme.Title.Render("System: Error")
 	errStyle := theme.StatusDead
@@ -410,8 +427,21 @@ func (m DashboardModel) renderError(theme styles.Theme, errText string) string {
 			errMsg,
 		)).
 		WithSize(m.width, 8)
+	sections = append(sections, box.Render())
 
-	return box.Render()
+	// Show pipeline status if running
+	if m.pipelineRunning {
+		sections = append(sections, "")
+		sections = append(sections, m.renderPipelineStatus(theme))
+	}
+
+	// Show plugins summary if available
+	if m.last != nil && len(m.last.Plugins) > 0 {
+		sections = append(sections, "")
+		sections = append(sections, m.renderPluginsSummary(theme, m.last.Plugins))
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
 func (m DashboardModel) renderEventsPreview(theme styles.Theme) string {
