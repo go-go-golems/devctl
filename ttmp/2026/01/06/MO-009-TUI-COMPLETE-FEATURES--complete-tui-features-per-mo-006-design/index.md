@@ -8,13 +8,20 @@ Topics:
 DocType: index
 Intent: long-term
 Owners: []
-RelatedFiles: []
+RelatedFiles:
+    - Path: devctl/pkg/tui/domain.go
+      Note: EventLogEntry schema
+    - Path: devctl/pkg/tui/models/eventlog_model.go
+      Note: Events view rendering
+    - Path: devctl/pkg/tui/transform.go
+      Note: Domain-to-UI event mapping
 ExternalSources: []
-Summary: "Implement all 75+ missing TUI features identified in MO-008 gap analysis to achieve full design parity with MO-006"
+Summary: Implement all 75+ missing TUI features identified in MO-008 gap analysis to achieve full design parity with MO-006
 LastUpdated: 2026-01-07T21:23:22-05:00
-WhatFor: "Complete the devctl TUI implementation"
-WhenToUse: "When implementing new TUI features or checking remaining work"
+WhatFor: Complete the devctl TUI implementation
+WhenToUse: When implementing new TUI features or checking remaining work
 ---
+
 
 # Complete TUI features per MO-006 design
 

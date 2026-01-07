@@ -68,13 +68,13 @@
 ## Phase 4: Events View Enhancements
 
 ### 4.1 Service Source Column
-- [ ] 4.1.1 Add Source field to EventLogEntry
-- [ ] 4.1.2 Update event rendering with [service] prefix
+- [x] 4.1.1 Add Source field to EventLogEntry
+- [x] 4.1.2 Update event rendering with [service] prefix
 
 ### 4.2 Log Level Column
-- [ ] 4.2.1 Add LogLevel type (DEBUG/INFO/WARN/ERROR)
-- [ ] 4.2.2 Add LogLevelIcon function
-- [ ] 4.2.3 Update event rendering with level icon
+- [x] 4.2.1 Add LogLevel type (DEBUG/INFO/WARN/ERROR)
+- [x] 4.2.2 Add LogLevelIcon function
+- [x] 4.2.3 Update event rendering with level icon
 
 ### 4.3 Service Filter Toggles
 - [ ] 4.3.1 Add serviceFilters map to EventLogModel
