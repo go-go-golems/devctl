@@ -19,14 +19,8 @@ func RegisterDomainToUITransformer(bus *Bus) {
 			return errors.Wrap(err, "unmarshal domain envelope")
 		}
 
-		switch env.Type {
-		case DomainTypeStateSnapshot:
-			var snap StateSnapshot
-			if err := json.Unmarshal(env.Payload, &snap); err != nil {
-				return errors.Wrap(err, "unmarshal state snapshot")
-			}
-
-			uiEnv, err := NewEnvelope(UITypeStateSnapshot, snap)
+		publishUI := func(uiType string, payload any) error {
+			uiEnv, err := NewEnvelope(uiType, payload)
 			if err != nil {
 				return err
 			}
@@ -35,6 +29,24 @@ func RegisterDomainToUITransformer(bus *Bus) {
 				return err
 			}
 			if err := bus.Publisher.Publish(TopicUIMessages, message.NewMessage(watermill.NewUUID(), uiBytes)); err != nil {
+				return errors.Wrap(err, "publish ui message")
+			}
+			return nil
+		}
+
+		publishEventText := func(at time.Time, text string) error {
+			entry := EventLogEntry{At: at, Text: text}
+			return publishUI(UITypeEventAppend, entry)
+		}
+
+		switch env.Type {
+		case DomainTypeStateSnapshot:
+			var snap StateSnapshot
+			if err := json.Unmarshal(env.Payload, &snap); err != nil {
+				return errors.Wrap(err, "unmarshal state snapshot")
+			}
+
+			if err := publishUI(UITypeStateSnapshot, snap); err != nil {
 				return errors.Wrap(err, "publish ui snapshot")
 			}
 
@@ -45,16 +57,7 @@ func RegisterDomainToUITransformer(bus *Bus) {
 					text = "state: error"
 				}
 			}
-			entry := EventLogEntry{At: time.Now(), Text: text}
-			evEnv, err := NewEnvelope(UITypeEventAppend, entry)
-			if err != nil {
-				return err
-			}
-			evBytes, err := evEnv.MarshalJSONBytes()
-			if err != nil {
-				return err
-			}
-			if err := bus.Publisher.Publish(TopicUIMessages, message.NewMessage(watermill.NewUUID(), evBytes)); err != nil {
+			if err := publishEventText(time.Now(), text); err != nil {
 				return errors.Wrap(err, "publish ui event")
 			}
 			return nil
@@ -68,16 +71,7 @@ func RegisterDomainToUITransformer(bus *Bus) {
 			if ev.Reason != "" {
 				text = fmt.Sprintf("%s (%s)", text, ev.Reason)
 			}
-			entry := EventLogEntry{At: ev.When, Text: text}
-			evEnv, err := NewEnvelope(UITypeEventAppend, entry)
-			if err != nil {
-				return err
-			}
-			evBytes, err := evEnv.MarshalJSONBytes()
-			if err != nil {
-				return err
-			}
-			if err := bus.Publisher.Publish(TopicUIMessages, message.NewMessage(watermill.NewUUID(), evBytes)); err != nil {
+			if err := publishEventText(ev.When, text); err != nil {
 				return errors.Wrap(err, "publish ui event")
 			}
 			return nil
@@ -87,19 +81,71 @@ func RegisterDomainToUITransformer(bus *Bus) {
 				return errors.Wrap(err, "unmarshal action log")
 			}
 
-			entry := EventLogEntry{At: logEv.At, Text: logEv.Text}
-			evEnv, err := NewEnvelope(UITypeEventAppend, entry)
-			if err != nil {
-				return err
-			}
-			evBytes, err := evEnv.MarshalJSONBytes()
-			if err != nil {
-				return err
-			}
-			if err := bus.Publisher.Publish(TopicUIMessages, message.NewMessage(watermill.NewUUID(), evBytes)); err != nil {
+			if err := publishEventText(logEv.At, logEv.Text); err != nil {
 				return errors.Wrap(err, "publish ui event")
 			}
 			return nil
+		case DomainTypePipelineRunStarted:
+			var ev PipelineRunStarted
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
+				return errors.Wrap(err, "unmarshal pipeline run started")
+			}
+			if err := publishUI(UITypePipelineRunStarted, ev); err != nil {
+				return err
+			}
+			return publishEventText(ev.At, fmt.Sprintf("pipeline: started (%s)", ev.Kind))
+		case DomainTypePipelineRunFinished:
+			var ev PipelineRunFinished
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
+				return errors.Wrap(err, "unmarshal pipeline run finished")
+			}
+			if err := publishUI(UITypePipelineRunFinished, ev); err != nil {
+				return err
+			}
+			if ev.Ok {
+				return publishEventText(ev.At, fmt.Sprintf("pipeline: ok (%s)", ev.Kind))
+			}
+			text := fmt.Sprintf("pipeline: failed (%s)", ev.Kind)
+			if ev.Error != "" {
+				text = fmt.Sprintf("%s: %s", text, ev.Error)
+			}
+			return publishEventText(ev.At, text)
+		case DomainTypePipelinePhaseStarted:
+			var ev PipelinePhaseStarted
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
+				return errors.Wrap(err, "unmarshal pipeline phase started")
+			}
+			return publishUI(UITypePipelinePhaseStarted, ev)
+		case DomainTypePipelinePhaseFinished:
+			var ev PipelinePhaseFinished
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
+				return errors.Wrap(err, "unmarshal pipeline phase finished")
+			}
+			return publishUI(UITypePipelinePhaseFinished, ev)
+		case DomainTypePipelineBuildResult:
+			var ev PipelineBuildResult
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
+				return errors.Wrap(err, "unmarshal pipeline build result")
+			}
+			return publishUI(UITypePipelineBuildResult, ev)
+		case DomainTypePipelinePrepareResult:
+			var ev PipelinePrepareResult
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
+				return errors.Wrap(err, "unmarshal pipeline prepare result")
+			}
+			return publishUI(UITypePipelinePrepareResult, ev)
+		case DomainTypePipelineValidateResult:
+			var ev PipelineValidateResult
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
+				return errors.Wrap(err, "unmarshal pipeline validate result")
+			}
+			return publishUI(UITypePipelineValidateResult, ev)
+		case DomainTypePipelineLaunchPlan:
+			var ev PipelineLaunchPlan
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
+				return errors.Wrap(err, "unmarshal pipeline launch plan")
+			}
+			return publishUI(UITypePipelineLaunchPlan, ev)
 
 		default:
 			return nil

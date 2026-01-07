@@ -15,6 +15,7 @@ const (
 	ViewDashboard ViewID = "dashboard"
 	ViewService   ViewID = "service"
 	ViewEvents    ViewID = "events"
+	ViewPipeline  ViewID = "pipeline"
 )
 
 type RootModel struct {
@@ -27,6 +28,7 @@ type RootModel struct {
 	dashboard DashboardModel
 	service   ServiceModel
 	events    EventLogModel
+	pipeline  PipelineModel
 
 	publishAction func(tui.ActionRequest) error
 
@@ -48,6 +50,7 @@ func NewRootModel(opts RootModelOptions) RootModel {
 		dashboard:     NewDashboardModel(),
 		service:       NewServiceModel(),
 		events:        NewEventLogModel(),
+		pipeline:      NewPipelineModel(),
 		publishAction: opts.PublishAction,
 	}
 	m = m.applyChildSizes()
@@ -83,9 +86,12 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.service, cmd = m.service.Update(v)
 				return m, cmd
 			}
-			if m.active == ViewDashboard {
+			switch m.active {
+			case ViewDashboard:
 				m.active = ViewEvents
-			} else {
+			case ViewEvents:
+				m.active = ViewPipeline
+			default:
 				m.active = ViewDashboard
 			}
 			return m, nil
@@ -108,6 +114,10 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.events, cmd = m.events.Update(v)
 			return m, cmd
+		case ViewPipeline:
+			var cmd tea.Cmd
+			m.pipeline, cmd = m.pipeline.Update(v)
+			return m, cmd
 		}
 	case tui.StateSnapshotMsg:
 		m.dashboard = m.dashboard.WithSnapshot(v.Snapshot)
@@ -128,6 +138,38 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+	case tui.PipelineRunStartedMsg:
+		var cmd tea.Cmd
+		m.pipeline, cmd = m.pipeline.Update(v)
+		return m, cmd
+	case tui.PipelineRunFinishedMsg:
+		var cmd tea.Cmd
+		m.pipeline, cmd = m.pipeline.Update(v)
+		return m, cmd
+	case tui.PipelinePhaseStartedMsg:
+		var cmd tea.Cmd
+		m.pipeline, cmd = m.pipeline.Update(v)
+		return m, cmd
+	case tui.PipelinePhaseFinishedMsg:
+		var cmd tea.Cmd
+		m.pipeline, cmd = m.pipeline.Update(v)
+		return m, cmd
+	case tui.PipelineBuildResultMsg:
+		var cmd tea.Cmd
+		m.pipeline, cmd = m.pipeline.Update(v)
+		return m, cmd
+	case tui.PipelinePrepareResultMsg:
+		var cmd tea.Cmd
+		m.pipeline, cmd = m.pipeline.Update(v)
+		return m, cmd
+	case tui.PipelineValidateResultMsg:
+		var cmd tea.Cmd
+		m.pipeline, cmd = m.pipeline.Update(v)
+		return m, cmd
+	case tui.PipelineLaunchPlanMsg:
+		var cmd tea.Cmd
+		m.pipeline, cmd = m.pipeline.Update(v)
+		return m, cmd
 	case tui.NavigateToServiceMsg:
 		m.service = m.service.WithService(v.Name)
 		m.active = ViewService
@@ -158,6 +200,10 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.events, cmd = m.events.Update(msg)
 		return m, cmd
+	case ViewPipeline:
+		var cmd tea.Cmd
+		m.pipeline, cmd = m.pipeline.Update(msg)
+		return m, cmd
 	case ViewDashboard:
 		var cmd tea.Cmd
 		m.dashboard, cmd = m.dashboard.Update(msg)
@@ -179,6 +225,8 @@ func (m RootModel) View() string {
 		b.WriteString(m.service.View())
 	case ViewEvents:
 		b.WriteString(m.events.View())
+	case ViewPipeline:
+		b.WriteString(m.pipeline.View())
 	default:
 		b.WriteString(m.dashboard.View())
 	}
@@ -189,6 +237,7 @@ func (m RootModel) View() string {
 		b.WriteString("dashboard: ↑/↓ select service, enter/l open service logs, x kill (y/n)\n")
 		b.WriteString("service: tab switch stdout/stderr, f follow, / filter, ctrl+l clear, esc back\n")
 		b.WriteString("events: / filter, ctrl+l clear filter, c clear events\n")
+		b.WriteString("pipeline: (read-only for now)\n")
 	}
 	return b.String()
 }
@@ -211,5 +260,6 @@ func (m RootModel) applyChildSizes() RootModel {
 	m.dashboard = m.dashboard.WithSize(m.width, childHeight)
 	m.service = m.service.WithSize(m.width, childHeight)
 	m.events = m.events.WithSize(m.width, childHeight)
+	m.pipeline = m.pipeline.WithSize(m.width, childHeight)
 	return m
 }
