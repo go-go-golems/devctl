@@ -8,7 +8,10 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/go-go-golems/devctl/pkg/tui"
+	"github.com/go-go-golems/devctl/pkg/tui/styles"
+	"github.com/go-go-golems/devctl/pkg/tui/widgets"
 )
 
 type EventLogModel struct {
@@ -110,25 +113,37 @@ func (m EventLogModel) Append(e tui.EventLogEntry) EventLogModel {
 }
 
 func (m EventLogModel) View() string {
-	var b strings.Builder
-	filterLabel := ""
+	theme := styles.DefaultTheme()
+
+	var sections []string
+
+	// Header with filter info
+	titleRight := "[/] filter  [c] clear  [↑/↓] scroll"
 	if m.filter != "" {
-		filterLabel = fmt.Sprintf(" filter=%q", m.filter)
+		titleRight = fmt.Sprintf("filter=%q  %s", m.filter, titleRight)
 	}
-	b.WriteString(fmt.Sprintf("Events:%s\n", filterLabel))
-	b.WriteString("scroll, / filter, ctrl+l clear filter, c clear events\n\n")
 
+	// Search input if active
 	if m.searching {
-		b.WriteString(m.search.View())
-		b.WriteString("\n\n")
+		sections = append(sections, m.search.View())
 	}
 
+	// Events viewport
 	if len(m.entries) == 0 {
-		b.WriteString("(no events yet)\n")
-		return b.String()
+		emptyBox := widgets.NewBox(fmt.Sprintf("Events (%d)", len(m.entries))).
+			WithTitleRight(titleRight).
+			WithContent(theme.TitleMuted.Render("(no events yet)")).
+			WithSize(m.width, 5)
+		sections = append(sections, emptyBox.Render())
+	} else {
+		eventsBox := widgets.NewBox(fmt.Sprintf("Events (%d)", len(m.entries))).
+			WithTitleRight(titleRight).
+			WithContent(m.vp.View()).
+			WithSize(m.width, m.vp.Height+3)
+		sections = append(sections, eventsBox.Render())
 	}
-	b.WriteString(m.vp.View())
-	return b.String()
+
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
 func (m EventLogModel) resizeViewport() EventLogModel {
@@ -144,10 +159,13 @@ func (m EventLogModel) resizeViewport() EventLogModel {
 }
 
 func (m EventLogModel) refreshViewportContent(gotoBottom bool) EventLogModel {
+	theme := styles.DefaultTheme()
+
 	if len(m.entries) == 0 {
 		m.vp.SetContent("")
 		return m
 	}
+
 	lines := make([]string, 0, len(m.entries))
 	for _, e := range m.entries {
 		if m.filter != "" && !strings.Contains(e.Text, m.filter) {
@@ -157,7 +175,34 @@ func (m EventLogModel) refreshViewportContent(gotoBottom bool) EventLogModel {
 		if ts.IsZero() {
 			ts = time.Now()
 		}
-		lines = append(lines, fmt.Sprintf("- %s %s", ts.Format("15:04:05"), e.Text))
+
+		// Determine icon and style based on content
+		icon := styles.IconInfo
+		style := theme.TitleMuted
+		text := e.Text
+
+		if strings.Contains(text, "failed") || strings.Contains(text, "error") || strings.Contains(text, "Error") {
+			icon = styles.IconError
+			style = theme.StatusDead
+		} else if strings.Contains(text, "ok:") || strings.Contains(text, "success") || strings.Contains(text, "passed") {
+			icon = styles.IconSuccess
+			style = theme.StatusRunning
+		} else if strings.Contains(text, "warn") || strings.Contains(text, "Warning") {
+			icon = styles.IconWarning
+			style = lipgloss.NewStyle().Foreground(theme.Warning)
+		} else if strings.Contains(text, "started") || strings.Contains(text, "running") {
+			icon = styles.IconRunning
+			style = theme.StatusRunning
+		}
+
+		line := lipgloss.JoinHorizontal(lipgloss.Center,
+			style.Render(icon),
+			" ",
+			theme.TitleMuted.Render(ts.Format("15:04:05")),
+			"  ",
+			style.Render(text),
+		)
+		lines = append(lines, line)
 	}
 	m.vp.SetContent(strings.Join(lines, "\n") + "\n")
 	if gotoBottom {

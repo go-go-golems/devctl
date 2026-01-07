@@ -290,3 +290,73 @@ New files created:
 Modified files:
 - `devctl/pkg/tui/models/dashboard_model.go` - Uses widgets for rendering
 - `devctl/pkg/tui/models/root_model.go` - Uses header/footer, styled help
+
+## Step 5: Style remaining views (Phase 4-6)
+
+Completed styling for ServiceModel, PipelineModel, and EventLogModel to bring all views up to the polished visual standard.
+
+### What I did
+- Refactored `ServiceModel.View()`:
+  - Process info in a bordered box with status icon (✓/✗)
+  - Stream selector with styled tabs (stdout/stderr)
+  - Follow indicator with running icon (▶)
+  - Exit info section with styled error display and stderr tail
+  - Log viewport in a bordered box with scroll/filter hints
+  - Added `renderStyledExitInfo()` helper method
+
+- Refactored `PipelineModel.View()`:
+  - Pipeline header with status icon and run info
+  - Phases box with icons per phase state (✓/▶/○/✗)
+  - Build/Prepare steps in bordered boxes with selection
+  - Validation section with error/warning icons
+  - Launch plan summary
+  - Added helper methods: `phaseIconAndStyle()`, `formatStyledPhaseState()`, `renderStyledSteps()`, `renderStyledValidation()`
+
+- Refactored `EventLogModel.View()`:
+  - Events in bordered box with count
+  - Each event line has contextual icon based on content
+  - Error events: ✗ red
+  - Success events: ✓ green  
+  - Warning events: ⚠ yellow
+  - Running events: ▶ green
+  - Info events: ℹ gray
+
+### Why
+- Complete the visual improvement across all TUI views
+- Ensure consistent styling language (icons, colors, borders)
+
+### What worked
+- The widget-based approach scales well to all views
+- Icon selection based on content provides useful visual cues
+- All views now have a consistent bordered/boxed look
+
+### What didn't work
+- N/A - all code compiled on first try after each refactoring
+
+### What I learned
+- Content-based icon selection (checking for "failed", "error", "ok:") provides good visual feedback without changing data structures
+- The `lipgloss.JoinHorizontal/Vertical` primitives compose well for complex layouts
+
+### What was tricky to build
+- PipelineModel has a lot of state (phases, steps, validation, details) requiring careful layout
+- Balancing information density with readability
+
+### What warrants a second pair of eyes
+- The content-based event icon detection is heuristic-based and may not catch all cases
+- Consider adding explicit level field to EventLogEntry for precise icon selection
+
+### What should be done in the future
+- Add color theme configuration (light/dark mode)
+- Consider using bubbles table component for services instead of custom Table widget
+- Add progress bars for long-running phases
+
+### Code review instructions
+- Run `devctl tui` against a fixture repo with services running
+- Navigate through all views (tab to switch)
+- Verify icons and colors are correct for different states
+
+### Technical details
+Modified files:
+- `devctl/pkg/tui/models/service_model.go` - Styled process info, log viewport, exit info
+- `devctl/pkg/tui/models/pipeline_model.go` - Styled phases, steps, validation
+- `devctl/pkg/tui/models/eventlog_model.go` - Styled event timeline with icons

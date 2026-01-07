@@ -7,7 +7,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/go-go-golems/devctl/pkg/tui"
+	"github.com/go-go-golems/devctl/pkg/tui/styles"
+	"github.com/go-go-golems/devctl/pkg/tui/widgets"
 )
 
 type PipelineModel struct {
@@ -192,147 +195,307 @@ func (m PipelineModel) Update(msg tea.Msg) (PipelineModel, tea.Cmd) {
 }
 
 func (m PipelineModel) View() string {
+	theme := styles.DefaultTheme()
+
 	if m.runStarted == nil {
-		return "No pipeline run recorded yet.\n\nRun `u` (up) or `r` (restart) from the dashboard to see progress here.\n"
+		box := widgets.NewBox("Pipeline").
+			WithContent(lipgloss.JoinVertical(lipgloss.Left,
+				theme.TitleMuted.Render("No pipeline run recorded yet."),
+				"",
+				theme.TitleMuted.Render("Run [u] (up) or [r] (restart) from the dashboard to see progress here."),
+			)).
+			WithSize(m.width, 6)
+		return box.Render()
 	}
 
 	run := m.runStarted
-	status := "running"
+	statusIcon := styles.IconRunning
+	statusText := "Running"
+	statusStyle := theme.StatusRunning
 	if m.runFinished != nil {
 		if m.runFinished.Ok {
-			status = "ok"
+			statusIcon = styles.IconSuccess
+			statusText = "OK"
 		} else {
-			status = "failed"
+			statusIcon = styles.IconError
+			statusText = "Failed"
+			statusStyle = theme.StatusDead
 		}
 	}
 
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Pipeline: %s  run=%s  (%s)\n", run.Kind, run.RunID, status))
-	b.WriteString(fmt.Sprintf("Started: %s\n\n", run.At.Format("2006-01-02 15:04:05")))
-	if m.focus != "" {
-		b.WriteString(fmt.Sprintf("Focus: %s  (b build, p prepare, v validation; ↑/↓ select; enter details)\n\n", m.focus))
+	var sections []string
+
+	// Pipeline header info
+	headerLines := []string{
+		lipgloss.JoinHorizontal(lipgloss.Center,
+			statusStyle.Render(statusIcon),
+			" ",
+			theme.Title.Render(fmt.Sprintf("Pipeline: %s", run.Kind)),
+			"  ",
+			statusStyle.Render(statusText),
+		),
+		theme.TitleMuted.Render(fmt.Sprintf("Run ID: %s", run.RunID)),
+		theme.TitleMuted.Render(fmt.Sprintf("Started: %s", run.At.Format("2006-01-02 15:04:05"))),
 	}
 
-	b.WriteString("Phases:\n")
+	// Focus indicator
+	if m.focus != "" {
+		focusLine := lipgloss.JoinHorizontal(lipgloss.Center,
+			theme.TitleMuted.Render("Focus: "),
+			theme.KeybindKey.Render(string(m.focus)),
+			theme.TitleMuted.Render("  [b] build  [p] prepare  [v] validation  [↑/↓] select  [enter] details"),
+		)
+		headerLines = append(headerLines, "", focusLine)
+	}
+
+	headerBox := widgets.NewBox("Pipeline Progress").
+		WithContent(lipgloss.JoinVertical(lipgloss.Left, headerLines...)).
+		WithSize(m.width, len(headerLines)+3)
+	sections = append(sections, headerBox.Render())
+
+	// Phases box
+	var phaseLines []string
 	for _, p := range m.phaseOrder {
 		st := m.phases[p]
-		b.WriteString(fmt.Sprintf("- %s: %s\n", p, formatPhaseState(st)))
+		icon, style := m.phaseIconAndStyle(st, theme)
+		stateText := m.formatStyledPhaseState(st, theme)
+		phaseLine := lipgloss.JoinHorizontal(lipgloss.Center,
+			style.Render(icon),
+			" ",
+			lipgloss.NewStyle().Width(18).Render(string(p)),
+			stateText,
+		)
+		phaseLines = append(phaseLines, phaseLine)
 	}
-	b.WriteString("\n")
+	phasesBox := widgets.NewBox("Phases").
+		WithContent(lipgloss.JoinVertical(lipgloss.Left, phaseLines...)).
+		WithSize(m.width, len(phaseLines)+3)
+	sections = append(sections, phasesBox.Render())
 
+	// Build steps
 	if len(m.buildSteps) > 0 {
-		b.WriteString("Build steps:\n")
-		for i, s := range m.buildSteps {
-			cursor := "-"
-			if m.focus == pipelineFocusBuild {
-				cursor = " "
-				if i == clampInt(m.buildCursor, 0, maxInt(0, len(m.buildSteps)-1)) {
-					cursor = ">"
-				}
-			}
-			b.WriteString(fmt.Sprintf("%s %s: %s\n", cursor, s.Name, formatStep(s)))
-		}
-		if m.focus == pipelineFocusBuild && m.buildShow {
-			m.renderBuildDetails(&b)
-		}
-		b.WriteString("\n")
+		sections = append(sections, m.renderStyledSteps("Build Steps", m.buildSteps, m.focus == pipelineFocusBuild, m.buildCursor, m.buildShow, m.buildArtifacts, theme))
 	}
 
+	// Prepare steps
 	if len(m.prepareSteps) > 0 {
-		b.WriteString("Prepare steps:\n")
-		for i, s := range m.prepareSteps {
-			cursor := "-"
-			if m.focus == pipelineFocusPrepare {
-				cursor = " "
-				if i == clampInt(m.prepareCursor, 0, maxInt(0, len(m.prepareSteps)-1)) {
-					cursor = ">"
-				}
-			}
-			b.WriteString(fmt.Sprintf("%s %s: %s\n", cursor, s.Name, formatStep(s)))
-		}
-		if m.focus == pipelineFocusPrepare && m.prepareShow {
-			m.renderPrepareDetails(&b)
-		}
-		b.WriteString("\n")
+		sections = append(sections, m.renderStyledSteps("Prepare Steps", m.prepareSteps, m.focus == pipelineFocusPrepare, m.prepareCursor, m.prepareShow, m.prepareArtifacts, theme))
 	}
 
+	// Validation
 	if m.validate != nil {
-		v := m.validate
-		if v.Valid {
-			b.WriteString(fmt.Sprintf("Validate: ok (%d warnings)\n\n", len(v.Warnings)))
-		} else {
-			b.WriteString(fmt.Sprintf("Validate: failed (%d errors, %d warnings)\n", len(v.Errors), len(v.Warnings)))
-			if len(v.Errors) > 0 {
-				first := v.Errors[0]
-				b.WriteString(fmt.Sprintf("First error: %s: %s\n\n", first.Code, first.Message))
-			} else {
-				b.WriteString("\n")
-			}
-		}
-
-		issues := validationIssues(v)
-		if len(issues) > 0 {
-			b.WriteString("Validation issues:\n")
-			if m.focus != pipelineFocusValidation {
-				b.WriteString("(press v to focus)\n")
-			}
-			for i, is := range issues {
-				cursor := "-"
-				if m.focus == pipelineFocusValidation {
-					cursor = " "
-					if i == clampInt(m.validationCursor, 0, maxInt(0, len(issues)-1)) {
-						cursor = ">"
-					}
-				}
-				b.WriteString(fmt.Sprintf("%s %s %s: %s\n", cursor, is.kind, is.code, is.message))
-			}
-			b.WriteString("\n")
-
-			if m.focus == pipelineFocusValidation && m.validationShow {
-				sel := issues[clampInt(m.validationCursor, 0, maxInt(0, len(issues)-1))]
-				b.WriteString(fmt.Sprintf("Details: %s %s\n", sel.kind, sel.code))
-				if sel.details == nil || len(sel.details) == 0 {
-					b.WriteString("(no details)\n\n")
-				} else {
-					j, err := json.MarshalIndent(sel.details, "", "  ")
-					if err != nil {
-						b.WriteString(fmt.Sprintf("(failed to render details: %v)\n\n", err))
-					} else {
-						lines := strings.Split(string(j), "\n")
-						const maxLines = 12
-						if len(lines) > maxLines {
-							lines = append(lines[:maxLines], "  ...")
-						}
-						for _, line := range lines {
-							b.WriteString(line)
-							b.WriteString("\n")
-						}
-						b.WriteString("\n")
-					}
-				}
-			}
-		}
+		sections = append(sections, m.renderStyledValidation(theme))
 	}
 
-	if m.launchPlan != nil {
-		b.WriteString(fmt.Sprintf("Launch plan: %d services\n", len(m.launchPlan.Services)))
-		if len(m.launchPlan.Services) > 0 {
-			b.WriteString(fmt.Sprintf("Services: %s\n", strings.Join(m.launchPlan.Services, ", ")))
-		}
-		b.WriteString("\n")
+	// Launch plan
+	if m.launchPlan != nil && len(m.launchPlan.Services) > 0 {
+		launchContent := lipgloss.JoinHorizontal(lipgloss.Center,
+			theme.StatusRunning.Render(styles.IconSuccess),
+			" ",
+			theme.TitleMuted.Render(fmt.Sprintf("%d services: ", len(m.launchPlan.Services))),
+			theme.Title.Render(strings.Join(m.launchPlan.Services, ", ")),
+		)
+		launchBox := widgets.NewBox("Launch Plan").
+			WithContent(launchContent).
+			WithSize(m.width, 4)
+		sections = append(sections, launchBox.Render())
 	}
 
+	// Final status
 	if m.runFinished != nil {
 		f := m.runFinished
+		var finalLines []string
 		if f.DurationMs > 0 {
-			b.WriteString(fmt.Sprintf("Total: %s\n", formatDurationMs(f.DurationMs)))
+			finalLines = append(finalLines, theme.TitleMuted.Render(fmt.Sprintf("Total: %s", formatDurationMs(f.DurationMs))))
 		}
 		if !f.Ok && f.Error != "" {
-			b.WriteString(fmt.Sprintf("Error: %s\n", f.Error))
+			finalLines = append(finalLines, theme.StatusDead.Render(fmt.Sprintf("Error: %s", f.Error)))
+		}
+		if len(finalLines) > 0 {
+			sections = append(sections, lipgloss.JoinVertical(lipgloss.Left, finalLines...))
 		}
 	}
 
-	return b.String()
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+}
+
+func (m PipelineModel) phaseIconAndStyle(st *pipelinePhaseState, theme styles.Theme) (string, lipgloss.Style) {
+	if st == nil {
+		return styles.IconPending, theme.StatusPending
+	}
+	if st.ok == nil && !st.startedAt.IsZero() {
+		return styles.IconRunning, theme.StatusRunning
+	}
+	if st.ok == nil {
+		return styles.IconPending, theme.StatusPending
+	}
+	if *st.ok {
+		return styles.IconSuccess, theme.StatusRunning
+	}
+	return styles.IconError, theme.StatusDead
+}
+
+func (m PipelineModel) formatStyledPhaseState(st *pipelinePhaseState, theme styles.Theme) string {
+	if st == nil {
+		return theme.StatusPending.Render("pending")
+	}
+	if st.ok == nil && !st.startedAt.IsZero() {
+		return theme.StatusRunning.Render("running...")
+	}
+	if st.ok == nil {
+		return theme.StatusPending.Render("pending")
+	}
+	stateText := "ok"
+	style := theme.StatusRunning
+	if !*st.ok {
+		stateText = "failed"
+		style = theme.StatusDead
+	}
+	if st.durationMs > 0 {
+		stateText = fmt.Sprintf("%s (%s)", stateText, formatDurationMs(st.durationMs))
+	}
+	return style.Render(stateText)
+}
+
+func (m PipelineModel) renderStyledSteps(title string, steps []tui.PipelineStepResult, focused bool, cursor int, showDetails bool, artifacts map[string]string, theme styles.Theme) string {
+	var lines []string
+	for i, s := range steps {
+		icon := styles.IconSuccess
+		style := theme.StatusRunning
+		if !s.Ok {
+			icon = styles.IconError
+			style = theme.StatusDead
+		}
+
+		cursorStr := "  "
+		nameStyle := theme.TitleMuted
+		if focused && i == clampInt(cursor, 0, maxInt(0, len(steps)-1)) {
+			cursorStr = theme.KeybindKey.Render("> ")
+			nameStyle = theme.Title
+		}
+
+		durationText := ""
+		if s.DurationMs > 0 {
+			durationText = theme.TitleMuted.Render(fmt.Sprintf(" (%s)", formatDurationMs(s.DurationMs)))
+		}
+
+		line := lipgloss.JoinHorizontal(lipgloss.Center,
+			cursorStr,
+			style.Render(icon),
+			" ",
+			nameStyle.Width(20).Render(s.Name),
+			durationText,
+		)
+		lines = append(lines, line)
+	}
+
+	// Details section
+	if focused && showDetails && len(steps) > 0 {
+		idx := clampInt(cursor, 0, len(steps)-1)
+		sel := steps[idx]
+		lines = append(lines, "")
+		lines = append(lines, theme.Title.Render(fmt.Sprintf("Details: %s", sel.Name)))
+		lines = append(lines, theme.TitleMuted.Render(fmt.Sprintf("  Status: %v", sel.Ok)))
+		if sel.DurationMs > 0 {
+			lines = append(lines, theme.TitleMuted.Render(fmt.Sprintf("  Duration: %s", formatDurationMs(sel.DurationMs))))
+		}
+		if len(artifacts) > 0 {
+			lines = append(lines, theme.TitleMuted.Render(fmt.Sprintf("  Artifacts: %d", len(artifacts))))
+		}
+	}
+
+	box := widgets.NewBox(title).
+		WithTitleRight(fmt.Sprintf("%d steps", len(steps))).
+		WithContent(lipgloss.JoinVertical(lipgloss.Left, lines...)).
+		WithSize(m.width, len(lines)+3)
+	return box.Render()
+}
+
+func (m PipelineModel) renderStyledValidation(theme styles.Theme) string {
+	v := m.validate
+	var headerLines []string
+
+	// Summary
+	if v.Valid {
+		headerLines = append(headerLines, lipgloss.JoinHorizontal(lipgloss.Center,
+			theme.StatusRunning.Render(styles.IconSuccess),
+			" ",
+			theme.Title.Render("Validation passed"),
+			theme.TitleMuted.Render(fmt.Sprintf(" (%d warnings)", len(v.Warnings))),
+		))
+	} else {
+		headerLines = append(headerLines, lipgloss.JoinHorizontal(lipgloss.Center,
+			theme.StatusDead.Render(styles.IconError),
+			" ",
+			theme.StatusDead.Render("Validation failed"),
+			theme.TitleMuted.Render(fmt.Sprintf(" (%d errors, %d warnings)", len(v.Errors), len(v.Warnings))),
+		))
+	}
+
+	issues := validationIssues(v)
+	if len(issues) == 0 {
+		box := widgets.NewBox("Validation").
+			WithContent(lipgloss.JoinVertical(lipgloss.Left, headerLines...)).
+			WithSize(m.width, 4)
+		return box.Render()
+	}
+
+	headerLines = append(headerLines, "")
+
+	// Issue list
+	for i, is := range issues {
+		icon := styles.IconError
+		style := theme.StatusDead
+		if is.kind == "warn" {
+			icon = styles.IconWarning
+			style = lipgloss.NewStyle().Foreground(theme.Warning)
+		}
+
+		cursorStr := "  "
+		if m.focus == pipelineFocusValidation && i == clampInt(m.validationCursor, 0, maxInt(0, len(issues)-1)) {
+			cursorStr = theme.KeybindKey.Render("> ")
+		}
+
+		line := lipgloss.JoinHorizontal(lipgloss.Center,
+			cursorStr,
+			style.Render(icon),
+			" ",
+			style.Render(is.code),
+			theme.TitleMuted.Render(": "),
+			theme.TitleMuted.Render(is.message),
+		)
+		headerLines = append(headerLines, line)
+	}
+
+	// Details for selected issue
+	if m.focus == pipelineFocusValidation && m.validationShow && len(issues) > 0 {
+		sel := issues[clampInt(m.validationCursor, 0, maxInt(0, len(issues)-1))]
+		headerLines = append(headerLines, "")
+		headerLines = append(headerLines, theme.Title.Render(fmt.Sprintf("Details: %s %s", sel.kind, sel.code)))
+		if sel.details == nil || len(sel.details) == 0 {
+			headerLines = append(headerLines, theme.TitleMuted.Render("(no details)"))
+		} else {
+			j, err := json.MarshalIndent(sel.details, "  ", "  ")
+			if err != nil {
+				headerLines = append(headerLines, theme.StatusDead.Render(fmt.Sprintf("(failed to render: %v)", err)))
+			} else {
+				detailLines := strings.Split(string(j), "\n")
+				const maxDetailLines = 8
+				if len(detailLines) > maxDetailLines {
+					detailLines = append(detailLines[:maxDetailLines], "  ...")
+				}
+				for _, line := range detailLines {
+					headerLines = append(headerLines, theme.TitleMuted.Render(line))
+				}
+			}
+		}
+	}
+
+	box := widgets.NewBox("Validation").
+		WithTitleRight("[v] focus  [enter] details").
+		WithContent(lipgloss.JoinVertical(lipgloss.Left, headerLines...)).
+		WithSize(m.width, len(headerLines)+3)
+	return box.Render()
 }
 
 func (m PipelineModel) moveCursor(delta int) PipelineModel {

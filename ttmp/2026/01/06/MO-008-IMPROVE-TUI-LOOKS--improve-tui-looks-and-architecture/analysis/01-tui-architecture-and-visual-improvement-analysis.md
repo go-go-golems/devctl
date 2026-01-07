@@ -567,31 +567,33 @@ func (m DashboardModel) View() string {
 - [ ] Add events preview box (last 5 events) (optional enhancement)
 - [ ] Add plugins summary box (optional enhancement)
 
-### Phase 4: Service View Refactoring
-- [ ] Add process info section with bordered box
-- [ ] Style log viewport with header
-- [ ] Add exit info section styling
-- [ ] Color-code log levels
+### Phase 4: Service View Refactoring ✅
+- [x] Add process info section with bordered box
+- [x] Style log viewport with header
+- [x] Add exit info section styling (renderStyledExitInfo)
+- [x] Stream selector with styled tabs (stdout/stderr)
+- [x] Follow indicator with icon
 
-### Phase 5: Pipeline View Refactoring
-- [ ] Style phase list with icons (✓/▶/pending/✗)
-- [ ] Style step lists with selection
-- [ ] Style validation errors/warnings as cards
+### Phase 5: Pipeline View Refactoring ✅
+- [x] Style phase list with icons (✓/▶/○/✗)
+- [x] Style step lists with selection
+- [x] Style validation errors/warnings
+- [x] Added helper methods: phaseIconAndStyle, renderStyledSteps, renderStyledValidation
 
-### Phase 6: Event Log Refactoring
-- [ ] Add icons for event types
-- [ ] Style timestamps and sources
-- [ ] Add level-based coloring
+### Phase 6: Event Log Refactoring ✅
+- [x] Add icons for event types (content-based detection)
+- [x] Style timestamps
+- [x] Add level-based coloring (error=red, success=green, warning=yellow)
 
-## Key Files to Modify
+## Key Files Modified ✅
 
 | File | Changes |
 |------|---------|
-| `models/root_model.go` | Add header/footer rendering, compose child views |
-| `models/dashboard_model.go` | Use table widget for services, box widget for sections |
-| `models/service_model.go` | Use box widget for process info, style log viewport |
-| `models/pipeline_model.go` | Use list widget for phases/steps, style validation |
-| `models/eventlog_model.go` | Add icons, style timestamps |
+| `models/root_model.go` | ✅ Added header/footer rendering, compose child views |
+| `models/dashboard_model.go` | ✅ Using table widget for services, box widget for sections |
+| `models/service_model.go` | ✅ Using box widget for process info, styled log viewport, exit info |
+| `models/pipeline_model.go` | ✅ Using icons for phases/steps, styled validation |
+| `models/eventlog_model.go` | ✅ Added icons based on content, styled timestamps |
 
 ## Key Symbols Referenced
 

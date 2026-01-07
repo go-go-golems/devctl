@@ -11,8 +11,11 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/go-go-golems/devctl/pkg/state"
 	"github.com/go-go-golems/devctl/pkg/tui"
+	"github.com/go-go-golems/devctl/pkg/tui/styles"
+	"github.com/go-go-golems/devctl/pkg/tui/widgets"
 )
 
 type LogStream string
@@ -189,55 +192,130 @@ func (m ServiceModel) Update(msg tea.Msg) (ServiceModel, tea.Cmd) {
 }
 
 func (m ServiceModel) View() string {
+	theme := styles.DefaultTheme()
+
 	if m.name == "" {
-		return "No service selected.\n"
+		return theme.TitleMuted.Render("No service selected.")
 	}
 
 	rec, alive, found := m.lookupService()
 	if !found {
-		return fmt.Sprintf("Service: %s\n\nNo record for this service in the current state snapshot.\n", m.name)
+		box := widgets.NewBox("Service: " + m.name).
+			WithContent(theme.TitleMuted.Render("No record for this service in the current state snapshot.")).
+			WithSize(m.width, 5)
+		return box.Render()
 	}
 
-	status := "dead"
-	if alive {
-		status = "alive"
-	}
-	streamLabel := string(m.active)
-	followLabel := "off"
-	if m.follow {
-		followLabel = "on"
-	}
-	filterLabel := ""
-	if m.filter != "" {
-		filterLabel = fmt.Sprintf(" filter=%q", m.filter)
-	}
+	var sections []string
 
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Service: %s  (%s)  supervisor_pid=%d  %s  follow=%s%s\n", m.name, status, rec.PID, streamLabel, followLabel, filterLabel))
-	b.WriteString("tab switch stream, f follow, / filter, ctrl+l clear, esc back\n")
-	b.WriteString("\n")
-
-	if m.activeState().path != "" {
-		b.WriteString(fmt.Sprintf("Path: %s\n\n", m.activeState().path))
-	} else {
-		b.WriteString("Path: (unknown)\n\n")
-	}
-
+	// Process info box
+	statusIcon := styles.StatusIcon(alive)
+	statusText := "Running"
+	statusStyle := theme.StatusRunning
 	if !alive {
-		m.renderExitInfo(&b)
+		statusText = "Dead"
+		statusStyle = theme.StatusDead
 	}
 
+	// Build process info content
+	var infoLines []string
+	infoLines = append(infoLines, lipgloss.JoinHorizontal(lipgloss.Center,
+		statusStyle.Render(statusIcon),
+		" ",
+		theme.Title.Render(statusText),
+		"  ",
+		theme.TitleMuted.Render(fmt.Sprintf("PID %d", rec.PID)),
+	))
+
+	// Stream selector with tabs
+	stdoutTab := theme.TitleMuted.Render("stdout")
+	stderrTab := theme.TitleMuted.Render("stderr")
+	if m.active == LogStdout {
+		stdoutTab = theme.KeybindKey.Render("[stdout]")
+	} else {
+		stderrTab = theme.KeybindKey.Render("[stderr]")
+	}
+	streamLine := lipgloss.JoinHorizontal(lipgloss.Center,
+		theme.TitleMuted.Render("Stream: "),
+		stdoutTab,
+		" ",
+		stderrTab,
+	)
+
+	// Follow indicator
+	followIcon := styles.IconPending
+	followStyle := theme.TitleMuted
+	if m.follow {
+		followIcon = styles.IconRunning
+		followStyle = theme.StatusRunning
+	}
+	followLine := lipgloss.JoinHorizontal(lipgloss.Center,
+		followStyle.Render(followIcon),
+		" ",
+		theme.TitleMuted.Render("Follow: "),
+		followStyle.Render(fmt.Sprintf("%v", m.follow)),
+	)
+
+	infoLines = append(infoLines, "")
+	infoLines = append(infoLines, streamLine)
+	infoLines = append(infoLines, followLine)
+
+	// Filter info if active
+	if m.filter != "" {
+		infoLines = append(infoLines, theme.TitleMuted.Render(fmt.Sprintf("Filter: %q", m.filter)))
+	}
+
+	// Log path
+	path := m.activeState().path
+	if path == "" {
+		path = "(unknown)"
+	}
+	infoLines = append(infoLines, "", theme.TitleMuted.Render("Path: "+path))
+
+	infoBox := widgets.NewBox("Service: "+m.name).
+		WithTitleRight("[esc] back").
+		WithContent(lipgloss.JoinVertical(lipgloss.Left, infoLines...)).
+		WithSize(m.width, len(infoLines)+3)
+
+	sections = append(sections, infoBox.Render())
+
+	// Exit info for dead services
+	if !alive {
+		exitContent := m.renderStyledExitInfo(theme)
+		if exitContent != "" {
+			sections = append(sections, exitContent)
+		}
+	}
+
+	// Log error if present
 	if errText := m.activeState().lastErr; errText != "" {
-		b.WriteString(fmt.Sprintf("log error: %s\n\n", errText))
+		errBox := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(theme.Error).
+			Padding(0, 1).
+			Render(lipgloss.JoinHorizontal(lipgloss.Center,
+				theme.StatusDead.Render(styles.IconError),
+				" ",
+				theme.StatusDead.Render(errText),
+			))
+		sections = append(sections, errBox)
 	}
 
+	// Search input if active
 	if m.searching {
-		b.WriteString(m.search.View())
-		b.WriteString("\n\n")
+		sections = append(sections, m.search.View())
 	}
 
-	b.WriteString(m.vp.View())
-	return b.String()
+	// Log viewport in a box
+	logTitle := fmt.Sprintf("Logs (%s)", m.active)
+	logBox := widgets.NewBox(logTitle).
+		WithTitleRight("[↑/↓] scroll  [f] follow  [/] filter").
+		WithContent(m.vp.View()).
+		WithSize(m.width, m.vp.Height+3)
+
+	sections = append(sections, logBox.Render())
+
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
 func (m ServiceModel) tickCmd() tea.Cmd {
@@ -382,45 +460,85 @@ func (m ServiceModel) syncExitInfoFromSnapshot() ServiceModel {
 	return m
 }
 
-func (m ServiceModel) renderExitInfo(b *strings.Builder) {
+func (m ServiceModel) renderStyledExitInfo(theme styles.Theme) string {
 	if m.exitInfo == nil {
+		msg := "unknown"
 		if m.exitInfoErr != "" {
-			b.WriteString(fmt.Sprintf("Exit: %s\n\n", m.exitInfoErr))
-		} else {
-			b.WriteString("Exit: (unknown)\n\n")
+			msg = m.exitInfoErr
 		}
-		return
+		return lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(theme.Warning).
+			Padding(0, 1).
+			Width(m.width - 4).
+			Render(lipgloss.JoinHorizontal(lipgloss.Center,
+				theme.StatusDead.Render(styles.IconError),
+				" ",
+				theme.Title.Render("Exit: "),
+				theme.TitleMuted.Render(msg),
+			))
 	}
 
 	ei := m.exitInfo
+	var lines []string
+
+	// Exit status line
 	exitKind := "unknown"
+	exitIcon := styles.IconError
 	if ei.Signal != "" {
 		exitKind = "signal " + ei.Signal
+		exitIcon = styles.IconWarning
 	} else if ei.ExitCode != nil {
-		exitKind = fmt.Sprintf("exit_code=%d", *ei.ExitCode)
-	}
-
-	b.WriteString(fmt.Sprintf("Exit: %s  service_pid=%d\n", exitKind, ei.PID))
-	if ei.ExitedAt.IsZero() {
-		b.WriteString("ExitedAt: (unknown)\n")
-	} else {
-		b.WriteString(fmt.Sprintf("ExitedAt: %s\n", ei.ExitedAt.Format("2006-01-02 15:04:05")))
-	}
-	if ei.Error != "" {
-		b.WriteString(fmt.Sprintf("Error: %s\n", ei.Error))
-	}
-
-	lines := ei.StderrTail
-	if len(lines) > 8 {
-		lines = lines[len(lines)-8:]
-	}
-	if len(lines) > 0 {
-		b.WriteString("\nLast stderr:\n")
-		for _, line := range lines {
-			b.WriteString(fmt.Sprintf("! %s\n", line))
+		if *ei.ExitCode == 0 {
+			exitKind = "exit_code=0 (success)"
+			exitIcon = styles.IconSuccess
+		} else {
+			exitKind = fmt.Sprintf("exit_code=%d", *ei.ExitCode)
 		}
 	}
-	b.WriteString("\n")
+
+	lines = append(lines, lipgloss.JoinHorizontal(lipgloss.Center,
+		theme.StatusDead.Render(exitIcon),
+		" ",
+		theme.Title.Render("Exit: "),
+		theme.TitleMuted.Render(exitKind),
+		"  ",
+		theme.TitleMuted.Render(fmt.Sprintf("PID %d", ei.PID)),
+	))
+
+	// Exited at
+	if !ei.ExitedAt.IsZero() {
+		lines = append(lines, theme.TitleMuted.Render("Exited: "+ei.ExitedAt.Format("2006-01-02 15:04:05")))
+	}
+
+	// Error message
+	if ei.Error != "" {
+		lines = append(lines, theme.StatusDead.Render("Error: "+ei.Error))
+	}
+
+	// Stderr tail
+	stderrLines := ei.StderrTail
+	if len(stderrLines) > 6 {
+		stderrLines = stderrLines[len(stderrLines)-6:]
+	}
+	if len(stderrLines) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, theme.TitleMuted.Render("Last stderr:"))
+		for _, line := range stderrLines {
+			// Truncate long lines
+			if len(line) > m.width-8 {
+				line = line[:m.width-11] + "..."
+			}
+			lines = append(lines, theme.StatusDead.Render("! "+line))
+		}
+	}
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.Error).
+		Padding(0, 1).
+		Width(m.width - 4).
+		Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
 
 func (m ServiceModel) loadInitialTail() ServiceModel {
