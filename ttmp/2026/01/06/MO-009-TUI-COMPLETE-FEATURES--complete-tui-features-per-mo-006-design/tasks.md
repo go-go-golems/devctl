@@ -65,38 +65,46 @@
 
 ---
 
-## Phase 4: Events View Enhancements
+## Phase 4: Events View Enhancements ✅ COMPLETE (with fixes)
 
 ### 4.1 Service Source Column
-- [ ] 4.1.1 Add Source field to EventLogEntry
-- [ ] 4.1.2 Update event rendering with [service] prefix
+- [x] 4.1.1 Add Source field to EventLogEntry
+- [x] 4.1.2 Update event rendering with [service] prefix
 
 ### 4.2 Log Level Column
-- [ ] 4.2.1 Add LogLevel type (DEBUG/INFO/WARN/ERROR)
-- [ ] 4.2.2 Add LogLevelIcon function
-- [ ] 4.2.3 Update event rendering with level icon
+- [x] 4.2.1 Add LogLevel type (DEBUG/INFO/WARN/ERROR)
+- [x] 4.2.2 Add LogLevelIcon function
+- [x] 4.2.3 Update event rendering with level icon
 
 ### 4.3 Service Filter Toggles
-- [ ] 4.3.1 Add serviceFilters map to EventLogModel
-- [ ] 4.3.2 Add toggle keybindings (1-9 or space)
-- [ ] 4.3.3 Render filter status bar
-- [ ] 4.3.4 Apply filters in refreshViewportContent
+- [x] 4.3.1 Add serviceFilters map to EventLogModel
+- [x] 4.3.2 Add toggle keybindings (1-9 or space)
+- [x] 4.3.3 Render filter status bar
+- [x] 4.3.4 Apply filters in refreshViewportContent
 
 ### 4.4 Level Filter Toggles
-- [ ] 4.4.1 Add levelFilters map
-- [ ] 4.4.2 Add level toggle menu (l key)
-- [ ] 4.4.3 Apply level filters
+- [x] 4.4.1 Add levelFilters map
+- [x] 4.4.2 Add level toggle menu (l key)
+- [x] 4.4.3 Apply level filters
 
 ### 4.5 Stats Line
-- [ ] 4.5.1 Track event count and rate
-- [ ] 4.5.2 Calculate events/sec
-- [ ] 4.5.3 Render stats line
+- [x] 4.5.1 Track event count and rate
+- [x] 4.5.2 Calculate events/sec
+- [x] 4.5.3 Render stats line
 
 ### 4.6 Pause Toggle
-- [ ] 4.6.1 Add paused state
-- [ ] 4.6.2 Add pause (p) keybinding
-- [ ] 4.6.3 Show pause indicator
-- [ ] 4.6.4 Queue events while paused
+- [x] 4.6.1 Add paused state
+- [x] 4.6.2 Add pause (p) keybinding
+- [x] 4.6.3 Show pause indicator
+- [x] 4.6.4 Queue events while paused
+
+### 4.7 Visual Fixes (Added)
+- [x] 4.7.1 Fix layout with proper visual hierarchy
+- [x] 4.7.2 Add status line "Following: X Services"
+- [x] 4.7.3 Add horizontal separator
+- [x] 4.7.4 Color-code filter toggles
+- [x] 4.7.5 Fix event line formatting (timestamp.ms, fixed-width columns)
+- [x] 4.7.6 Distribute keybindings across UI
 
 ---
 
@@ -172,9 +180,9 @@
 | 1. Data Layer | 12 | ✅ Complete |
 | 2. Dashboard | 11 | ✅ Complete |
 | 3. Service Detail | 10 | ✅ Complete |
-| 4. Events View | 14 | ⏳ Not started |
+| 4. Events View | 20 | ✅ Complete (with visual fixes) |
 | 5. Pipeline View | 10 | ⏳ Not started |
 | 6. Plugin View | 5 | ⏳ Not started |
 | 7. Navigation | 3 | ⏳ Not started |
 | 8. Polish | 11 | ⏳ Not started |
-| **Total** | **76** | |
+| **Total** | **82** | |

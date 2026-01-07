@@ -32,6 +32,14 @@ type EventLogModel struct {
 	levelMenu    bool
 	levelFilters map[tui.LogLevel]bool
 
+	paused       bool
+	pausedQueue  []tui.EventLogEntry
+	totalCount   int
+	droppedCount int
+	lastStatTime time.Time
+	eventsPerSec float64
+	recentCount  int
+
 	vp viewport.Model
 }
 
@@ -141,10 +149,27 @@ func (m EventLogModel) Update(msg tea.Msg) (EventLogModel, tea.Cmd) {
 			return m, nil
 		case "c":
 			m.entries = nil
+			m.totalCount = 0
+			m.droppedCount = 0
 			m = m.refreshViewportContent(true)
 			return m, nil
 		case "l":
 			m.levelMenu = true
+			return m, nil
+		case "p":
+			m.paused = !m.paused
+			if !m.paused && len(m.pausedQueue) > 0 {
+				// Unpause: append queued events
+				for _, e := range m.pausedQueue {
+					m.entries = append(m.entries, e)
+				}
+				m.pausedQueue = nil
+				if m.max > 0 && len(m.entries) > m.max {
+					m.droppedCount += len(m.entries) - m.max
+					m.entries = m.entries[len(m.entries)-m.max:]
+				}
+				m = m.refreshViewportContent(true)
+			}
 			return m, nil
 		case " ":
 			m = m.toggleServiceByName("system")
@@ -164,8 +189,30 @@ func (m EventLogModel) Update(msg tea.Msg) (EventLogModel, tea.Cmd) {
 
 func (m EventLogModel) Append(e tui.EventLogEntry) EventLogModel {
 	e = normalizeEventLogEntry(e)
+	m.totalCount++
+	m.recentCount++
+
+	// Update events/sec every second
+	if time.Since(m.lastStatTime) >= time.Second {
+		m.eventsPerSec = float64(m.recentCount) / time.Since(m.lastStatTime).Seconds()
+		m.recentCount = 0
+		m.lastStatTime = time.Now()
+	}
+
+	// If paused, queue the event
+	if m.paused {
+		m.pausedQueue = append(m.pausedQueue, e)
+		// Limit queue size
+		if len(m.pausedQueue) > m.max {
+			m.droppedCount++
+			m.pausedQueue = m.pausedQueue[1:]
+		}
+		return m
+	}
+
 	m.entries = append(m.entries, e)
 	if m.max > 0 && len(m.entries) > m.max {
+		m.droppedCount++
 		m.entries = append([]tui.EventLogEntry{}, m.entries[len(m.entries)-m.max:]...)
 	}
 	m = m.ensureServiceKnown(e.Source)
@@ -178,53 +225,80 @@ func (m EventLogModel) View() string {
 
 	var sections []string
 
-	// Header with filter info
-	titleRight := "[1-9] toggle  [space] system  [l] levels  [/] text filter  [c] clear  [↑/↓] scroll"
-	if m.filter != "" {
-		titleRight = fmt.Sprintf("filter=%q  %s", m.filter, titleRight)
+	// Title - minimal, just the view name and back key
+	title := "Live Events"
+	if m.paused {
+		title = "Live Events (PAUSED)"
 	}
+	titleRight := "[esc] back"
+
+	// Status line: "Following: X Services" + filter hints
+	statusLine := m.renderStatusLine(theme)
+	sections = append(sections, statusLine)
+
+	// Separator line
+	separatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	separator := separatorStyle.Render(strings.Repeat("─", m.width-4))
+	sections = append(sections, separator)
 
 	// Search input if active
 	if m.searching {
 		sections = append(sections, m.search.View())
 	}
 
-	filterBar := theme.TitleMuted.Render(m.renderServiceFilterBar())
-	levelBar := theme.TitleMuted.Render(m.renderLevelFilterBar())
-
 	// Events viewport
 	if len(m.entries) == 0 {
-		content := lipgloss.JoinVertical(lipgloss.Left,
-			filterBar,
-			levelBar,
-			theme.TitleMuted.Render("(no events yet)"),
-		)
-		emptyBox := widgets.NewBox(fmt.Sprintf("Events (%d)", len(m.entries))).
-			WithTitleRight(titleRight).
-			WithContent(content).
-			WithSize(m.width, m.boxHeight())
-		sections = append(sections, emptyBox.Render())
+		emptyMsg := theme.TitleMuted.Render("(no events yet - waiting for events...)")
+		sections = append(sections, emptyMsg)
 	} else {
-		content := lipgloss.JoinVertical(lipgloss.Left, filterBar, levelBar, m.vp.View())
-		eventsBox := widgets.NewBox(fmt.Sprintf("Events (%d)", len(m.entries))).
-			WithTitleRight(titleRight).
-			WithContent(content).
-			WithSize(m.width, m.boxHeight())
-		sections = append(sections, eventsBox.Render())
+		sections = append(sections, m.vp.View())
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	// Filter bars (styled)
+	sections = append(sections, "")
+	sections = append(sections, m.renderStyledServiceFilterBar(theme))
+	sections = append(sections, m.renderStyledLevelFilterBar(theme))
+
+	// Stats line
+	sections = append(sections, m.renderStatsLine(theme))
+
+	// Footer keybindings
+	sections = append(sections, m.renderFooterKeybindings(theme))
+
+	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
+
+	box := widgets.NewBox(title).
+		WithTitleRight(titleRight).
+		WithContent(content).
+		WithSize(m.width, m.height)
+
+	return box.Render()
 }
 
 func (m EventLogModel) resizeViewport() EventLogModel {
-	usableHeight := m.height - m.boxChromeHeight()
+	// Calculate usable height for viewport
+	// Fixed sections: status line, separator, filter bar, level bar, stats, footer, box chrome
+	const statusLine = 1
+	const separator = 1
+	const filterBar = 1
+	const levelBar = 1
+	const statsLine = 1
+	const footerLine = 1
+	const boxChrome = 3 // top border, bottom border, empty line
+	const padding = 2   // empty lines between sections
+
+	reservedHeight := statusLine + separator + filterBar + levelBar + statsLine + footerLine + boxChrome + padding
+
 	if m.searching {
-		usableHeight--
+		reservedHeight++
 	}
+
+	usableHeight := m.height - reservedHeight
 	if usableHeight < 3 {
 		usableHeight = 3
 	}
-	m.vp.Width = maxInt(0, m.width)
+
+	m.vp.Width = maxInt(0, m.width-4) // Account for box borders
 	m.vp.Height = usableHeight
 	m.vp.HighPerformanceRendering = false
 	m = m.refreshViewportContent(false)
@@ -258,33 +332,7 @@ func (m EventLogModel) refreshViewportContent(gotoBottom bool) EventLogModel {
 			continue
 		}
 
-		ts := e.At
-		if ts.IsZero() {
-			ts = time.Now()
-		}
-
-		icon := styles.LogLevelIcon(string(e.Level))
-		style := theme.TitleMuted
-		switch e.Level {
-		case tui.LogLevelError:
-			style = theme.StatusDead
-		case tui.LogLevelWarn:
-			style = lipgloss.NewStyle().Foreground(theme.Warning)
-		case tui.LogLevelDebug:
-			style = theme.TitleMuted
-		case tui.LogLevelInfo:
-			style = theme.TitleMuted
-		}
-
-		line := lipgloss.JoinHorizontal(lipgloss.Center,
-			style.Render(icon),
-			" ",
-			theme.TitleMuted.Render(ts.Format("15:04:05")),
-			" ",
-			theme.TitleMuted.Render(fmt.Sprintf("[%s]", e.Source)),
-			"  ",
-			style.Render(e.Text),
-		)
+		line := m.formatEventLine(theme, e)
 		lines = append(lines, line)
 	}
 	m.vp.SetContent(strings.Join(lines, "\n") + "\n")
@@ -292,6 +340,65 @@ func (m EventLogModel) refreshViewportContent(gotoBottom bool) EventLogModel {
 		m.vp.GotoBottom()
 	}
 	return m
+}
+
+// formatEventLine formats a single event with proper styling and alignment.
+func (m EventLogModel) formatEventLine(theme styles.Theme, e tui.EventLogEntry) string {
+	ts := e.At
+	if ts.IsZero() {
+		ts = time.Now()
+	}
+
+	// Timestamp with milliseconds
+	tsStr := ts.Format("15:04:05.000")
+
+	// Fixed-width source (10 chars)
+	source := e.Source
+	if len(source) > 10 {
+		source = source[:9] + "…"
+	}
+	sourceStr := fmt.Sprintf("[%-10s]", source)
+
+	// Level with color
+	var levelStyle lipgloss.Style
+	switch e.Level {
+	case tui.LogLevelDebug:
+		levelStyle = theme.TitleMuted
+	case tui.LogLevelInfo:
+		levelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39")) // blue
+	case tui.LogLevelWarn:
+		levelStyle = lipgloss.NewStyle().Foreground(theme.Warning)
+	case tui.LogLevelError:
+		levelStyle = theme.StatusDead
+	default:
+		levelStyle = theme.TitleMuted
+	}
+	levelStr := levelStyle.Render(fmt.Sprintf("%-5s", e.Level))
+
+	// Text - truncate if too long
+	text := e.Text
+	maxTextLen := m.width - 40 // Leave room for timestamp, source, level
+	if maxTextLen > 10 && len(text) > maxTextLen {
+		text = text[:maxTextLen-3] + "..."
+	}
+
+	// Apply level style to text too for errors/warnings
+	var textStyle lipgloss.Style
+	switch e.Level {
+	case tui.LogLevelError:
+		textStyle = theme.StatusDead
+	case tui.LogLevelWarn:
+		textStyle = lipgloss.NewStyle().Foreground(theme.Warning)
+	default:
+		textStyle = theme.TitleMuted
+	}
+
+	return fmt.Sprintf("%s  %s  %s  %s",
+		theme.TitleMuted.Render(tsStr),
+		theme.TitleMuted.Render(sourceStr),
+		levelStr,
+		textStyle.Render(text),
+	)
 }
 
 func (m EventLogModel) boxChromeHeight() int {
@@ -363,44 +470,140 @@ func (m EventLogModel) setAllLevelFilters(enabled bool) EventLogModel {
 	return m
 }
 
-func (m EventLogModel) renderServiceFilterBar() string {
+func (m EventLogModel) renderStatusLine(theme styles.Theme) string {
+	// Count enabled services
+	enabledCount := 0
+	for _, enabled := range m.serviceFilters {
+		if enabled {
+			enabledCount++
+		}
+	}
+
+	var left string
+	if enabledCount == len(m.serviceFilters) || len(m.serviceFilters) == 0 {
+		left = theme.Title.Render("Following: All Services")
+	} else if enabledCount == 0 {
+		left = theme.TitleMuted.Render("Following: None (all filtered)")
+	} else {
+		left = theme.Title.Render(fmt.Sprintf("Following: %d of %d Services", enabledCount, len(m.serviceFilters)))
+	}
+
+	right := theme.TitleMuted.Render("[f] filter  [1-9] select service")
+
+	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right) - 6
+	if gap < 1 {
+		gap = 1
+	}
+
+	return left + strings.Repeat(" ", gap) + right
+}
+
+func (m EventLogModel) renderStyledServiceFilterBar(theme styles.Theme) string {
 	if len(m.serviceOrder) == 0 {
-		return "Filters: (none)"
+		return theme.TitleMuted.Render("Services: (none)")
 	}
+
 	var parts []string
-	parts = append(parts, "Filters:")
+	parts = append(parts, theme.TitleMuted.Render("Services:"))
+
 	for i, name := range m.serviceOrder {
-		icon := "●"
-		if enabled, ok := m.serviceFilters[name]; ok && !enabled {
+		var icon string
+		var style lipgloss.Style
+		if enabled, ok := m.serviceFilters[name]; ok && enabled {
+			icon = "●"
+			style = theme.StatusRunning
+		} else {
 			icon = "○"
+			style = theme.TitleMuted
 		}
-		label := fmt.Sprintf("%s %s", icon, name)
+
+		// Format: [1]● name
+		keyHint := ""
 		if i < 9 {
-			label = fmt.Sprintf("[%d]%s", i+1, label)
+			keyHint = fmt.Sprintf("[%d]", i+1)
 		}
-		parts = append(parts, label)
+		part := fmt.Sprintf("%s%s %s", theme.KeybindKey.Render(keyHint), style.Render(icon), name)
+		parts = append(parts, part)
 	}
+
+	parts = append(parts, "  "+theme.TitleMuted.Render("[space] toggle"))
+
 	return strings.Join(parts, "  ")
 }
 
-func (m EventLogModel) renderLevelFilterBar() string {
-	levels := []tui.LogLevel{tui.LogLevelDebug, tui.LogLevelInfo, tui.LogLevelWarn, tui.LogLevelError}
+func (m EventLogModel) renderStyledLevelFilterBar(theme styles.Theme) string {
+	levels := []struct {
+		level tui.LogLevel
+		color lipgloss.Color
+	}{
+		{tui.LogLevelDebug, lipgloss.Color("240")},  // gray
+		{tui.LogLevelInfo, lipgloss.Color("39")},    // blue
+		{tui.LogLevelWarn, theme.Warning},           // yellow
+		{tui.LogLevelError, lipgloss.Color("196")},  // red
+	}
 
 	var parts []string
-	parts = append(parts, "Levels:")
-	for _, lvl := range levels {
-		icon := "●"
-		if enabled, ok := m.levelFilters[lvl]; ok && !enabled {
+	parts = append(parts, theme.TitleMuted.Render("Levels: "))
+
+	for _, l := range levels {
+		var icon string
+		style := lipgloss.NewStyle().Foreground(l.color)
+		if enabled, ok := m.levelFilters[l.level]; ok && enabled {
+			icon = "●"
+		} else {
 			icon = "○"
+			style = theme.TitleMuted
 		}
-		parts = append(parts, fmt.Sprintf("%s %s", icon, lvl))
+		parts = append(parts, style.Render(fmt.Sprintf("%s %s", icon, l.level)))
 	}
+
 	if m.levelMenu {
-		parts = append(parts, "[d/i/w/e] toggle", "[a] all", "[n] none", "[esc] close")
+		parts = append(parts, "  "+theme.KeybindKey.Render("[d/i/w/e]")+" toggle")
+		parts = append(parts, theme.KeybindKey.Render("[a]")+" all")
+		parts = append(parts, theme.KeybindKey.Render("[n]")+" none")
+		parts = append(parts, theme.KeybindKey.Render("[esc]")+" close")
 	} else {
-		parts = append(parts, "[l] menu")
+		parts = append(parts, "  "+theme.TitleMuted.Render("[l] level menu"))
 	}
+
 	return strings.Join(parts, "  ")
+}
+
+func (m EventLogModel) renderStatsLine(theme styles.Theme) string {
+	stats := fmt.Sprintf("Stats: %d events (%.0f/sec)   Buffer: %d/%d lines   Dropped: %d",
+		m.totalCount,
+		m.eventsPerSec,
+		len(m.entries),
+		m.max,
+		m.droppedCount,
+	)
+	return theme.TitleMuted.Render(stats)
+}
+
+func (m EventLogModel) renderFooterKeybindings(theme styles.Theme) string {
+	var parts []string
+
+	if m.paused {
+		parts = append(parts, theme.StatusDead.Render("[p] resume"))
+	} else {
+		parts = append(parts, theme.KeybindKey.Render("[p]")+" pause")
+	}
+
+	parts = append(parts, theme.KeybindKey.Render("[c]")+" clear")
+	parts = append(parts, theme.KeybindKey.Render("[/]")+" search")
+	parts = append(parts, theme.KeybindKey.Render("[↑/↓]")+" scroll")
+
+	return theme.TitleMuted.Render(strings.Join(parts, "   "))
+}
+
+// Deprecated: use renderStyledServiceFilterBar instead
+func (m EventLogModel) renderServiceFilterBar() string {
+	return m.renderStyledServiceFilterBar(styles.DefaultTheme())
+}
+
+// Deprecated: use renderStyledLevelFilterBar instead
+func (m EventLogModel) renderLevelFilterBar() string {
+	return m.renderStyledLevelFilterBar(styles.DefaultTheme())
 }
 
 func normalizeEventLogEntry(e tui.EventLogEntry) tui.EventLogEntry {

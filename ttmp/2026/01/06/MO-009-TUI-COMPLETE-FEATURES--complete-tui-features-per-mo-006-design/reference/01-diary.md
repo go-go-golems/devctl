@@ -407,10 +407,90 @@ func formatDuration(d time.Duration) string {
 
 ---
 
+### Step 6: Phase 4 Visual Fixes - Events View Refactor (22:15)
+
+User feedback: The events view "looks like ass." Performed analysis, created playbook, and fixed issues.
+
+#### Analysis Report Created
+
+`analysis/01-events-view-issues.md` documents 6 major issues:
+1. Cramped, unstyled filter bars
+2. Missing visual hierarchy (no separator, status line)
+3. Missing stats line (events/sec, buffer, dropped)
+4. Missing pause toggle
+5. Poor event line formatting (no milliseconds, bad alignment)
+6. Keybinding clutter (all crammed in title)
+
+#### Playbook Created
+
+`playbooks/01-tui-design-implementation-guidelines.md` provides:
+- Anti-patterns to avoid (functionality-first, copy-paste coding)
+- Implementation checklist (visual structure, alignment, styling)
+- Step-by-step implementation process
+- Common patterns with code examples
+- Quality gates for review
+
+#### Visual Fixes Applied
+
+**New layout structure**:
+```
+╭─ Live Events ───────────────────────────────── [esc] back ─╮
+│ Following: All Services              [f] filter [1-9] select│
+│ ────────────────────────────────────────────────────────────│
+│ 14:34:12.234  [backend   ]  INFO   POST /api/moments        │
+│ 14:34:11.987  [frontend  ]  WARN   Slow render: 120ms       │
+│ 14:34:10.543  [system    ]  ERROR  Health check failed      │
+│                                                             │
+│ Services: [1]● backend  [2]● frontend  [3]○ postgres        │
+│ Levels:  ● DEBUG  ● INFO  ● WARN  ● ERROR  [l] level menu   │
+│ Stats: 47 events (12/sec)   Buffer: 47/200 lines   Dropped: 0│
+│ [p] pause   [c] clear   [/] search   [↑/↓] scroll           │
+╰─────────────────────────────────────────────────────────────╯
+```
+
+**Key improvements**:
+1. Status line with "Following: X Services"
+2. Horizontal separator between header and content
+3. Timestamps with milliseconds (15:04:05.123)
+4. Fixed-width source column (10 chars)
+5. Level shown as styled text, color-coded
+6. Color-coded filter toggles (green=enabled, gray=disabled)
+7. Stats line with event count, rate, buffer, dropped
+8. Pause toggle with queue for paused events
+9. Keybindings distributed: title, status line, footer
+
+**New methods added**:
+- `renderStatusLine()` - "Following: X Services" + right-aligned hints
+- `renderStyledServiceFilterBar()` - Color-coded service toggles
+- `renderStyledLevelFilterBar()` - Level-colored level toggles
+- `renderStatsLine()` - Count, rate, buffer, dropped
+- `renderFooterKeybindings()` - Distributed keybind hints
+- `formatEventLine()` - Proper event formatting with alignment
+
+**New fields added**:
+- `paused bool` - Pause state
+- `pausedQueue []EventLogEntry` - Queued events when paused
+- `totalCount int` - Total events received
+- `droppedCount int` - Events dropped due to buffer overflow
+- `eventsPerSec float64` - Calculated rate
+- `recentCount int` + `lastStatTime time.Time` - For rate calculation
+
+#### Lessons Learned
+
+1. **Compare to mockup line-by-line** before marking complete
+2. **Implement visual structure first**, functionality second
+3. **Use theme constants** instead of inline styles
+4. **Distribute keybindings** across the UI logically
+5. **Fixed-width columns** for tabular data
+
+---
+
 ### Technical References
 
 - Original Design: `MO-006-DEVCTL-TUI/.../01-devctl-tui-layout.md`
 - Gap Analysis: `MO-008-IMPROVE-TUI-LOOKS/.../03-gap-analysis-vs-design.md`
+- Events View Issues: `analysis/01-events-view-issues.md`
+- Design Playbook: `playbooks/01-tui-design-implementation-guidelines.md`
 - Current TUI Code: `pkg/tui/models/*.go`
 - Current Widgets: `pkg/tui/widgets/*.go`
 - Current Styles: `pkg/tui/styles/*.go`
