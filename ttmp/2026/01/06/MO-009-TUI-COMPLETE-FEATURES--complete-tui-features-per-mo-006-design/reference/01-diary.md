@@ -642,6 +642,68 @@ Updated `pkg/tui/models/root_model.go`:
 
 ---
 
+## Comprehensive Fixture for TUI Testing
+
+**Date**: 2026-01-07 ~04:30
+
+### Design Document
+
+Created `design/02-comprehensive-fixture-design.md`:
+- Feature coverage matrix mapping TUI features to fixture elements
+- Service specifications (5 services with varying behaviors)
+- Plugin configurations (3 plugins with different capabilities)
+- Build/pipeline simulation design
+- Test scenarios covering all views
+- Success criteria
+
+### Fixture Script
+
+Created `scripts/setup-comprehensive-fixture.sh`:
+
+**Services Configured**:
+1. `backend` - HTTP server with HTTP health check
+2. `worker` - HTTP server with TCP health check  
+3. `log-producer` - Continuous log output (no health check - tests "unknown" state)
+4. `flaky` - HTTP server (can test unhealthy scenarios)
+5. `short-lived` - Exits after 30s (tests exit info display)
+
+**Plugins Created**:
+1. `comprehensive` (priority 10):
+   - Ops: config.mutate, validate.run, build.run, prepare.run, launch.plan
+   - Emits 5+ config patches during mutation
+   - Simulates 4-step build with live output (~5.5s total)
+   - Emits 2 validation warnings
+   - Plans all 5 services
+
+2. `logger` (priority 20):
+   - Streams: logs.aggregate
+   - Tests plugin list with stream capability
+
+3. `metrics` (priority 30):
+   - Ops: metrics.collect
+   - Streams: metrics.stream
+   - Commands: metrics
+   - Tests plugin list with mixed capabilities
+
+**Features Exercised**:
+- Dashboard health/CPU/MEM columns
+- Dashboard recent events preview
+- Dashboard plugins summary
+- Service detail process info
+- Service detail health box
+- Service detail environment (with redacted secrets)
+- Service exit info display
+- Events view multi-source filtering
+- Events view level filtering
+- Events view rate display
+- Pipeline build steps with duration
+- Pipeline live output (stderr during build)
+- Pipeline config patches display
+- Pipeline validation warnings
+- Plugins view with 3 expandable cards
+
+---
+
 ### Technical References
 
 - Original Design: `MO-006-DEVCTL-TUI/.../01-devctl-tui-layout.md`
