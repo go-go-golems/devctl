@@ -24,3 +24,14 @@ Add Events view source/level filters with status bars and level menu (commit 4ec
 
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/models/eventlog_model.go — Service+level filter state
 
+
+## 2026-01-06
+
+Add deep-dive analysis of wrapper ready-file failure caused by dynamic plugin command discovery timeouts
+
+### Related Files
+
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/dynamic_commands.go — commands.list call blocks wrapper
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/main.go — Wrapper startup impacted by AddDynamicPluginCommands
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/supervise/supervisor.go — Hard-coded 2s wrapper ready wait
+
