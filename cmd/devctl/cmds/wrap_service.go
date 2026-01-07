@@ -75,6 +75,10 @@ func newWrapServiceCmd() *cobra.Command {
 
 			startedAt := time.Now()
 
+			if err := syscall.Setpgid(0, 0); err != nil {
+				return errors.Wrap(err, "setpgid")
+			}
+
 			child := exec.Command(args[0], args[1:]...) //nolint:gosec
 			child.Dir = cwd
 			child.Env = mergeEnv(os.Environ(), parseEnvPairs(envPairs))

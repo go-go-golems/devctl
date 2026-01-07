@@ -20,9 +20,12 @@ import (
 )
 
 func AddDynamicPluginCommands(root *cobra.Command, args []string) error {
-	repoRoot, cfgPath, err := parseRepoArgs(args)
+	repoRoot, cfgPath, positionals, err := parseRepoArgs(args)
 	if err != nil {
 		return err
+	}
+	if len(positionals) > 0 && positionals[0] == "__wrap-service" {
+		return nil
 	}
 
 	repo, err := repository.Load(repository.Options{RepoRoot: repoRoot, ConfigPath: cfgPath, Cwd: repoRoot, DryRun: false})
@@ -128,7 +131,7 @@ func AddDynamicPluginCommands(root *cobra.Command, args []string) error {
 	return nil
 }
 
-func parseRepoArgs(args []string) (string, string, error) {
+func parseRepoArgs(args []string) (string, string, []string, error) {
 	fs := pflag.NewFlagSet("devctl-bootstrap", pflag.ContinueOnError)
 	fs.ParseErrorsAllowlist.UnknownFlags = true
 	fs.SetInterspersed(true)
@@ -145,12 +148,12 @@ func parseRepoArgs(args []string) (string, string, error) {
 	if repoRoot == "" {
 		repoRoot, err = os.Getwd()
 		if err != nil {
-			return "", "", err
+			return "", "", nil, err
 		}
 	}
 	repoRoot, err = filepath.Abs(repoRoot)
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 
 	cfgPath, _ = fs.GetString("config")
@@ -159,5 +162,5 @@ func parseRepoArgs(args []string) (string, string, error) {
 	} else if !filepath.IsAbs(cfgPath) {
 		cfgPath = filepath.Join(repoRoot, cfgPath)
 	}
-	return repoRoot, cfgPath, nil
+	return repoRoot, cfgPath, fs.Args(), nil
 }
