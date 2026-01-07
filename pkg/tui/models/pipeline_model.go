@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -23,6 +24,9 @@ type PipelineModel struct {
 	prepareSteps []tui.PipelineStepResult
 	validate     *tui.PipelineValidateResult
 	launchPlan   *tui.PipelineLaunchPlan
+
+	validationCursor int
+	validationShow   bool
 }
 
 type pipelinePhaseState struct {
@@ -46,6 +50,23 @@ func (m PipelineModel) WithSize(width, height int) PipelineModel {
 
 func (m PipelineModel) Update(msg tea.Msg) (PipelineModel, tea.Cmd) {
 	switch v := msg.(type) {
+	case tea.KeyMsg:
+		switch v.String() {
+		case "up", "k":
+			m.validationCursor--
+			if m.validationCursor < 0 {
+				m.validationCursor = 0
+			}
+			return m, nil
+		case "down", "j":
+			m.validationCursor++
+			return m, nil
+		case "enter":
+			m.validationShow = !m.validationShow
+			return m, nil
+		default:
+			return m, nil
+		}
 	case tui.PipelineRunStartedMsg:
 		run := v.Run
 		m.runStarted = &run
@@ -54,6 +75,8 @@ func (m PipelineModel) Update(msg tea.Msg) (PipelineModel, tea.Cmd) {
 		m.prepareSteps = nil
 		m.validate = nil
 		m.launchPlan = nil
+		m.validationCursor = 0
+		m.validationShow = false
 
 		m.phases = map[tui.PipelinePhase]*pipelinePhaseState{}
 		if len(run.Phases) > 0 {
@@ -117,6 +140,8 @@ func (m PipelineModel) Update(msg tea.Msg) (PipelineModel, tea.Cmd) {
 		}
 		res := v.Result
 		m.validate = &res
+		m.validationCursor = 0
+		m.validationShow = len(res.Errors) > 0 || len(res.Warnings) > 0
 		return m, nil
 	case tui.PipelineLaunchPlanMsg:
 		if m.runStarted == nil || m.runStarted.RunID != v.Plan.RunID {
@@ -185,6 +210,50 @@ func (m PipelineModel) View() string {
 				b.WriteString("\n")
 			}
 		}
+
+		issues := validationIssues(v)
+		if len(issues) > 0 {
+			if m.validationCursor >= len(issues) {
+				m.validationCursor = len(issues) - 1
+			}
+			if m.validationCursor < 0 {
+				m.validationCursor = 0
+			}
+
+			b.WriteString("Validation issues (↑/↓ select, enter toggle details):\n")
+			for i, is := range issues {
+				cursor := " "
+				if i == m.validationCursor {
+					cursor = ">"
+				}
+				b.WriteString(fmt.Sprintf("%s %s %s: %s\n", cursor, is.kind, is.code, is.message))
+			}
+			b.WriteString("\n")
+
+			if m.validationShow {
+				sel := issues[m.validationCursor]
+				b.WriteString(fmt.Sprintf("Details: %s %s\n", sel.kind, sel.code))
+				if sel.details == nil || len(sel.details) == 0 {
+					b.WriteString("(no details)\n\n")
+				} else {
+					j, err := json.MarshalIndent(sel.details, "", "  ")
+					if err != nil {
+						b.WriteString(fmt.Sprintf("(failed to render details: %v)\n\n", err))
+					} else {
+						lines := strings.Split(string(j), "\n")
+						const maxLines = 12
+						if len(lines) > maxLines {
+							lines = append(lines[:maxLines], "  ...")
+						}
+						for _, line := range lines {
+							b.WriteString(line)
+							b.WriteString("\n")
+						}
+						b.WriteString("\n")
+					}
+				}
+			}
+		}
 	}
 
 	if m.launchPlan != nil {
@@ -206,6 +275,37 @@ func (m PipelineModel) View() string {
 	}
 
 	return b.String()
+}
+
+type validationIssue struct {
+	kind    string
+	code    string
+	message string
+	details map[string]any
+}
+
+func validationIssues(v *tui.PipelineValidateResult) []validationIssue {
+	if v == nil {
+		return nil
+	}
+	out := make([]validationIssue, 0, len(v.Errors)+len(v.Warnings))
+	for _, e := range v.Errors {
+		out = append(out, validationIssue{
+			kind:    "error",
+			code:    e.Code,
+			message: e.Message,
+			details: e.Details,
+		})
+	}
+	for _, e := range v.Warnings {
+		out = append(out, validationIssue{
+			kind:    "warn",
+			code:    e.Code,
+			message: e.Message,
+			details: e.Details,
+		})
+	}
+	return out
 }
 
 func (m PipelineModel) phase(p tui.PipelinePhase) *pipelinePhaseState {
