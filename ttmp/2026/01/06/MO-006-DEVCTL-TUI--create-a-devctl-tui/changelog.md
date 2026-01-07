@@ -168,6 +168,18 @@ Expand the ticket’s implementation task breakdown with message-level slices fo
 
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/ttmp/2026/01/06/MO-006-DEVCTL-TUI--create-a-devctl-tui/tasks.md — Break down next milestones into message-driven slices
 
+## 2026-01-07
+
+Add a Pipeline view to the TUI and publish structured “pipeline progress” events from the in-TUI action runner so the UI can show phase timings, build/prepare step results, validation summaries, and launch plan basics (commit 97bd82d).
+
+### Related Files
+
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/action_runner.go — Publish pipeline run/phase/result events during up/down/restart
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/transform.go — Transform pipeline domain events into UI messages
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/forward.go — Forward pipeline UI messages into Bubble Tea
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/models/pipeline_model.go — Render pipeline progress and last-run summary
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/models/root_model.go — Add `pipeline` view and tab cycling
+
 ## 2026-01-06
 
 Finalize M0 baseline: fix doc hygiene (numeric prefix) and land initial TUI skeleton (commit 2e22243).

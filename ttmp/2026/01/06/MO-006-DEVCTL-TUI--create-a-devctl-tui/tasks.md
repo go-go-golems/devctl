@@ -26,16 +26,16 @@
 - [x] Add a confirmation modal for destructive actions (down/restart), and respect `--timeout`, `--dry-run`, `--strict`
 - [x] Add a confirmation modal for destructive actions (kill selected service, for testing exit handling)
 - [ ] Implement PipelineModel: phase progress + steps list + last run summary (durations + status)
-  - [ ] Define UI message types for pipeline lifecycle:
-    - `PipelineRunStarted{RunID, RepoRoot, At}`
-    - `PipelinePhaseStarted{RunID, Phase, At}`
-    - `PipelinePhaseFinished{RunID, Phase, Status, Duration, Err?}`
-    - `PipelineBuildStep{RunID, StepIndex, Name, Status, Duration, Err?}`
-    - `PipelinePrepareStep{RunID, StepIndex, Name, Status, Duration, Err?}`
-  - [ ] Extend the action runner to publish those messages at natural boundaries (before/after each engine call and per-step).
-  - [ ] Render a stable “pipeline timeline” header: current phase, last completed phase, total duration so far.
-  - [ ] Render build/prepare step tables with selection + a right-side details pane (or a bottom details section).
-  - [ ] Add a “last run result” summary that survives view switching until the next run.
+  - [x] Define UI/domain message types for pipeline lifecycle:
+    - `PipelineRunStarted` / `PipelineRunFinished`
+    - `PipelinePhaseStarted` / `PipelinePhaseFinished`
+    - `PipelineBuildResult` / `PipelinePrepareResult`
+    - `PipelineValidateResult`
+    - `PipelineLaunchPlan`
+  - [x] Extend the action runner to publish those messages at natural boundaries (before/after each engine call).
+  - [x] Add a basic Pipeline view (tab from dashboard → events → pipeline) that renders phases, step results, validation summary, and last-run status.
+  - [ ] Render build/prepare step tables with selection + a details pane (right or bottom).
+  - [ ] Render validation issues as a navigable list (selection + details), not just a summary.
 - [ ] Implement validation UX: errors/warnings table + “what to do next”
   - [ ] Define `ValidationResultMsg{RunID, Valid, Errors[], Warnings[]}` with a compact `ValidationIssue` struct:
     - `Code string`

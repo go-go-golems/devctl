@@ -845,3 +845,55 @@ This step expands the ticket’s task breakdown with explicit message types and 
 
 ### Technical details
 - The task breakdown assumes a “publish typed messages → Bubble Tea models render state” flow, consistent with the Watermill→Bubble Tea design in the working note.
+
+## Step 20: Add a Pipeline view and publish structured pipeline progress events
+
+Once “actions” (up/down/restart) were wired to run in-process from the TUI, the next missing piece was feedback: *what phase are we in, what just finished, and why did it fail?* The event log helps a bit, but it’s still a single stream of text — great for debugging, not great for quickly understanding pipeline state.
+
+This step adds a dedicated Pipeline view (reachable via `tab`) and introduces a small set of structured pipeline events. The in-TUI action runner now emits run/phase/result messages during up/down/restart, and the Pipeline view renders them as a readable timeline with durations, plus a basic validation summary and launch plan summary.
+
+**Commit (code):** 97bd82d — "tui: add pipeline view and runner progress events"
+
+### What I did
+- Added domain + UI message types for pipeline lifecycle (`run started/finished`, `phase started/finished`, and result payloads for build/prepare/validate/launch plan).
+- Updated the Watermill transformer/forwarder so those events are turned into typed `tea.Msg` values and injected into Bubble Tea safely.
+- Added a new `pipeline` view to the root model and cycled it into the `tab` navigation (dashboard → events → pipeline).
+- Implemented a first-cut `PipelineModel` that renders:
+  - per-phase status (`pending/running/ok/failed`) with durations
+  - build/prepare step results (as returned by plugins)
+  - validation result summary (and the first error as a hint)
+  - launch plan service list (names only)
+
+### Why
+- A TUI without “where am I in the pipeline?” feedback makes failures feel random.
+- Structured messages let us render a real progress view today and evolve toward richer UX (selectable errors, per-step details, cancellation) without parsing log text.
+
+### What worked
+- The Pipeline view keeps the last run around while you switch back to the dashboard to inspect service status/logs.
+- Pipeline “run finished” events also land in the event view as a high-level `pipeline: ok/failed` breadcrumb.
+
+### What didn't work
+- N/A (this is a first-cut view; it intentionally doesn’t try to be interactive yet).
+
+### What I learned
+- Even a simple “phase table with durations” dramatically improves the feel of the TUI; it makes the system’s behavior legible.
+
+### What was tricky to build
+- Ensuring the Pipeline model keeps updating even when you aren’t currently on the Pipeline view (root model needs to route those messages regardless of active view).
+
+### What warrants a second pair of eyes
+- The boundary between “domain events” and “UI messages”: we’re currently publishing pipeline events into the same domain topic as state snapshots; review whether that topic naming/segmentation still feels right as we add more producers.
+
+### What should be done in the future
+- Make validation issues navigable (selection + details), and carry richer “source” attribution (which plugin produced which issue).
+- Add a cancel affordance and explicit cancellation events so the Pipeline view can show “canceled” cleanly.
+
+### Code review instructions
+- Review `devctl/pkg/tui/action_runner.go` for the sequencing and phase/result publishing.
+- Review `devctl/pkg/tui/transform.go` and `devctl/pkg/tui/forward.go` for the domain→UI→tea.Msg wiring.
+- Review `devctl/pkg/tui/models/pipeline_model.go` and `devctl/pkg/tui/models/root_model.go` for the new view + rendering.
+- Validate by running the tmux playbook and pressing `tab` to reach the Pipeline view while `u`/`r` runs.
+
+### Technical details
+- Run ids use `watermill.NewUUID()` so all messages for a run can be correlated (`run_id`).
+- Phase timing is measured in the action runner and sent as `duration_ms`, so the UI stays render-only.
