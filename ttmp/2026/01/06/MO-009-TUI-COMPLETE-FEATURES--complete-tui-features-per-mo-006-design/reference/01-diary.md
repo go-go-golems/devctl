@@ -351,3 +351,46 @@ The implementation uses simple, explicit keybindings: number keys toggle sources
 
 ### Technical details
 - Implemented tasks: 4.3.1–4.3.4, 4.4.1–4.4.3.
+
+---
+
+## Step 6: Fix docmgr frontmatter for the implementation plan doc
+
+Docmgr `doctor` flagged the implementation plan doc as missing YAML frontmatter, which prevented docmgr from validating and relating it consistently. Added standard ticket frontmatter to `design/01-implementation-plan.md` so future `docmgr doc relate` and `docmgr validate` workflows work without manual exceptions.
+
+This is purely documentation hygiene; no runtime behavior changes.
+
+**Commit (docs):** 5f8052be5050e7789d14e080f5c9615851edb3a0 — "docs: add frontmatter to implementation plan"
+
+### What I did
+- Ran `docmgr doctor --ticket MO-009-TUI-COMPLETE-FEATURES`.
+- Added YAML frontmatter to `ttmp/.../design/01-implementation-plan.md`.
+- Re-ran `docmgr doctor` to confirm the ticket is clean.
+
+### Why
+- Keep docmgr workflows working (relate/validate/search) and avoid recurring “frontmatter delimiters not found” errors.
+
+### What worked
+- `docmgr doctor` reports clean after the change.
+
+### What didn't work
+- N/A
+
+### What I learned
+- Docmgr treats missing frontmatter as an error for docs under the ticket workspace even if the content itself is valid Markdown.
+
+### What was tricky to build
+- N/A
+
+### What warrants a second pair of eyes
+- N/A
+
+### What should be done in the future
+- N/A
+
+### Code review instructions
+- Open `devctl/ttmp/2026/01/06/MO-009-TUI-COMPLETE-FEATURES--complete-tui-features-per-mo-006-design/design/01-implementation-plan.md` and confirm frontmatter matches other ticket docs.
+- Run `docmgr doctor --ticket MO-009-TUI-COMPLETE-FEATURES` to verify.
+
+### Technical details
+- Error encountered: `frontmatter delimiters '---' not found` (from `docmgr doctor`).
