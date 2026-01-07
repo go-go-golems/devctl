@@ -761,6 +761,61 @@ if isCommandPath(pluginPath) {
 
 ---
 
+## Dashboard Pipeline/Plugins Rendering Bug Investigation
+
+**Date**: 2026-01-07 ~05:30
+
+### Problem Statement
+
+User reported two issues:
+1. Pipeline phases not showing when pressing `[u]` from dashboard
+2. Plugins view empty despite `devctl plugins list` working
+
+### Investigation Process
+
+1. **Traced message flow**: Verified `PipelineRunStartedMsg` flows correctly from ActionRunner → Transform → Forwarder → RootModel → Dashboard
+
+2. **Checked RootModel handlers**: Confirmed `WithPipelineStarted()` and `WithPipelinePhase()` are called correctly
+
+3. **Analyzed Dashboard.View()**: Found multiple early-return paths
+
+4. **Root Cause Identified**: When `!s.Exists` (no state file), `View()` returns `renderStopped()` which:
+   - Does NOT check `m.pipelineRunning`
+   - Does NOT render pipeline status box
+   - Does NOT render plugins summary
+
+### Key Insight
+
+The timeline during startup:
+```
+T+0.0s  User presses [u]
+T+0.0s  PipelineRunStarted published
+T+0.0s  m.pipelineRunning = true
+T+0.0s  Dashboard.View() → renderStopped() → NO PIPELINE!
+T+2.5s  State file created, now main render path shows pipeline
+```
+
+User sees nothing for ~2.5 seconds because early-return bypassed pipeline rendering.
+
+### Fixes Applied
+
+1. **state_watcher.go**: Read plugins at TOP of `emitSnapshot()`, include in all snapshot types
+
+2. **dashboard_model.go**: 
+   - `renderStopped()` now checks `m.pipelineRunning` and renders pipeline status
+   - `renderStopped()` now renders plugins summary if available
+   - Same fix applied to `renderError()`
+
+### Design Lesson
+
+**Fragmented rendering anti-pattern**: Multiple early returns that bypass cross-cutting concerns.
+
+**Better pattern**: Collect all sections, only early-return for truly terminal states.
+
+See: `analysis/04-dashboard-pipeline-plugins-rendering-bug.md` for full writeup.
+
+---
+
 ### Technical References
 
 - Original Design: `MO-006-DEVCTL-TUI/.../01-devctl-tui-layout.md`
