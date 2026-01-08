@@ -60,6 +60,12 @@ func newTuiCmd() *cobra.Command {
 				Timeout:  opts.Timeout,
 			})
 
+			watcher := &tui.StateWatcher{
+				RepoRoot: opts.RepoRoot,
+				Interval: refresh,
+				Pub:      bus.Publisher,
+			}
+
 			model := models.NewRootModel(models.RootModelOptions{
 				PublishAction: func(req tui.ActionRequest) error {
 					return tui.PublishAction(bus.Publisher, req)
@@ -69,6 +75,10 @@ func newTuiCmd() *cobra.Command {
 				},
 				PublishStreamStop: func(req tui.StreamStopRequest) error {
 					return tui.PublishStreamStop(bus.Publisher, req)
+				},
+				PublishIntrospectionRefresh: func() error {
+					watcher.RequestIntrospection()
+					return nil
 				},
 			})
 			programOptions := []tea.ProgramOption{
@@ -80,12 +90,6 @@ func newTuiCmd() *cobra.Command {
 			}
 			program := tea.NewProgram(model, programOptions...)
 			tui.RegisterUIForwarder(bus, program)
-
-			watcher := &tui.StateWatcher{
-				RepoRoot: opts.RepoRoot,
-				Interval: refresh,
-				Pub:      bus.Publisher,
-			}
 
 			eg, egCtx := errgroup.WithContext(ctx)
 			eg.Go(func() error {

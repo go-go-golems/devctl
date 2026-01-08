@@ -10,16 +10,27 @@ DocType: reference
 Intent: long-term
 Owners: []
 RelatedFiles:
-    - Path: pkg/tui/stream_runner.go
-      Note: Contains context bug fix (Step 2)
-    - Path: pkg/tui/models/streams_model.go
+    - Path: devctl/cmd/devctl/cmds/tui.go
+      Note: Defines TUI lifetime context and errgroup wiring.
+    - Path: devctl/pkg/runtime/factory.go
+      Note: Plugin process lifetime is bound to exec.CommandContext.
+    - Path: devctl/pkg/tui/action_runner.go
+      Note: Uses message context for long-running actions (lifetime analysis).
+    - Path: devctl/pkg/tui/bus.go
+      Note: Router run context and shutdown behavior for TUI.
+    - Path: devctl/pkg/tui/models/streams_model.go
       Note: Enhanced with duration/event count (Step 3)
+    - Path: devctl/pkg/tui/state_watcher.go
+      Note: Baseline for correctly scoped background context.
+    - Path: devctl/pkg/tui/stream_runner.go
+      Note: Contains context bug fix (Step 2)
 ExternalSources: []
 Summary: Step-by-step implementation diary for Streams TUI integration.
-LastUpdated: 2026-01-08
+LastUpdated: 2026-01-08T00:00:00Z
 WhatFor: Track implementation progress and decisions.
 WhenToUse: Reference for continuing work or reviewing changes.
 ---
+
 
 # Diary
 
@@ -207,3 +218,48 @@ f1b1761 Fix: use background context for stream lifecycle
 - Verified stream completes with "ended" status
 - Verified duration and event count display correctly
 - Verified empty state shows helpful instructions
+
+---
+
+## Step 6: Analyze TUI Context Lifetimes for Streams
+
+Mapped the TUI context lifetimes across Bubbletea, the Watermill bus, and the stream runner to understand why stream work outlives the UI. Documented how message contexts are set in Watermill and why background contexts are currently used in stream runner.
+
+Captured a detailed analysis document that evaluates the correctness of the original diagnosis and proposes solutions that scope streams to the TUI lifetime.
+
+### What I did
+- Read `stream_runner.go`, `action_runner.go`, `tui.go`, `bus.go`, `state_watcher.go`, and `runtime/factory.go`
+- Verified Watermill message context behavior in module source
+- Wrote the analysis doc: `analysis/04-streams-tui-context-lifetime-analysis.md`
+
+### Why
+- The stream runner currently uses background contexts, which lets streams outlive the TUI
+- We need a documented, consistent lifecycle model before changing context wiring
+
+### What worked
+- Built a clear context-lifetime map of the TUI, bus, and stream runner
+- Identified action runner as a similar context-lifetime mismatch
+
+### What didn't work
+- N/A
+
+### What I learned
+- Watermill message contexts default to `context.Background()` and are not canceled when handlers return
+- Plugin processes are bound to the context passed to `exec.CommandContext` in `runtime.Factory`
+
+### What was tricky to build
+- Separating the original “msg.Context canceled” hypothesis from the actual TUI-lifetime mismatch
+
+### What warrants a second pair of eyes
+- Confirm the proposed TUI-scoped context wiring for stream runner and action runner before implementing
+
+### What should be done in the future
+- Implement TUI-scoped context injection for stream runner (and likely action runner)
+- Decide on shutdown semantics for stream events when the TUI exits
+
+### Code review instructions
+- Start with `analysis/04-streams-tui-context-lifetime-analysis.md`
+- Review `devctl/pkg/tui/stream_runner.go` and `devctl/cmd/devctl/cmds/tui.go` for lifecycle wiring
+
+### Technical details
+- Key finding: background contexts keep streams alive after UI exit; use a TUI-scoped parent instead

@@ -42,6 +42,19 @@ type DashboardModel struct {
 	pipelinePhase   tui.PipelinePhase
 	pipelineStarted time.Time
 	pipelineOk      *bool // nil = running, true = ok, false = failed
+
+	// Active streams
+	activeStreams []streamSummary
+}
+
+// streamSummary holds stream info for dashboard display.
+type streamSummary struct {
+	Key        string
+	Op         string
+	PluginID   string
+	Status     string // "running" | "ended" | "error"
+	At         time.Time
+	EventCount int
 }
 
 func NewDashboardModel() DashboardModel { return DashboardModel{} }
@@ -300,6 +313,12 @@ func (m DashboardModel) View() string {
 		sections = append(sections, m.renderPluginsSummary(theme, s.Plugins))
 	}
 
+	// Streams summary
+	if len(m.activeStreams) > 0 {
+		sections = append(sections, "")
+		sections = append(sections, m.renderStreamsSummary(theme))
+	}
+
 	// Confirmation dialogs
 	if m.confirmKill {
 		confirmStyle := lipgloss.NewStyle().
@@ -409,6 +428,12 @@ func (m DashboardModel) renderStopped(theme styles.Theme) string {
 		sections = append(sections, m.renderPluginsSummary(theme, m.last.Plugins))
 	}
 
+	// Show streams summary if available
+	if len(m.activeStreams) > 0 {
+		sections = append(sections, "")
+		sections = append(sections, m.renderStreamsSummary(theme))
+	}
+
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
@@ -439,6 +464,12 @@ func (m DashboardModel) renderError(theme styles.Theme, errText string) string {
 	if m.last != nil && len(m.last.Plugins) > 0 {
 		sections = append(sections, "")
 		sections = append(sections, m.renderPluginsSummary(theme, m.last.Plugins))
+	}
+
+	// Show streams summary if available (error state)
+	if len(m.activeStreams) > 0 {
+		sections = append(sections, "")
+		sections = append(sections, m.renderStreamsSummary(theme))
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
@@ -543,6 +574,89 @@ func (m DashboardModel) renderPluginsSummary(theme styles.Theme, plugins []tui.P
 	return box.Render()
 }
 
+func (m DashboardModel) renderStreamsSummary(theme styles.Theme) string {
+	// Filter to show recent streams (running + last 3 ended)
+	var running, ended []streamSummary
+	for _, s := range m.activeStreams {
+		if s.Status == "running" {
+			running = append(running, s)
+		} else {
+			ended = append(ended, s)
+		}
+	}
+
+	// Show all running + up to 2 ended
+	toShow := running
+	maxEnded := 2
+	if len(ended) > maxEnded {
+		ended = ended[len(ended)-maxEnded:]
+	}
+	toShow = append(toShow, ended...)
+
+	if len(toShow) == 0 {
+		return ""
+	}
+
+	var lines []string
+	now := time.Now()
+	for _, s := range toShow {
+		// Status icon
+		var icon string
+		var style lipgloss.Style
+		switch s.Status {
+		case "running":
+			icon = "●"
+			style = theme.StatusRunning
+		case "ended":
+			icon = "○"
+			style = theme.StatusPending
+		case "error":
+			icon = "✗"
+			style = theme.StatusDead
+		default:
+			icon = "?"
+			style = theme.TitleMuted
+		}
+
+		// Duration
+		duration := now.Sub(s.At)
+		durationStr := formatDuration(duration)
+
+		// Event count
+		eventsStr := fmt.Sprintf("%d events", s.EventCount)
+
+		line := fmt.Sprintf(" %s %-20s  %s  %s",
+			style.Render(icon),
+			theme.Title.Render(truncateString(s.Op, 20)),
+			theme.TitleMuted.Render(durationStr),
+			theme.TitleMuted.Render(eventsStr),
+		)
+		lines = append(lines, line)
+	}
+
+	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
+
+	runningCount := len(running)
+	box := widgets.NewBox(fmt.Sprintf("Streams (%d running)", runningCount)).
+		WithTitleRight("[tab→streams] manage").
+		WithContent(content).
+		WithSize(m.width, len(lines)+2)
+
+	return box.Render()
+}
+
+// truncateString shortens a string with ellipsis if too long.
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-3] + "..."
+}
+
+
 func (m DashboardModel) selectedServiceName() string {
 	names := m.serviceNames()
 	if len(names) == 0 {
@@ -608,6 +722,64 @@ func (m DashboardModel) WithPipelineFinished(ok bool) DashboardModel {
 		m.pipelineRunning = false
 	}
 	return m
+}
+
+// WithStreamStarted adds or updates a stream in the summary.
+func (m DashboardModel) WithStreamStarted(ev tui.StreamStarted) DashboardModel {
+	// Check if stream already exists
+	for i := range m.activeStreams {
+		if m.activeStreams[i].Key == ev.StreamKey {
+			m.activeStreams[i].Status = "running"
+			m.activeStreams[i].At = ev.At
+			return m
+		}
+	}
+	// Add new stream
+	m.activeStreams = append(m.activeStreams, streamSummary{
+		Key:      ev.StreamKey,
+		Op:       ev.Op,
+		PluginID: ev.PluginID,
+		Status:   "running",
+		At:       ev.At,
+	})
+	return m
+}
+
+// WithStreamEvent increments the event count for a stream.
+func (m DashboardModel) WithStreamEvent(ev tui.StreamEvent) DashboardModel {
+	for i := range m.activeStreams {
+		if m.activeStreams[i].Key == ev.StreamKey {
+			m.activeStreams[i].EventCount++
+			return m
+		}
+	}
+	return m
+}
+
+// WithStreamEnded marks a stream as ended.
+func (m DashboardModel) WithStreamEnded(ev tui.StreamEnded) DashboardModel {
+	for i := range m.activeStreams {
+		if m.activeStreams[i].Key == ev.StreamKey {
+			if ev.Ok {
+				m.activeStreams[i].Status = "ended"
+			} else {
+				m.activeStreams[i].Status = "error"
+			}
+			return m
+		}
+	}
+	return m
+}
+
+// RunningStreamCount returns the number of currently running streams.
+func (m DashboardModel) RunningStreamCount() int {
+	count := 0
+	for _, s := range m.activeStreams {
+		if s.Status == "running" {
+			count++
+		}
+	}
+	return count
 }
 
 // formatCPU formats a CPU percentage for display.

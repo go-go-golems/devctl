@@ -41,6 +41,7 @@ type RootModel struct {
 	publishAction      func(tui.ActionRequest) error
 	publishStreamStart func(tui.StreamStartRequest) error
 	publishStreamStop  func(tui.StreamStopRequest) error
+	publishIntrospectionRefresh func() error
 
 	statusLine   string
 	statusOk     bool
@@ -52,6 +53,7 @@ type RootModelOptions struct {
 	PublishAction      func(tui.ActionRequest) error
 	PublishStreamStart func(tui.StreamStartRequest) error
 	PublishStreamStop  func(tui.StreamStopRequest) error
+	PublishIntrospectionRefresh func() error
 }
 
 func NewRootModel(opts RootModelOptions) RootModel {
@@ -71,6 +73,7 @@ func NewRootModel(opts RootModelOptions) RootModel {
 		publishAction:      opts.PublishAction,
 		publishStreamStart: opts.PublishStreamStart,
 		publishStreamStop:  opts.PublishStreamStop,
+		publishIntrospectionRefresh: opts.PublishIntrospectionRefresh,
 	}
 	m = m.applyChildSizes()
 	return m
@@ -287,6 +290,18 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Text:   fmt.Sprintf("stream start requested: %s", req.Op),
 			}}
 		}
+	case tui.StreamStartedMsg:
+		m.streams, _ = m.streams.Update(v)
+		m.dashboard = m.dashboard.WithStreamStarted(v.Stream)
+		return m, nil
+	case tui.StreamEventMsg:
+		m.streams, _ = m.streams.Update(v)
+		m.dashboard = m.dashboard.WithStreamEvent(v.Event)
+		return m, nil
+	case tui.StreamEndedMsg:
+		m.streams, _ = m.streams.Update(v)
+		m.dashboard = m.dashboard.WithStreamEnded(v.End)
+		return m, nil
 	case tui.StreamStopRequestMsg:
 		if m.publishStreamStop == nil {
 			m.events = m.events.Append(tui.EventLogEntry{
@@ -312,6 +327,32 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Source: "system",
 				Level:  tui.LogLevelInfo,
 				Text:   fmt.Sprintf("stream stop requested: %s", req.StreamKey),
+			}}
+		}
+	case tui.PluginIntrospectionRefreshMsg:
+		if m.publishIntrospectionRefresh == nil {
+			m.events = m.events.Append(tui.EventLogEntry{
+				At:     time.Now(),
+				Source: "ui",
+				Level:  tui.LogLevelWarn,
+				Text:   "plugin refresh ignored: no publisher",
+			})
+			return m, nil
+		}
+		return m, func() tea.Msg {
+			if err := m.publishIntrospectionRefresh(); err != nil {
+				return tui.EventLogAppendMsg{Entry: tui.EventLogEntry{
+					At:     time.Now(),
+					Source: "system",
+					Level:  tui.LogLevelError,
+					Text:   fmt.Sprintf("plugin refresh failed: %v", err),
+				}}
+			}
+			return tui.EventLogAppendMsg{Entry: tui.EventLogEntry{
+				At:     time.Now(),
+				Source: "system",
+				Level:  tui.LogLevelInfo,
+				Text:   "plugin refresh requested",
 			}}
 		}
 	}
@@ -444,7 +485,7 @@ func (m RootModel) View() string {
 			"  "+theme.TitleMuted.Render("b build, p prepare, v validation, ↑/↓ select, enter details"),
 			"",
 			theme.KeybindKey.Render("Plugins")+":",
-			"  "+theme.TitleMuted.Render("↑/↓ select, enter expand, a expand all, A collapse all, esc back"),
+			"  "+theme.TitleMuted.Render("↑/↓ select, enter expand, a expand all, A collapse all, r refresh, esc back"),
 			"",
 			theme.KeybindKey.Render("Streams")+":",
 			"  "+theme.TitleMuted.Render("n new (JSON), j/k select, ↑/↓ scroll, x stop, c clear, esc back"),
@@ -517,6 +558,7 @@ func (m RootModel) footerKeybinds() []widgets.Keybind {
 			{Key: "↑/↓", Label: "select"},
 			{Key: "enter", Label: "expand"},
 			{Key: "a/A", Label: "all"},
+			{Key: "r", Label: "refresh"},
 			{Key: "esc", Label: "back"},
 		}
 	case ViewStreams:

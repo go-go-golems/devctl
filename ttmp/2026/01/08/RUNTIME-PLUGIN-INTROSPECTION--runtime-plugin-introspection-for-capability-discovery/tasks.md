@@ -2,12 +2,15 @@
 
 ## TODO
 
-- [ ] Add tasks here
+- [ ] Update PluginSummary schema to include commands + introspection status fields.
+- [ ] Implement StateWatcher introspection cache (startup run + refresh trigger).
+- [ ] Wire StateWatcher cache into readPlugins() (ops/streams/commands + status).
+- [ ] Add UI refresh action (Plugins view keybind `r`) and RootModel plumbing.
+- [ ] Render capability status in Plugins view (badge + expanded details).
+- [ ] Add help/footer hints for refresh and introspection status.
+- [ ] Document design decisions and UX addendum alignment in research notes.
+- [ ] Add basic tests or manual verification steps for introspection flow.
 
-- [ ] Research: Evaluate Avenue 1 (StateWatcher + Background Introspection)
-- [ ] Research: Prototype Factory.Start() -> immediate Close() pattern
-- [ ] Research: Measure plugin startup times for representative plugins
-- [ ] Implement: Add introspectPlugins() to StateWatcher
-- [ ] Implement: Populate PluginSummary.Ops/Streams from introspection
-- [ ] Test: Verify stream indicator appears in Plugins view
-- [ ] Optional: Add cache persistence (Avenue 3)
+## Done
+
+- [x] Research notes + design plan + UX addendum drafted.

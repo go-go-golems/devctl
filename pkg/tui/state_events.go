@@ -36,12 +36,18 @@ type HealthCheckResult struct {
 
 // PluginSummary contains summary information about a plugin.
 type PluginSummary struct {
-	ID       string   `json:"id"`
-	Path     string   `json:"path"`
-	Priority int      `json:"priority"`
-	Status   string   `json:"status"` // "active" | "disabled" | "error"
-	Ops      []string `json:"ops,omitempty"`
-	Streams  []string `json:"streams,omitempty"`
+	ID        string    `json:"id"`
+	Path      string    `json:"path"`
+	Priority  int       `json:"priority"`
+	Status    string    `json:"status"` // "active" | "disabled" | "error"
+	Protocol  string    `json:"protocol,omitempty"`
+	Ops       []string  `json:"ops,omitempty"`
+	Streams   []string  `json:"streams,omitempty"`
+	Commands  []string  `json:"commands,omitempty"`
+	CapStatus string    `json:"cap_status,omitempty"` // "unknown" | "introspecting" | "ok" | "error"
+	CapError  string    `json:"cap_error,omitempty"`
+	CapStart  time.Time `json:"cap_start,omitempty"`
+	CapEnd    time.Time `json:"cap_end,omitempty"`
 }
 
 type StateSnapshot struct {
