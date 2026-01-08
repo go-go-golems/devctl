@@ -11,7 +11,7 @@
 - [x] Extend UI forwarder to deliver stream UI messages into Bubble Tea program
 - [x] Wire UIStreamRunner into devctl tui command startup (alongside action runner/state watcher)
 - [x] Add minimal TUI surface for streams (e.g., append to Events view and/or create a Streams view)
-- [ ] Implement devctl stream CLI (start op, parse input-json/file, print events, handle ctrl+c, enforce SupportsOp)
+- [x] Implement devctl stream CLI (start op, parse input-json/file, print events, handle ctrl+c, enforce SupportsOp)
 - [x] Add a telemetry stream fixture plugin under devctl/testdata/plugins (telemetry.stream) for repeatable manual and automated validation
 - [x] Add negative fixture coverage: plugin advertises capabilities.streams only and never responds; verify runner/CLI fail fast (no hangs)
 - [ ] Add TUI e2e-ish validation playbook: start telemetry stream, render events, stop stream, ensure plugin process cleaned up

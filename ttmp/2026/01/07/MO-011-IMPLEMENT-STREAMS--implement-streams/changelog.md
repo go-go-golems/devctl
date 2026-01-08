@@ -84,3 +84,13 @@ Step 6: Added Streams view to start/stop streams and render stream events end-to
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/models/root_model.go — Added ViewStreams and routing of stream msgs into StreamsModel
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/models/streams_model.go — Streams UI (JSON start prompt
 
+
+## 2026-01-07
+
+Step 7: Added devctl stream start CLI for starting streams and printing events (commit 12a85fd).
+
+### Related Files
+
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/root.go — Registers stream command
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/stream.go — New stream CLI (provider selection
+

@@ -194,6 +194,58 @@ The key outcome is a concrete safety net: runtime tests now cover both “teleme
 - Commands run:
   - `cd devctl && go test ./...`
 
+## Step 7: Implement `devctl stream start` CLI (stream debugging harness)
+
+This step added a dedicated CLI surface for streams so we can start a stream op and observe `protocol.Event` frames without the TUI. This is both a real feature (for power users / scripting) and a practical debugging tool for plugin authors: it makes it easy to test “does my stream start quickly, does it emit events, does it end cleanly?” without needing to wire a full UI.
+
+The command follows the same safety rules as the TUI: it selects a plugin provider, gates on `SupportsOp(op)` before attempting to start the stream, and prints events until the stream ends (or the user interrupts).
+
+**Commit (code):** 12a85fd — "cmds: add devctl stream start"
+
+### What I did
+- Added `devctl stream start` in `devctl/cmd/devctl/cmds/stream.go`:
+  - `--op` required, `--plugin` optional (defaults to first plugin supporting op by priority)
+  - `--input-json` / `--input-file` for request input
+  - `--start-timeout` for the initial `StartStream` request/response (getting `stream_id`)
+  - `--json` for raw `protocol.Event` JSONL output
+- Wired the command into the CLI in `devctl/cmd/devctl/cmds/root.go`.
+- Ran `go test ./...` in `devctl/`.
+
+### Why
+- The easiest way to validate streaming behavior is a minimal CLI that prints raw events.
+- It reduces “TUI required” coupling and helps debug protocol issues (E_UNSUPPORTED vs hang vs stdout contamination).
+
+### What worked
+- Provider selection uses handshake gating (`SupportsOp`) so it won’t hang against “streams-only” fixtures.
+- Output supports both human and JSONL modes.
+
+### What didn't work
+- I initially attempted `git commit -m "cmds: add \`devctl stream start\`"` and zsh treated the backticks as command substitution, causing:
+  - `zsh:1: command not found: devctl`
+  - and an incomplete commit message.
+  I fixed this by amending the commit message with safe quoting.
+
+### What I learned
+- Avoid backticks in shell-quoted commit messages under zsh; use plain text or single quotes.
+
+### What was tricky to build
+- Choosing timeouts: we need a short start timeout (get `stream_id`) but the stream itself should usually run until `end`/interrupt, not until the global `--timeout`.
+
+### What warrants a second pair of eyes
+- CLI UX: whether `--start-timeout` is the right knob name and whether we should also support an optional overall max duration flag.
+
+### What should be done in the future
+- Add a docs/playbook snippet that shows running `devctl stream start` against the telemetry fixture/config for quick validation.
+
+### Code review instructions
+- Review `devctl/cmd/devctl/cmds/stream.go` for provider selection and output formatting.
+- Review `devctl/cmd/devctl/cmds/root.go` for command registration.
+- Validate: `cd devctl && go test ./... -count=1`.
+
+### Technical details
+- Commands run:
+  - `cd devctl && go test ./...`
+
 ## Step 6: Add a Streams view to the TUI (start/stop + render stream events)
 
 This step added an actual UI surface for streams so the newly implemented `UIStreamRunner` can be exercised from within the TUI. The Streams view provides a minimal but functional workflow: start a stream by pasting JSON (op/plugin_id/input), watch events arrive, stop the stream, and clear per-stream event history.
