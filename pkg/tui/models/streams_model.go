@@ -34,12 +34,13 @@ type StreamsModel struct {
 }
 
 type streamRow struct {
-	Key      string
-	PluginID string
-	Op       string
-	StreamID string
-	Status   string // "running" | "ended" | "error"
-	At       time.Time
+	Key        string
+	PluginID   string
+	Op         string
+	StreamID   string
+	Status     string // "running" | "ended" | "error"
+	At         time.Time
+	EventCount int // Total events received
 }
 
 func NewStreamsModel() StreamsModel {
@@ -197,6 +198,7 @@ func (m StreamsModel) renderStreamList(theme styles.Theme) string {
 		end = len(m.streams)
 	}
 
+	now := time.Now()
 	for i := start; i < end; i++ {
 		r := m.streams[i]
 		cursor := "  "
@@ -205,21 +207,37 @@ func (m StreamsModel) renderStreamList(theme styles.Theme) string {
 		}
 
 		statusStyle := theme.TitleMuted
+		statusIcon := "○"
 		switch r.Status {
 		case "running":
 			statusStyle = theme.StatusRunning
+			statusIcon = "●"
 		case "ended":
 			statusStyle = theme.StatusPending
+			statusIcon = "○"
 		case "error":
 			statusStyle = theme.StatusDead
+			statusIcon = "✗"
 		}
+
+		// Format duration
+		duration := now.Sub(r.At)
+		durationStr := formatDuration(duration)
+
+		// Format event count
+		eventsStr := fmt.Sprintf("%d events", r.EventCount)
+
 		lines = append(lines, lipgloss.JoinHorizontal(lipgloss.Left,
 			cursor,
-			statusStyle.Render(r.Status),
-			" ",
+			statusStyle.Render(statusIcon+" "+r.Status),
+			"  ",
 			theme.Title.Render(r.Op),
-			" ",
-			theme.TitleMuted.Render(fmt.Sprintf("(plugin=%s)", r.PluginID)),
+			"  ",
+			theme.TitleMuted.Render(r.PluginID),
+			"  ",
+			theme.TitleMuted.Render(durationStr),
+			"  ",
+			theme.TitleMuted.Render(eventsStr),
 		))
 	}
 
@@ -229,6 +247,7 @@ func (m StreamsModel) renderStreamList(theme styles.Theme) string {
 		WithSize(m.width, maxInt(6, len(lines)+3)).
 		Render()
 }
+
 
 func (m StreamsModel) renderEventsBox(theme styles.Theme) string {
 	title := "Stream Events"
@@ -292,6 +311,13 @@ func (m StreamsModel) onStreamEvent(ev tui.StreamEvent) StreamsModel {
 	const maxLines = 500
 	if len(m.eventsByKey[ev.StreamKey]) > maxLines {
 		m.eventsByKey[ev.StreamKey] = m.eventsByKey[ev.StreamKey][len(m.eventsByKey[ev.StreamKey])-maxLines:]
+	}
+	// Increment event count for the stream row
+	for i := range m.streams {
+		if m.streams[i].Key == ev.StreamKey {
+			m.streams[i].EventCount++
+			break
+		}
 	}
 	if m.selectedKey() == ev.StreamKey {
 		m = m.refreshViewportContent(false)
