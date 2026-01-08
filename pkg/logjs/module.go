@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/araddon/dateparse"
 	"github.com/dop251/goja"
 	"github.com/pkg/errors"
 )
@@ -19,7 +21,10 @@ type Module struct {
 	opts   options
 	config *goja.Object
 
+	scriptPath string
+
 	name string
+	tag  string
 
 	parseFn     goja.Callable
 	filterFn    goja.Callable
@@ -62,9 +67,10 @@ func LoadFromFile(ctx context.Context, scriptPath string, opts Options) (*Module
 	}
 
 	m := &Module{
-		vm:    goja.New(),
-		opts:  parsedOpts,
-		state: nil,
+		vm:         goja.New(),
+		opts:       parsedOpts,
+		scriptPath: scriptPath,
+		state:      nil,
 	}
 
 	enableConsole(m.vm)
@@ -88,6 +94,10 @@ func LoadFromFile(ctx context.Context, scriptPath string, opts Options) (*Module
 		return nil, errors.Wrap(err, "load helpers")
 	}
 
+	if err := injectGoHelpers(m); err != nil {
+		return nil, err
+	}
+
 	prog, err := goja.Compile(scriptPath, string(b), false)
 	if err != nil {
 		return nil, errors.Wrap(err, "compile script")
@@ -101,10 +111,16 @@ func LoadFromFile(ctx context.Context, scriptPath string, opts Options) (*Module
 	}
 
 	nameVal := m.config.Get("name")
-	if goja.IsUndefined(nameVal) || goja.IsNull(nameVal) || strings.TrimSpace(nameVal.String()) == "" {
+	if isNullish(nameVal) || strings.TrimSpace(nameVal.String()) == "" {
 		return nil, errors.New("register({ name: string, ... }): name is required")
 	}
 	m.name = nameVal.String()
+	m.tag = m.name
+
+	tagVal := m.config.Get("tag")
+	if !isNullish(tagVal) && strings.TrimSpace(tagVal.String()) != "" {
+		m.tag = tagVal.String()
+	}
 
 	parseVal := m.config.Get("parse")
 	parseFn, ok := goja.AssertFunction(parseVal)
@@ -144,8 +160,32 @@ func (m *Module) Name() string {
 	return m.name
 }
 
+func (m *Module) Tag() string {
+	if strings.TrimSpace(m.tag) == "" {
+		return m.name
+	}
+	return m.tag
+}
+
+func (m *Module) ScriptPath() string {
+	return m.scriptPath
+}
+
 func (m *Module) Stats() Stats {
 	return m.stats
+}
+
+func (m *Module) Info() ModuleInfo {
+	return ModuleInfo{
+		Name:         m.Name(),
+		Tag:          m.Tag(),
+		HasParse:     m.parseFn != nil,
+		HasFilter:    m.filterFn != nil,
+		HasTransform: m.transformFn != nil,
+		HasInit:      m.initFn != nil,
+		HasShutdown:  m.shutdownFn != nil,
+		HasOnError:   m.onErrorFn != nil,
+	}
 }
 
 func (m *Module) Close(ctx context.Context) error {
@@ -163,7 +203,7 @@ func (m *Module) Close(ctx context.Context) error {
 	return nil
 }
 
-func (m *Module) ProcessLine(ctx context.Context, line string, source string, lineNumber int64) (*Event, error) {
+func (m *Module) ProcessLine(ctx context.Context, line string, source string, lineNumber int64) ([]*Event, []*ErrorRecord, error) {
 	_ = ctx
 
 	m.stats.LinesProcessed++
@@ -176,69 +216,85 @@ func (m *Module) ProcessLine(ctx context.Context, line string, source string, li
 		m.stats.HookErrors++
 		m.callOnError("parse", err, m.vm.ToValue(trimmed), ctxObj)
 		m.stats.LinesDropped++
-		return nil, nil
+		return nil, []*ErrorRecord{m.newErrorRecord("parse", err, source, lineNumber, &trimmed)}, nil
 	}
 
-	eventLike, drop, err := m.ensureEventLike(v)
+	eventLikes, drop, err := m.ensureEventLikes(v)
 	if err != nil {
 		m.stats.HookErrors++
 		m.callOnError("parse", err, m.vm.ToValue(trimmed), ctxObj)
 		m.stats.LinesDropped++
-		return nil, nil
+		return nil, []*ErrorRecord{m.newErrorRecord("parse", err, source, lineNumber, &trimmed)}, nil
 	}
 	if drop {
 		m.stats.LinesDropped++
-		return nil, nil
+		return nil, nil, nil
 	}
 
-	if m.filterFn != nil {
-		ctxObj = m.buildContext("filter", source, lineNumber)
-		keepVal, err := m.callHook("filter", m.filterFn, eventLike, ctxObj)
-		if err != nil {
-			m.stats.HookErrors++
-			m.callOnError("filter", err, eventLike, ctxObj)
-			m.stats.LinesDropped++
-			return nil, nil
+	outEvents := make([]*Event, 0, len(eventLikes))
+	outErrors := make([]*ErrorRecord, 0)
+
+	for _, eventLike := range eventLikes {
+		if m.filterFn != nil {
+			ctxObj = m.buildContext("filter", source, lineNumber)
+			keepVal, err := m.callHook("filter", m.filterFn, eventLike, ctxObj)
+			if err != nil {
+				m.stats.HookErrors++
+				m.callOnError("filter", err, eventLike, ctxObj)
+				m.stats.LinesDropped++
+				outErrors = append(outErrors, m.newErrorRecord("filter", err, source, lineNumber, &trimmed))
+				continue
+			}
+			if !keepVal.ToBoolean() {
+				m.stats.LinesDropped++
+				continue
+			}
 		}
-		if !keepVal.ToBoolean() {
-			m.stats.LinesDropped++
-			return nil, nil
+
+		eventLikesAfterTransform := []goja.Value{eventLike}
+		if m.transformFn != nil {
+			ctxObj = m.buildContext("transform", source, lineNumber)
+			outVal, err := m.callHook("transform", m.transformFn, eventLike, ctxObj)
+			if err != nil {
+				m.stats.HookErrors++
+				m.callOnError("transform", err, eventLike, ctxObj)
+				m.stats.LinesDropped++
+				outErrors = append(outErrors, m.newErrorRecord("transform", err, source, lineNumber, &trimmed))
+				continue
+			}
+
+			outs, drop, err := m.ensureEventLikes(outVal)
+			if err != nil {
+				m.stats.HookErrors++
+				m.callOnError("transform", err, outVal, ctxObj)
+				m.stats.LinesDropped++
+				outErrors = append(outErrors, m.newErrorRecord("transform", err, source, lineNumber, &trimmed))
+				continue
+			}
+			if drop {
+				m.stats.LinesDropped++
+				continue
+			}
+			eventLikesAfterTransform = outs
+		}
+
+		for _, evLike := range eventLikesAfterTransform {
+			ev, err := m.normalizeEvent(evLike, source, trimmed, lineNumber)
+			if err != nil {
+				m.stats.HookErrors++
+				ctxObj = m.buildContext("transform", source, lineNumber)
+				m.callOnError("transform", err, evLike, ctxObj)
+				m.stats.LinesDropped++
+				outErrors = append(outErrors, m.newErrorRecord("transform", err, source, lineNumber, &trimmed))
+				continue
+			}
+
+			m.stats.EventsEmitted++
+			outEvents = append(outEvents, ev)
 		}
 	}
 
-	if m.transformFn != nil {
-		ctxObj = m.buildContext("transform", source, lineNumber)
-		outVal, err := m.callHook("transform", m.transformFn, eventLike, ctxObj)
-		if err != nil {
-			m.stats.HookErrors++
-			m.callOnError("transform", err, eventLike, ctxObj)
-			m.stats.LinesDropped++
-			return nil, nil
-		}
-		eventLike, drop, err = m.ensureEventLike(outVal)
-		if err != nil {
-			m.stats.HookErrors++
-			m.callOnError("transform", err, outVal, ctxObj)
-			m.stats.LinesDropped++
-			return nil, nil
-		}
-		if drop {
-			m.stats.LinesDropped++
-			return nil, nil
-		}
-	}
-
-	ev, err := m.normalizeEvent(eventLike, source, trimmed, lineNumber)
-	if err != nil {
-		m.stats.HookErrors++
-		ctxObj = m.buildContext("transform", source, lineNumber)
-		m.callOnError("transform", err, eventLike, ctxObj)
-		m.stats.LinesDropped++
-		return nil, nil
-	}
-
-	m.stats.EventsEmitted++
-	return ev, nil
+	return outEvents, outErrors, nil
 }
 
 func trimTrailingNewline(s string) string {
@@ -323,6 +379,49 @@ func (m *Module) ensureEventLike(v goja.Value) (goja.Value, bool, error) {
 		return goja.Undefined(), false, errors.Errorf("event must be an object or string, got %T", v.Export())
 	}
 	return v, false, nil
+}
+
+func (m *Module) ensureEventLikes(v goja.Value) ([]goja.Value, bool, error) {
+	if v == nil || goja.IsNull(v) || goja.IsUndefined(v) {
+		return nil, true, nil
+	}
+
+	// Shorthand: string -> {message: "..."}
+	if s, ok := v.Export().(string); ok {
+		obj := m.vm.NewObject()
+		_ = obj.Set("message", s)
+		return []goja.Value{obj}, false, nil
+	}
+
+	if obj, ok := v.(*goja.Object); ok && obj.ClassName() == "Array" {
+		lv := obj.Get("length")
+		n := int(lv.ToInteger())
+		out := make([]goja.Value, 0, n)
+		for i := 0; i < n; i++ {
+			it := obj.Get(strconv.Itoa(i))
+			evLike, drop, err := m.ensureEventLike(it)
+			if err != nil {
+				return nil, false, err
+			}
+			if drop {
+				continue
+			}
+			out = append(out, evLike)
+		}
+		if len(out) == 0 {
+			return nil, true, nil
+		}
+		return out, false, nil
+	}
+
+	evLike, drop, err := m.ensureEventLike(v)
+	if err != nil {
+		return nil, false, err
+	}
+	if drop {
+		return nil, true, nil
+	}
+	return []goja.Value{evLike}, false, nil
 }
 
 func (m *Module) normalizeEvent(v goja.Value, source, raw string, lineNumber int64) (*Event, error) {
@@ -477,4 +576,113 @@ func isInterruptedByTimeout(err error) bool {
 		}
 	}
 	return errors.Is(err, ErrHookTimeout)
+}
+
+func (m *Module) newErrorRecord(hook string, err error, source string, lineNumber int64, rawLine *string) *ErrorRecord {
+	msg := ""
+	if err != nil {
+		msg = err.Error()
+	}
+	return &ErrorRecord{
+		Module:     m.Name(),
+		Tag:        m.Tag(),
+		Hook:       hook,
+		Source:     source,
+		LineNumber: lineNumber,
+		Timeout:    isInterruptedByTimeout(err),
+		Message:    msg,
+		RawLine:    rawLine,
+	}
+}
+
+func injectGoHelpers(m *Module) error {
+	logVal := m.vm.Get("log")
+	if isNullish(logVal) {
+		return errors.New("logjs: helpers did not define globalThis.log")
+	}
+	logObj := logVal.ToObject(m.vm)
+
+	// log.parseTimestamp(value, formats?)
+	//
+	// - If formats is provided, treat it as a list of Go time.Parse layouts.
+	// - Otherwise, use dateparse.ParseAny for best-effort parsing.
+	// - Returns a JS Date object or null.
+	if err := logObj.Set("parseTimestamp", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) == 0 || isNullish(call.Arguments[0]) {
+			return goja.Null()
+		}
+
+		v := call.Arguments[0].Export()
+		var (
+			t   time.Time
+			ok  bool
+			err error
+		)
+
+		switch vv := v.(type) {
+		case time.Time:
+			t, ok = vv, true
+		case string:
+			s := strings.TrimSpace(vv)
+			if s == "" {
+				return goja.Null()
+			}
+			if len(call.Arguments) >= 2 && !isNullish(call.Arguments[1]) {
+				if formats, ok2 := call.Arguments[1].Export().([]any); ok2 {
+					for _, it := range formats {
+						layout, ok3 := it.(string)
+						if !ok3 || strings.TrimSpace(layout) == "" {
+							continue
+						}
+						tt, e := time.Parse(layout, s)
+						if e == nil {
+							t, ok = tt, true
+							break
+						}
+					}
+				}
+			}
+			if !ok {
+				tt, e := dateparse.ParseAny(s)
+				if e != nil {
+					return goja.Null()
+				}
+				t, ok = tt, true
+			}
+		case int64:
+			t, ok = time.UnixMilli(vv).UTC(), true
+		case float64:
+			t, ok = time.UnixMilli(int64(vv)).UTC(), true
+		default:
+			// Try numeric string fallback.
+			s := strings.TrimSpace(call.Arguments[0].String())
+			if s == "" {
+				return goja.Null()
+			}
+			if i, e := strconv.ParseInt(s, 10, 64); e == nil {
+				// Heuristic: if it looks like seconds, treat as seconds.
+				if i > 0 && i < 1_000_000_000_000 {
+					t, ok = time.Unix(i, 0).UTC(), true
+				} else {
+					t, ok = time.UnixMilli(i).UTC(), true
+				}
+			} else {
+				tt, e := dateparse.ParseAny(s)
+				if e != nil {
+					return goja.Null()
+				}
+				t, ok = tt, true
+			}
+		}
+
+		if !ok || err != nil {
+			return goja.Null()
+		}
+
+		return m.newDate(t.UTC())
+	}); err != nil {
+		return errors.Wrap(err, "set log.parseTimestamp")
+	}
+
+	return nil
 }
