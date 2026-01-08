@@ -111,16 +111,17 @@ Core workflow:
 
 These are valuable during development, but are not necessarily “product UX”:
 
-- `devctl smoketest`
-  - Flags: `--plugin string`, `--timeout duration`
-- `devctl smoketest-supervise`
-  - Flags: `--timeout duration`
-- `devctl smoketest-e2e`
-  - Flags: `--timeout duration`
-- `devctl smoketest-logs`
-  - Flags: `--timeout duration`
-- `devctl smoketest-failures`
-  - Flags: `--timeout duration`
+- These are dev-only commands, moved under a `dev` group:
+  - `devctl dev smoketest` (root)
+    - Flags: `--plugin string`, `--timeout duration`
+  - `devctl dev smoketest supervise`
+    - Flags: `--timeout duration`
+  - `devctl dev smoketest e2e`
+    - Flags: `--timeout duration`
+  - `devctl dev smoketest logs`
+    - Flags: `--timeout duration`
+  - `devctl dev smoketest failures`
+    - Flags: `--timeout duration`
 
 ### 3.4. Internal commands
 
@@ -373,21 +374,21 @@ Each subsection describes how to represent the command’s flags in Glazed terms
 - Output:
   - No structured output; wraps BubbleTea run loop.
 
-### 5.10. Smoketests (`smoketest*`)
+### 5.10. Dev smoketests (`dev smoketest ...`)
 
-**Current flags:**
+**Current/target shape:**
 
-- `smoketest`: `--plugin`, `--timeout`
-- `smoketest-supervise`: `--timeout`
-- `smoketest-e2e`: `--timeout`
-- `smoketest-logs`: `--timeout`
-- `smoketest-failures`: `--timeout`
+- These are dev-only commands, moved under a `dev` group:
+  - `dev smoketest` (root): `--plugin`, `--timeout`
+  - `dev smoketest supervise`: `--timeout`
+  - `dev smoketest e2e`: `--timeout`
+  - `dev smoketest logs`: `--timeout`
+  - `dev smoketest failures`: `--timeout`
 
 **Glazed port:**
 
-- Keep these as Writer commands that emit JSON or `ok`.
-- Use dedicated settings structs per command; do not overload the repo layer (these commands currently run on temp dirs and do not use `.devctl.yaml`).
-- Decide whether these should remain “dev-only” behind build tags or hidden flags.
+- Keep these Cobra-only (hidden under `dev`) initially, to keep the Glazed port focused on user-facing commands.
+- If we port these later, keep them as Writer commands that emit JSON or `ok`, and use dedicated settings structs per command (these commands run on temp dirs and do not use `.devctl.yaml`).
 
 ### 5.11. Internal: `__wrap-service`
 
@@ -407,7 +408,7 @@ This section proposes an order that keeps the port reviewable and reduces the ch
 3. Port one simple command end-to-end (suggested: `status`), validating the layer wiring.
 4. Port remaining core workflow commands (`plan`, `plugins list`, `logs`, `down`, `up`).
 5. Port `tui` and `stream start`.
-6. Decide on smoketest commands: keep as-is, hide, or port for consistency.
+6. Keep smoketests as dev-only commands under `dev` (Cobra-only) and update docs/CI call sites accordingly.
 
 ## 7. Risks and “how we could miss this again”
 

@@ -15,9 +15,13 @@
 - [ ] Port: up command to Glazed (flags, interactive prompts, dry-run JSON)
 - [ ] Port: stream start command to Glazed (input-json/input-file validation, raw JSON mode)
 - [ ] Port: tui command wrapper to Glazed (refresh/alt-screen/debug-logs flags)
-- [ ] Decide: keep smoketest* as Cobra-only vs port to Glazed; document decision
+- [x] Decide: keep smoketest* as Cobra-only vs port to Glazed; document decision
 - [ ] Internal: keep __wrap-service isolated from startup logic; verify no Glazed init breaks it
 - [ ] Dynamic commands: design how handshake-advertised commands will be registered in Glazed root
 - [ ] Dynamic commands: ensure built-in verbs do not start plugins; preserve completion semantics
 - [ ] Docs: add devctl help topics for the Glazed-ported CLI surface and flags
 - [ ] Validation: add parity checklist + run through fixture repos to compare outputs
+- [ ] Smoketest: move under hidden group 'dev smoketest' (no top-level smoketest* verbs)
+- [ ] Smoketest: refactor cmd layout to groups (cmd/devctl/cmds/dev/root.go + cmd/devctl/cmds/dev/smoketest/root.go + subcommands)
+- [ ] Smoketest: update all call sites (CI workflows, pkg/doc, scripts) from 'smoketest-*' to 'dev smoketest ...'
+- [ ] Smoketest: add backwards-compat decision (no shim vs temporary aliases) + document in help

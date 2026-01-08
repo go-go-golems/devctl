@@ -125,3 +125,59 @@ The critical design decision captured here is to treat `repo-root` (and related 
 - Start with the analysis doc, then the task list:
   - `devctl/ttmp/2026/01/08/MO-012-PORT-CMDS-TO-GLAZED--port-devctl-cli-commands-to-glazed/analysis/01-devctl-cli-verb-inventory-and-porting-plan-to-glazed.md`
   - `devctl/ttmp/2026/01/08/MO-012-PORT-CMDS-TO-GLAZED--port-devctl-cli-commands-to-glazed/tasks.md`
+
+### Technical details
+- Useful ticket entrypoints:
+  - `docmgr doc list --ticket MO-012-PORT-CMDS-TO-GLAZED`
+  - `docmgr task list --ticket MO-012-PORT-CMDS-TO-GLAZED`
+
+## Step 3: Dev-only Smoketests: Move Under `dev smoketest ...` (in progress)
+
+This step updates the port plan to keep the CLI’s user-facing surface area clean while still preserving the integration/smoke coverage that the existing smoketest verbs provide. Instead of shipping `smoketest*` as top-level verbs, they will live under a dev-only group: `devctl dev smoketest ...`.
+
+This also introduces a concrete command layout convention we’ll follow going forward: commands are grouped in directories under `cmd/devctl/cmds/<group>/...`, and each group uses a `root.go` to register its children. This makes the eventual Glazed port easier to reason about because the command tree is explicit in the filesystem.
+
+**Commit (code):** N/A
+
+### What I did
+- Searched the repo for all references to `smoketest` and `devctl smoketest-*` to identify call sites that must be updated:
+  - `.github/workflows/push.yml`
+  - `devctl/pkg/doc/topics/devctl-plugin-authoring.md`
+  - Historical ticket docs under `devctl/ttmp/...`
+- Updated the MO-012 plan to reflect the new command shape (`devctl dev smoketest ...`) and created explicit migration tasks:
+  - `devctl/ttmp/2026/01/08/MO-012-PORT-CMDS-TO-GLAZED--port-devctl-cli-commands-to-glazed/tasks.md`
+  - `devctl/ttmp/2026/01/08/MO-012-PORT-CMDS-TO-GLAZED--port-devctl-cli-commands-to-glazed/analysis/01-devctl-cli-verb-inventory-and-porting-plan-to-glazed.md`
+
+### Why
+- Top-level `smoketest*` verbs are useful for CI and developer workflows, but they expand the “product UX” surface area and clutter help/completions.
+- Nesting them under `dev` makes the intended audience clear and avoids confusing end users while we migrate the main verbs to Glazed.
+
+### What worked
+- A deep ripgrep search found the concrete locations that will need updates once the CLI path changes (notably CI + docs).
+- The ticket task list now includes an explicit smoketest refactor and a call-site update step.
+
+### What didn't work
+- The earlier idea of extracting smoketests into a separate binary is superseded by the stronger requirement to group commands under `devctl dev ...`.
+
+### What I learned
+- The `smoketest*` commands are referenced in both “living” docs (`pkg/doc`) and CI; those will break immediately if we change the CLI path without updating them.
+
+### What was tricky to build
+- Deciding what to treat as “must update now” vs “historical record”: old ticket diaries contain `go run ./cmd/devctl smoketest-*` commands that are no longer correct once we change the CLI shape.
+
+### What warrants a second pair of eyes
+- Whether we want a temporary compatibility shim (aliases for `smoketest-*`) or to make this a clean breaking change and update all call sites at once.
+
+### What should be done in the future
+- Implement the `dev` + `smoketest` group command layout refactor in `cmd/devctl/cmds/...` and update all call sites (CI, docs, scripts).
+- Decide (and document) whether we keep any temporary aliases for `smoketest-*`.
+
+### Code review instructions
+- Start with the updated plan sections:
+  - `devctl/ttmp/2026/01/08/MO-012-PORT-CMDS-TO-GLAZED--port-devctl-cli-commands-to-glazed/tasks.md`
+  - `devctl/ttmp/2026/01/08/MO-012-PORT-CMDS-TO-GLAZED--port-devctl-cli-commands-to-glazed/analysis/01-devctl-cli-verb-inventory-and-porting-plan-to-glazed.md`
+
+### Technical details
+- Repo-wide searches used to find call sites:
+  - `rg -n "\\bsmoketest\\b" -S .` (from `devctl/`)
+  - `rg -n "devctl\\s+smoketest" -S .` (from `devctl/`)
