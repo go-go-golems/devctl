@@ -12,37 +12,34 @@ Owners: []
 RelatedFiles:
     - Path: devctl/cmd/devctl/cmds/tui.go
       Note: |-
-        Current TUI bus wiring (what would need to emit/consume stream events).
-        Current TUI bus wiring; shows missing stream runner/event types
+        Registers the stream runner and wires stream publish helpers into the root model.
     - Path: devctl/pkg/protocol/types.go
       Note: |-
-        Handshake/request/response/event schemas and capabilities fields.
-        Protocol frame schemas (handshake/request/response/event) and capabilities fields
+        Protocol frame schemas (handshake/request/response/event) and capabilities fields.
     - Path: devctl/pkg/runtime/client.go
       Note: |-
-        StartStream implementation, capability checks, read loops, Close semantics.
-        StartStream implementation
+        StartStream implementation; capability gating; Close semantics.
     - Path: devctl/pkg/runtime/router.go
       Note: |-
         Stream multiplexing, buffering, end-of-stream closure behavior.
-        Stream event multiplexing
     - Path: devctl/pkg/runtime/runtime_test.go
       Note: |-
         Tests that validate StartStream behavior and close semantics.
-        Tests that validate StartStream behavior and stream channel closure
-    - Path: devctl/testdata/plugins/long-running-plugin/plugin.py
-      Note: |-
-        Long-running logs.follow fixture (tick loop; end on stdin close).
-        Long-running logs.follow stream fixture (tick loop; end on stdin close)
-    - Path: devctl/testdata/plugins/stream/plugin.py
-      Note: |-
-        Minimal deterministic streaming fixture (hello/world/end).
-        Deterministic hello/world stream fixture
+    - Path: devctl/pkg/tui/stream_runner.go
+      Note: Central stream lifecycle manager for the TUI (UIStreamRunner).
+    - Path: devctl/pkg/tui/models/streams_model.go
+      Note: Streams tab UI and interaction model (start/stop, event log).
+    - Path: devctl/cmd/devctl/cmds/stream.go
+      Note: devctl stream CLI (start a stream op and print events).
+    - Path: devctl/testdata/plugins/telemetry/plugin.py
+      Note: Positive fixture plugin that implements telemetry.stream and emits metric events.
+    - Path: devctl/testdata/plugins/streams-only-never-respond/plugin.py
+      Note: Negative fixture plugin that advertises capabilities.streams but never responds (hang prevention).
 ExternalSources: []
-Summary: Textbook-style mapping of devctl plugin streaming (protocol + runtime) and the missing TUI plumbing required to use streams safely without hangs (especially in the presence of “streams-only” fixture plugins).
-LastUpdated: 2026-01-07T16:20:07.146735192-05:00
-WhatFor: Map how devctl “streams” are implemented today (protocol + runtime), where they are intended to be used (logs.follow, plugin-provided metrics/log aggregation), and what plumbing is required to integrate them into the Bubble Tea TUI.
-WhenToUse: When implementing MO-011 (stream features), wiring plugin streaming into the TUI/CLI, or debugging missing/blocked streams and capability-gating hangs.
+Summary: Textbook-style mapping of devctl plugin streaming (protocol + runtime) and its integration into the TUI + CLI, including capability-gating that prevents hangs from “streams-only” plugins.
+LastUpdated: 2026-01-07T20:43:08-05:00
+WhatFor: Map how devctl “streams” are implemented (protocol + runtime), where they are intended to be used (logs.follow, telemetry/metrics/log aggregation), and how they integrate into the Bubble Tea TUI and devctl CLI.
+WhenToUse: When extending stream-producing plugin ops, debugging stream initiation/cancellation, or evolving the TUI/CLI stream UX.
 ---
 
 
@@ -60,7 +57,7 @@ This document is intentionally concrete: it names the exact files and functions 
 
 ## Executive summary (what exists vs what’s missing)
 
-**What exists (already implemented):**
+**What exists (implemented and usable):**
 - Protocol frame types include `event` and the handshake includes `capabilities.streams` (`devctl/pkg/protocol/types.go`).
 - `runtime.Client.StartStream(ctx, op, input)` is implemented and tested (`devctl/pkg/runtime/client.go`, `devctl/pkg/runtime/runtime_test.go`).
 - A stream multiplexer exists (`devctl/pkg/runtime/router.go`) which:
@@ -68,17 +65,21 @@ This document is intentionally concrete: it names the exact files and functions 
   - routes events by `stream_id`,
   - buffers early events until a subscriber subscribes,
   - closes subscribers on `event=end` or fatal protocol errors.
-- Plugin fixtures exist that demonstrate streaming behavior:
-  - `devctl/testdata/plugins/stream/plugin.py` (`stream.start` → “hello/world” → end)
-  - `devctl/testdata/plugins/long-running-plugin/plugin.py` (`logs.follow` → “tick N” loop → end on stdin close)
+- Stream fixtures cover both happy-path and hang-prevention cases:
+  - `devctl/testdata/plugins/telemetry/plugin.py` (`telemetry.stream` → `metric` events → `end`)
+  - `devctl/testdata/plugins/streams-only-never-respond/plugin.py` (advertises `capabilities.streams` only; never responds)
+- The TUI integrates streams via a centralized `UIStreamRunner` and a Streams tab:
+  - runner: `devctl/pkg/tui/stream_runner.go`
+  - UI model: `devctl/pkg/tui/models/streams_model.go`
+- The CLI exposes streams via `devctl stream start ...` (`devctl/cmd/devctl/cmds/stream.go`).
 
-**What is missing (no production integration yet):**
-- No production code calls `StartStream` today (only tests and docs). CLI `devctl logs --follow` tails files; the TUI tails `.devctl/logs/*.log` directly.
-- The current TUI does not expose a “start stream” command nor does its bus carry stream events (its event pipeline is limited to snapshots + pipeline lifecycle).
-- The Plugins view in the current TUI does not introspect handshake capabilities; it only shows configured plugin IDs/paths (so it can’t show stream capabilities yet).
+**What remains limited / intentionally deferred:**
+- There is no protocol-level “stop stream by stream_id”. Current stop semantics are “close the plugin client” (so the TUI runner uses one client per active stream).
+- The Plugins tab still displays config-derived plugin info; it does not yet show runtime handshake capabilities (ops/streams/commands).
 
-**High-impact gotcha:**
-- `StartStream` currently allows starting a stream op if it appears in either `capabilities.ops` *or* `capabilities.streams`. That means a plugin that only lists `streams` (but does not implement/respond to the op) can still be invoked and may hang until timeout. This is not hypothetical: the “logger” fixture in the comprehensive TUI setup advertises `streams: ["logs.aggregate"]` but never responds to requests.
+**High-impact gotcha (historical, now fixed):**
+- Prior to MO-011, `StartStream` allowed invocation when an op appeared in either `capabilities.ops` *or* `capabilities.streams`, which could hang on “streams-only” plugins that never respond.
+- Current behavior is “ops is authoritative”: `StartStream` fails fast with `E_UNSUPPORTED` unless the op appears in `capabilities.ops`.
 
 ## Terminology and mental model
 
@@ -184,8 +185,8 @@ Pseudocode approximation (based on the real code):
 
 ```go
 func (c *client) StartStream(ctx, op, input) (streamID string, events <-chan Event, err error) {
-    // NOTE: current code allows op if it is in either ops OR streams
-    if op not in handshake.capabilities.ops AND op not in handshake.capabilities.streams:
+    // NOTE: invocation is gated on handshake.capabilities.ops (authoritative)
+    if op not in handshake.capabilities.ops:
         return E_UNSUPPORTED
 
     rid := nextRequestID()
@@ -236,6 +237,9 @@ Tests: `devctl/pkg/runtime/runtime_test.go`
 Proven behaviors:
 - `TestRuntime_Stream`: basic StartStream, receive `log` events, stop on `end`.
 - `TestRuntime_StreamClosesOnClientClose`: stream channel closes when the client is closed (plugin termination forces EOF → router.failAll → closes subscriber channels).
+- `TestRuntime_StartStreamUnsupportedFailsFast`: StartStream returns immediately for unsupported ops (no hang until ctx deadline).
+- `TestRuntime_StartStreamIgnoresStreamsCapabilityForInvocation`: a “streams-only” capability does not permit invocation.
+- `TestRuntime_TelemetryStreamFixture`: telemetry fixture emits metric events and ends.
 
 Fixtures used by tests:
 - `devctl/testdata/plugins/stream/plugin.py`
@@ -305,17 +309,18 @@ The key architectural pattern is:
 
 ### Why streams are currently “invisible” to the TUI
 
-There is no message type for “stream started” or “stream event” in:
-- `devctl/pkg/tui/topics.go` (domain/ui types),
-- `devctl/pkg/tui/transform.go` (domain→ui mapping),
-- `devctl/pkg/tui/forward.go` (ui→tea mapping),
-- `devctl/pkg/tui/msgs.go` (Bubble Tea msg types).
-
-There is also no handler that runs `runtime.Client.StartStream` in response to user actions.
+This was true before MO-011. It is now implemented via:
+- Topic + envelope additions in `devctl/pkg/tui/topics.go`
+- Stream event payloads in `devctl/pkg/tui/stream_events.go`
+- Stream request publishers in `devctl/pkg/tui/stream_actions.go`
+- Bubble Tea msg types in `devctl/pkg/tui/msgs.go`
+- Domain→UI mapping in `devctl/pkg/tui/transform.go`
+- UI→BubbleTea forwarding in `devctl/pkg/tui/forward.go`
+- Central runner that calls `runtime.Client.StartStream` in `devctl/pkg/tui/stream_runner.go`
 
 ### Integration pattern A (recommended): add a dedicated stream runner + typed events
 
-Add a new UI request type and a new domain event type.
+This “runner + typed events” pattern is implemented in MO-011 (see the “Why streams were invisible” section for the concrete file list), and is still the recommended way to extend streams going forward.
 
 #### Proposed API (TUI-level)
 
@@ -346,6 +351,8 @@ New envelope types (conceptual additions to `devctl/pkg/tui/topics.go`):
 - ui: `UITypeStreamEvent`, `UITypeStreamStarted`, `UITypeStreamStopped`
 
 #### Proposed runner (pseudocode)
+
+The real implementation lives in `devctl/pkg/tui/stream_runner.go`. The pseudocode below matches the intent:
 
 ```go
 // handler listens for UITypeStreamStartRequest on TopicUIActions (or a new topic)
@@ -423,7 +430,33 @@ File: `devctl/testdata/plugins/long-running-plugin/plugin.py`
   - emits `event=log` every 100ms (“tick N”)
   - emits `event=end` when stdin closes (test uses `client.Close(...)`)
 
-### 3) Comprehensive fixture “stream-advertising” plugins (negative testing)
+### 3) Telemetry stream fixture (metric events)
+
+File: `devctl/testdata/plugins/telemetry/plugin.py`
+
+- Handshake: `capabilities.ops = ["telemetry.stream"]`, `capabilities.streams = ["telemetry.stream"]`
+- Behavior:
+  - responds to `telemetry.stream` with `stream_id = "telemetry-<rid>"`
+  - emits `event=metric` events (counter-style) and then emits `event=end`
+
+This fixture is intended to be used by:
+- automated tests (`TestRuntime_TelemetryStreamFixture`),
+- manual validation (`devctl stream start --op telemetry.stream ...`),
+- and the TUI Streams tab (start/stop).
+
+### 4) “Streams-only never respond” fixture (hang prevention)
+
+File: `devctl/testdata/plugins/streams-only-never-respond/plugin.py`
+
+- Handshake: `capabilities.ops = []`, `capabilities.streams = ["telemetry.stream"]`
+- Behavior:
+  - never responds to requests (it just sleeps)
+
+This fixture exists to prove that:
+- capability gating is authoritative on `capabilities.ops`,
+- and callers fail fast (instead of hanging until a deadline).
+
+### 5) Comprehensive fixture “stream-advertising” plugins (negative testing)
 
 File: `devctl/ttmp/2026/01/06/MO-009-TUI-COMPLETE-FEATURES--complete-tui-features-per-mo-006-design/scripts/setup-comprehensive-fixture.sh`
 
@@ -450,23 +483,17 @@ This delta is important because implementing streams in the TUI can either:
 - move the current code toward the MO-006 design (topic-based bus + log events), or
 - keep the current envelope/event pipeline and add a smaller stream subsystem.
 
-## Suggested implementation breakdown for MO-011 (actionable checklist)
+## MO-011 implementation status (what exists now)
 
-1) **Decide capability semantics**
-   - Define whether stream-start ops must be in `capabilities.ops` (recommended), and what `capabilities.streams` means operationally.
-2) **Define first stream op(s) and schemas**
-   - Start with `logs.follow` (input: `{source, since}` as per MO-005) or a minimal in-repo stream op for the TUI.
-3) **Add a stream runner to the TUI**
-   - New request message type(s) (start/stop).
-   - Start plugin client(s), call `StartStream`, publish stream events into the bus.
-4) **Add bus plumbing**
-   - Add domain/ui types, transformer mapping, forwarder mapping, Bubble Tea message types.
-5) **Choose a UI surface**
-   - Service view integration for `logs.follow`,
-   - or a new Stream view for metrics/log aggregation.
-6) **Validate with fixtures**
-   - Positive: `devctl/testdata/plugins/stream` and `long-running-plugin`
-   - Negative: comprehensive fixture “logger” (must not hang)
+Completed in MO-011:
+- Capability semantics: `StartStream` invocation is gated by `capabilities.ops` (authoritative). `capabilities.streams` is informational (`devctl/pkg/runtime/client.go`).
+- TUI integration: centralized stream lifecycle manager (`devctl/pkg/tui/stream_runner.go`) plus bus wiring (topics/types/transform/forward) and a Streams tab UI (`devctl/pkg/tui/models/streams_model.go`).
+- CLI integration: `devctl stream start ...` to start a stream op and print events (`devctl/cmd/devctl/cmds/stream.go`).
+- Fixtures + tests: telemetry stream fixture and a “streams-only never respond” negative fixture, with tests that prove “fail fast” behavior (`devctl/testdata/plugins/...`, `devctl/pkg/runtime/runtime_test.go`).
+
+Still good candidates for future work:
+- Add protocol-level stop semantics (stop by `stream_id`) to enable client reuse and avoid “one client per stream”.
+- Integrate stream-backed `logs.follow` into the Service view when no supervised local logs exist (or when logs are remote).
 
 ## Related documents (high-value pointers)
 

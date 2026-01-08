@@ -24,7 +24,7 @@ RelatedFiles:
       Note: Must be extended to map domain stream events to UI messages
 ExternalSources: []
 Summary: 'Design for a telemetry streaming plugin shape plus two devctl surfaces that leverage protocol streams: a centralized TUI UIStreamRunner and a devctl stream CLI.'
-LastUpdated: 2026-01-07T16:47:50.024473256-05:00
+LastUpdated: 2026-01-07T20:43:08-05:00
 WhatFor: Provide an implementable plan to make protocol streams usable from the TUI and CLI while keeping stream lifecycles centralized and robust against misbehaving plugins.
 WhenToUse: When implementing MO-011 (streams), adding stream-producing plugin ops (telemetry/logs/metrics), or building debugging tools around StartStream.
 ---
@@ -53,8 +53,8 @@ But streams are not usable in production today because:
 - The TUI bus does not have typed stream events, nor a runner that owns long-lived stream loops.
 - There is no CLI affordance to start a stream and observe events (outside tests).
 
-Additionally, there is a known robustness hazard:
-- Runtime `StartStream` currently allows starting an op if it appears in `capabilities.streams` even when it is missing from `capabilities.ops`. Existing fixtures include a “streams-only” plugin that never responds; naive usage would hang until timeout.
+Additionally, there is an important robustness constraint:
+- `StartStream` invocation is gated on `handshake.capabilities.ops` (authoritative). `capabilities.streams` is informational/UX-facing (“this op is stream-producing”), but does not grant permission to invoke by itself. This prevents hangs on “streams-only” plugins that never respond.
 
 ## Proposed solution
 
