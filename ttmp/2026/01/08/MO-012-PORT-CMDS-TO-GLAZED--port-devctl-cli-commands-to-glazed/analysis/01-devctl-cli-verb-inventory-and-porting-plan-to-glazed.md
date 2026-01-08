@@ -12,32 +12,28 @@ DocType: analysis
 Intent: long-term
 Owners: []
 RelatedFiles:
-    - Path: ../../../../../../../glazed/cmd/glaze/main.go
-      Note: Reference for Glazed root init + help system
-    - Path: ../../../../../../../glazed/pkg/doc/topics/01-help-system.md
-      Note: Reference for help system integration
-    - Path: ../../../../../../../glazed/pkg/doc/tutorials/05-build-first-command.md
-      Note: Reference for BuildCobraCommand patterns
-    - Path: ../../../../../../../glazed/pkg/doc/tutorials/custom-layer.md
-      Note: Reference for custom layer design
-    - Path: cmd/devctl/cmds/common.go
+    - Path: devctl/cmd/devctl/cmds/common.go
       Note: Root flags to port into a custom Glazed layer
-    - Path: cmd/devctl/cmds/logs.go
-      Note: logs flags and follow semantics
-    - Path: cmd/devctl/cmds/root.go
+    - Path: devctl/cmd/devctl/cmds/dev/root.go
+      Note: Hidden 'dev' group for dev-only commands
+    - Path: devctl/cmd/devctl/cmds/dev/smoketest/root.go
+      Note: Smoketest group + subcommands under dev
+    - Path: devctl/cmd/devctl/cmds/root.go
       Note: Canonical list of devctl Cobra commands
-    - Path: cmd/devctl/cmds/status.go
-      Note: status JSON output + tail-lines
-    - Path: cmd/devctl/cmds/stream.go
-      Note: stream start flags and JSON input handling
-    - Path: cmd/devctl/cmds/up.go
-      Note: up flags and pipeline execution
+    - Path: glazed/cmd/glaze/main.go
+      Note: Reference for Glazed root init + help system
+    - Path: glazed/pkg/doc/topics/01-help-system.md
+      Note: Reference for help system integration
+    - Path: glazed/pkg/doc/tutorials/custom-layer.md
+      Note: Reference for custom layer design
 ExternalSources: []
 Summary: ""
 LastUpdated: 2026-01-08T00:28:58.716960441-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
+
 
 
 # devctl → Glazed port: CLI verb inventory and plan
@@ -389,6 +385,7 @@ Each subsection describes how to represent the command’s flags in Glazed terms
 
 - Keep these Cobra-only (hidden under `dev`) initially, to keep the Glazed port focused on user-facing commands.
 - If we port these later, keep them as Writer commands that emit JSON or `ok`, and use dedicated settings structs per command (these commands run on temp dirs and do not use `.devctl.yaml`).
+- Compatibility: do not keep `smoketest-*` aliases; update CI/docs call sites instead.
 
 ### 5.11. Internal: `__wrap-service`
 

@@ -47,7 +47,7 @@ This fixture mirrors what a “real” repo looks like:
   - `http` (health endpoint)
   - `spewer` (writes logs continuously)
 
-It is copied from the existing smoke test logic in `devctl/cmd/devctl/cmds/smoketest_e2e.go`, and is also available as a ticket-local setup script so you don’t have to copy/paste this every time.
+It is copied from the existing smoke test logic in `devctl/cmd/devctl/cmds/dev/smoketest/e2e.go`, and is also available as a ticket-local setup script so you don’t have to copy/paste this every time.
 
 Preferred (script):
 

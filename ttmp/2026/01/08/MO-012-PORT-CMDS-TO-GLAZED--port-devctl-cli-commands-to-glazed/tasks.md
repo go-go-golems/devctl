@@ -21,7 +21,7 @@
 - [ ] Dynamic commands: ensure built-in verbs do not start plugins; preserve completion semantics
 - [ ] Docs: add devctl help topics for the Glazed-ported CLI surface and flags
 - [ ] Validation: add parity checklist + run through fixture repos to compare outputs
-- [ ] Smoketest: move under hidden group 'dev smoketest' (no top-level smoketest* verbs)
-- [ ] Smoketest: refactor cmd layout to groups (cmd/devctl/cmds/dev/root.go + cmd/devctl/cmds/dev/smoketest/root.go + subcommands)
-- [ ] Smoketest: update all call sites (CI workflows, pkg/doc, scripts) from 'smoketest-*' to 'dev smoketest ...'
-- [ ] Smoketest: add backwards-compat decision (no shim vs temporary aliases) + document in help
+- [x] Smoketest: move under hidden group 'dev smoketest' (no top-level smoketest* verbs)
+- [x] Smoketest: refactor cmd layout to groups (cmd/devctl/cmds/dev/root.go + cmd/devctl/cmds/dev/smoketest/root.go + subcommands)
+- [x] Smoketest: update all call sites (CI workflows, pkg/doc, scripts) from 'smoketest-*' to 'dev smoketest ...'
+- [x] Smoketest: add backwards-compat decision (no shim vs temporary aliases) + document in help

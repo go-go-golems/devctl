@@ -140,7 +140,7 @@ As of now, all production `.Call(...)` invocations in the Go code live in two pl
      - `command.run` (when a dynamic command is invoked; timeout = `--timeout`)
    - additional foot-gun: command discovery uses `context.Background()` rather than a context annotated with `repo_root`, so `request.ctx.repo_root` is empty during `commands.list` (see `runtime.requestContextFrom`).
 
-Smoketests also call `ping` (e.g. `devctl/cmd/devctl/cmds/smoketest.go`), but that is not user-facing behavior.
+Smoketests also call `ping` (e.g. `devctl/cmd/devctl/cmds/dev/smoketest/root.go`), but that is not user-facing behavior.
 
 #### 0.2 Streams are implemented in runtime but not used in production yet
 
@@ -384,7 +384,7 @@ Capability gating prevents “unsupported op” calls, but it does not prevent:
 - plugins that contaminate stdout,
 - or plugins that respond with malformed JSON.
 
-The repo already has smoketests that cover some timeout behavior (`smoketest-failures`).
+The repo already has smoketests that cover some timeout behavior (`dev smoketest failures`).
 
 Add (or extend) a command like:
 - `devctl plugins check`

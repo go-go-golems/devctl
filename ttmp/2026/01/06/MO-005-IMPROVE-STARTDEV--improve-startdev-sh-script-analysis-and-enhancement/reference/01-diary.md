@@ -485,7 +485,7 @@ The task list intentionally anchors on `design-doc/04-...` (newest version) and 
 
 This step started implementation in a fresh `devctl/` repository. The immediate goal was to prove the core invariant end-to-end: spawn a plugin process, read a handshake frame, send a request, receive a response, and keep stdout strictly protocol-only.
 
-The milestone is intentionally small but foundational: a minimal Cobra CLI with a `smoketest` command, a first-cut protocol package, a config patch package with unit tests, and a runtime client capable of handshake + request/response. This gives us a compiling base to iterate on engine + supervisor next.
+The milestone is intentionally small but foundational: a minimal Cobra CLI with a `dev smoketest` command, a first-cut protocol package, a config patch package with unit tests, and a runtime client capable of handshake + request/response. This gives us a compiling base to iterate on engine + supervisor next.
 
 **Commit (code):** 38a39b93ec00a03f51630f61ffa23185abe6b683 — "devctl: scaffold protocol, runtime, smoketest"
 
@@ -494,7 +494,7 @@ The milestone is intentionally small but foundational: a minimal Cobra CLI with 
 - Implemented:
   - protocol v1 structs + handshake validation
   - dotted-path `ConfigPatch` apply/merge with unit tests
-  - plugin runtime: start process, read handshake, correlate request/response, enforce stdout JSON-only, and a `smoketest` cobra command
+  - plugin runtime: start process, read handshake, correlate request/response, enforce stdout JSON-only, and a `dev smoketest` cobra command
 - Added a tiny Python test plugin in `devctl/testdata/plugins/ok-python/plugin.py` used by both unit tests and the CLI smoketest
 
 ### Why
@@ -503,7 +503,7 @@ The milestone is intentionally small but foundational: a minimal Cobra CLI with 
 
 ### What worked
 - `go test ./...` passes for the initial protocol/patch/runtime implementation
-- `go run ./cmd/devctl smoketest` exercises handshake + request/response and returns `ok`
+- `go run ./cmd/devctl dev smoketest` exercises handshake + request/response and returns `ok`
 
 ### What didn't work
 - Initial `go test ./...` failed because the parent repository’s `go.work` did not include the new module; adding a local `devctl/go.work` isolated the module cleanly
@@ -527,18 +527,18 @@ The milestone is intentionally small but foundational: a minimal Cobra CLI with 
 
 ### Code review instructions
 - Start with the CLI entrypoint: `/home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/main.go`
-- Review the smoketest command: `/home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/smoketest.go`
+- Review the smoketest command: `/home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/dev/smoketest/root.go`
 - Review protocol + validation: `/home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/protocol/types.go`
 - Review runtime handshake/call routing: `/home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/runtime/factory.go`
 - Validate:
   - `cd devctl && go test ./...`
-  - `cd devctl && go run ./cmd/devctl smoketest`
+  - `cd devctl && go run ./cmd/devctl dev smoketest`
 
 ### Technical details
 - Commands run (key ones):
   - `cd devctl && go mod tidy`
   - `cd devctl && go test ./...`
-  - `cd devctl && go run ./cmd/devctl smoketest`
+  - `cd devctl && go run ./cmd/devctl dev smoketest`
   - `cd devctl && git commit -m \"devctl: scaffold protocol, runtime, smoketest\"`
 
 ## Step 10: Harden the runtime with stream support and stdout contamination tests
@@ -565,7 +565,7 @@ The milestone added both fixture plugins and unit tests so we can iterate on eng
 
 ### What worked
 - `go test ./...` passes with stream + contamination fixtures
-- `devctl smoketest` still passes
+- `devctl dev smoketest` still passes
 
 ### What didn't work
 - The initial stream implementation dropped the first event due to a race (events could arrive between response and subscribe); fixed by buffering events until a subscriber is present
@@ -591,7 +591,7 @@ The milestone added both fixture plugins and unit tests so we can iterate on eng
 - Fixture-driven runtime tests: `/home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/runtime/runtime_test.go`
 - Validate:
   - `cd devctl && go test ./...`
-  - `cd devctl && go run ./cmd/devctl smoketest`
+  - `cd devctl && go run ./cmd/devctl dev smoketest`
 
 ### Technical details
 - Commands run (key ones):
@@ -743,7 +743,7 @@ The implementation is intentionally simple and file-based: `devctl up` writes `.
   - `devctl down` (stop from state + remove state)
   - `devctl status` (report alive/dead per PID + log paths)
   - `devctl logs --service <name> [--stderr] [--follow]`
-- Added a smoke-test command `devctl smoketest-supervise` which brings up a tiny HTTP server (via a fixture plugin) and performs an HTTP GET
+- Added a smoke-test command `devctl dev smoketest supervise` which brings up a tiny HTTP server (via a fixture plugin) and performs an HTTP GET
 
 ### Why
 - We needed a concrete, testable implementation of plan-mode supervision before working on richer orchestration and logs UX
@@ -751,7 +751,7 @@ The implementation is intentionally simple and file-based: `devctl up` writes `.
 
 ### What worked
 - `cd devctl && go test ./...` passes (including a supervisor start/stop test)
-- `cd devctl && go run ./cmd/devctl smoketest-supervise` starts an HTTP server, verifies it, and tears it down
+- `cd devctl && go run ./cmd/devctl dev smoketest supervise` starts an HTTP server, verifies it, and tears it down
 
 ### What didn't work
 - The first supervisor version did not reap child processes, which caused the test PID to remain “alive” as a zombie; fixed by `go cmd.Wait()` after `cmd.Start()`
@@ -781,11 +781,11 @@ The implementation is intentionally simple and file-based: `devctl up` writes `.
   - `/home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/status.go`
   - `/home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/logs.go`
 - Smoke test:
-  - `/home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/smoketest_supervise.go`
+  - `/home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/dev/smoketest/supervise.go`
   - `/home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/testdata/plugins/http-service/plugin.py`
 - Validate:
   - `cd devctl && go test ./...`
-  - `cd devctl && go run ./cmd/devctl smoketest-supervise`
+  - `cd devctl && go run ./cmd/devctl dev smoketest supervise`
 
 ## Step 14: Implement plugin-provided commands with dynamic Cobra subcommands
 
@@ -951,7 +951,7 @@ This step translated the testing strategy design doc into a concrete implementat
 - Whether we should bias more of the test surface toward pure `go test` (vs CLI smoketest commands) for CI speed and determinism
 
 ### What should be done in the future
-- Implement the new testing tasks in a dedicated follow-up session (starting with fixture plugins + a smoketest-e2e)
+- Implement the new testing tasks in a dedicated follow-up session (starting with fixture plugins + a dev smoketest e2e)
 
 ### Code review instructions
 - Review the testing strategy: `/home/manuel/workspaces/2026-01-06/moments-dev-tool/moments/ttmp/2026/01/06/MO-005-IMPROVE-STARTDEV--improve-startdev-sh-script-analysis-and-enhancement/design-doc/06-devctl-testing-strategy-smoke-tests-fixtures-and-end-to-end-runs.md`

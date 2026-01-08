@@ -12,8 +12,8 @@ Intent: long-term
 Owners:
     - team
 RelatedFiles:
-    - Path: devctl/cmd/devctl/cmds/smoketest_supervise.go
-      Note: Existing supervise smoketest; template for new smoketest-e2e/logs/failures
+    - Path: devctl/cmd/devctl/cmds/dev/smoketest/supervise.go
+      Note: Existing supervise smoketest; template for new dev smoketest e2e/logs/failures
     - Path: devctl/pkg/runtime/runtime_test.go
       Note: Current runtime fixture tests; baseline for expanding fixtures
     - Path: devctl/pkg/supervise/supervisor.go
@@ -139,11 +139,11 @@ In addition, for *tailing logs*, tests should:
 
 Prefer CLI commands under `cmd/devctl/cmds/` for smoke testing:
 
-- `devctl smoketest` (already exists: handshake + request/response)
-- `devctl smoketest-supervise` (already exists: health + service start/stop)
-- `devctl smoketest-e2e` (NEW: full pipeline with multiple services + logs + down)
-- `devctl smoketest-logs` (NEW: explicit log-follow assertions)
-- `devctl smoketest-failures` (NEW: validation fail, launch fail, timeout)
+- `devctl dev smoketest` (already exists: handshake + request/response)
+- `devctl dev smoketest supervise` (already exists: health + service start/stop)
+- `devctl dev smoketest e2e` (NEW: full pipeline with multiple services + logs + down)
+- `devctl dev smoketest logs` (NEW: explicit log-follow assertions)
+- `devctl dev smoketest failures` (NEW: validation fail, launch fail, timeout)
 
 These are intentionally not “unit tests”; they are fast operational checks runnable by humans and CI.
 
@@ -224,13 +224,13 @@ Deferred: could be useful later, but would increase complexity and runtime signi
 
 ### Phase 3: Add smoke test commands
 
-1. `smoketest-e2e`:
+1. `dev smoketest e2e`:
    - build test apps,
    - configure 2 services (one healthy, one crash-after),
    - run `up`, verify status/logs, then `down`.
-2. `smoketest-logs`:
+2. `dev smoketest logs`:
    - start `log-spewer`, then run `logs --follow`, verify output and cancellation.
-3. `smoketest-failures`:
+3. `dev smoketest failures`:
    - validate failure path,
    - launch failure path (health fails),
    - plugin timeout path.
@@ -239,9 +239,9 @@ Deferred: could be useful later, but would increase complexity and runtime signi
 
 Run:
 - `go test ./...`
-- `go run ./cmd/devctl smoketest`
-- `go run ./cmd/devctl smoketest-supervise`
-- `go run ./cmd/devctl smoketest-e2e` (optional “slow” job)
+- `go run ./cmd/devctl dev smoketest`
+- `go run ./cmd/devctl dev smoketest supervise`
+- `go run ./cmd/devctl dev smoketest e2e` (optional “slow” job)
 
 ## Open Questions
 

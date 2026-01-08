@@ -72,11 +72,11 @@ Added an exhaustive, script-first plugin protocol design doc covering config mut
 
 ## 2026-01-06
 
-Testing: add devctl smoketest-e2e/logs/failures; plumb dry-run; validate Moments E2E (devctl 80aaaec, moments 9f67600)
+Testing: add devctl dev smoketest e2e/logs/failures; plumb dry-run; validate Moments E2E (devctl 80aaaec, moments 9f67600)
 
 ### Related Files
 
-- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/smoketest_e2e.go — New end-to-end smoketest entrypoint
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/dev/smoketest/e2e.go — New end-to-end smoketest entrypoint
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/moments/plugins/moments-plugin.py — Moments plugin updated for dry-run and GOWORK=off
 
 

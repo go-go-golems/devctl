@@ -15,9 +15,9 @@ RelatedFiles:
       Note: Dynamic discovery behavior and __wrap-service skip
     - Path: cmd/devctl/cmds/logs.go
       Note: Follow/cancel behavior (fixture follow tested via timeout)
-    - Path: cmd/devctl/cmds/smoketest.go
+    - Path: cmd/devctl/cmds/dev/smoketest/root.go
       Note: Primary protocol v2 smoke test
-    - Path: cmd/devctl/cmds/smoketest_e2e.go
+    - Path: cmd/devctl/cmds/dev/smoketest/e2e.go
       Note: End-to-end up/status/logs/down smoke test
     - Path: cmd/devctl/cmds/wrap_service.go
       Note: Direct __wrap-service execution + process-group semantics
@@ -59,11 +59,11 @@ The main “gotcha” encountered was that `devctl version` is not a valid subco
   - Attempted (failed): `cd devctl && go run ./cmd/devctl version`
   - Correct command: `cd devctl && go run ./cmd/devctl --version`
 - Ran smoketests:
-  - `cd devctl && go run ./cmd/devctl smoketest`
-  - `cd devctl && go run ./cmd/devctl smoketest-failures`
-  - `cd devctl && go run ./cmd/devctl smoketest-logs`
-  - `cd devctl && go run ./cmd/devctl smoketest-supervise`
-  - `cd devctl && go run ./cmd/devctl smoketest-e2e`
+  - `cd devctl && go run ./cmd/devctl dev smoketest`
+  - `cd devctl && go run ./cmd/devctl dev smoketest failures`
+  - `cd devctl && go run ./cmd/devctl dev smoketest logs`
+  - `cd devctl && go run ./cmd/devctl dev smoketest supervise`
+  - `cd devctl && go run ./cmd/devctl dev smoketest e2e`
 - Verified plugins list against the shipped example config:
   - `cd devctl && go run ./cmd/devctl --config .devctl.example.yaml plugins list`
 - Checked off tasks:
@@ -97,11 +97,11 @@ The main “gotcha” encountered was that `devctl version` is not a valid subco
 
 ### Code review instructions
 - Start with the smoketest implementations:
-  - `devctl/cmd/devctl/cmds/smoketest.go`
-  - `devctl/cmd/devctl/cmds/smoketest_f​ailures.go`
-  - `devctl/cmd/devctl/cmds/smoketest_logs.go`
-  - `devctl/cmd/devctl/cmds/smoketest_supervise.go`
-  - `devctl/cmd/devctl/cmds/smoketest_e2e.go`
+  - `devctl/cmd/devctl/cmds/dev/smoketest/root.go`
+  - `devctl/cmd/devctl/cmds/dev/smoketest/failures.go`
+  - `devctl/cmd/devctl/cmds/dev/smoketest/logs.go`
+  - `devctl/cmd/devctl/cmds/dev/smoketest/supervise.go`
+  - `devctl/cmd/devctl/cmds/dev/smoketest/e2e.go`
 
 ### Technical details
 - `plugins list` output excerpt (v2 confirmed):
@@ -156,7 +156,7 @@ The first attempt at automating `logs --follow` used backgrounding + `kill -INT`
 - N/A.
 
 ### What should be done in the future
-- If we want this to be fully automated in CI, add a dedicated CLI test helper or reuse `smoketest-logs` semantics.
+- If we want this to be fully automated in CI, add a dedicated CLI test helper or reuse `dev smoketest logs` semantics.
 
 ### Code review instructions
 - Review fixture generator:

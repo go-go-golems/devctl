@@ -14,8 +14,8 @@ Owners:
 RelatedFiles:
     - Path: devctl/.github/workflows/push.yml
       Note: CI jobs for smoketests fast/slow split (commit 0ffc326)
-    - Path: devctl/cmd/devctl/cmds/smoketest_e2e.go
-      Note: Added smoketest-e2e and testapp build flow (commit 80aaaec)
+    - Path: devctl/cmd/devctl/cmds/dev/smoketest/e2e.go
+      Note: Added dev smoketest e2e and testapp build flow (commit 80aaaec)
     - Path: devctl/pkg/runtime/context.go
       Note: Propagate repo_root/dry_run into protocol requests (commit 80aaaec)
     - Path: devctl/pkg/supervise/supervisor_test.go
@@ -55,8 +55,8 @@ Validated the current `devctl` baseline in isolation (Go tests + existing smoke 
 ### What I did
 - Ran Go tests in `devctl/`: `go test ./... -count=1`
 - Ran existing smoke tests:
-  - `go run ./cmd/devctl smoketest`
-  - `go run ./cmd/devctl smoketest-supervise`
+  - `go run ./cmd/devctl dev smoketest`
+  - `go run ./cmd/devctl dev smoketest supervise`
 - Verified Moments plugin discovery/handshake:
   - `go run ./cmd/devctl plugins list --repo-root ../moments`
 
@@ -66,7 +66,7 @@ Validated the current `devctl` baseline in isolation (Go tests + existing smoke 
 
 ### What worked
 - `go test ./... -count=1` passed in `devctl/`.
-- `smoketest` and `smoketest-supervise` both passed.
+- `dev smoketest` and `dev smoketest supervise` both passed.
 - Moments plugin handshake succeeded and reported expected ops (`config.mutate`, `validate.run`, `prepare.run`, `build.run`, `launch.plan`).
 
 ### What didn't work
@@ -165,9 +165,9 @@ Expanded `devctl`’s test surface area to cover “full pipeline” behavior in
   - `devctl/testapps/cmd/crash-after`
   - `devctl/testapps/cmd/log-spewer`
 - Added CLI smoke tests:
-  - `go run ./cmd/devctl smoketest-e2e`
-  - `go run ./cmd/devctl smoketest-logs`
-  - `go run ./cmd/devctl smoketest-failures`
+  - `go run ./cmd/devctl dev smoketest e2e`
+  - `go run ./cmd/devctl dev smoketest logs`
+  - `go run ./cmd/devctl dev smoketest failures`
 - Ran verification gates:
   - `go test ./... -count=1`
   - `make lint`
@@ -178,7 +178,7 @@ Expanded `devctl`’s test surface area to cover “full pipeline” behavior in
 
 ### What worked
 - New smoke tests run quickly and passed locally:
-  - `smoketest`, `smoketest-supervise`, `smoketest-e2e`, `smoketest-logs`, `smoketest-failures`
+  - `dev smoketest`, `dev smoketest supervise`, `dev smoketest e2e`, `dev smoketest logs`, `dev smoketest failures`
 - `make lint` is clean after fixing `dynamic_commands.go` lint issues.
 
 ### What didn't work
@@ -200,7 +200,7 @@ Expanded `devctl`’s test surface area to cover “full pipeline” behavior in
 
 ### Code review instructions
 - Start at `devctl/pkg/runtime/client.go` and `devctl/pkg/runtime/context.go` to see request-context + shutdown behavior.
-- Run: `cd devctl && go test ./... -count=1 && go run ./cmd/devctl smoketest-e2e`
+- Run: `cd devctl && go test ./... -count=1 && go run ./cmd/devctl dev smoketest e2e`
 
 ### Technical details
 - New smoke tests build test apps using `go build` with `GOWORK=off` to avoid workspace leakage.
@@ -278,8 +278,8 @@ Expanded the remaining testing coverage called out by the ticket: supervisor-lev
   - a service that becomes healthy then exits is observable via `state.ProcessAlive(pid)==false`
 - Wired smoketests into CI in `devctl/.github/workflows/push.yml`:
   - `unit` job: `go test ./... -count=1`
-  - `smoke-fast` job: `smoketest`, `smoketest-supervise`, `smoketest-logs`, `smoketest-failures`
-  - `smoke-e2e` job: `smoketest-e2e`
+  - `smoke-fast` job: `dev smoketest`, `dev smoketest supervise`, `dev smoketest logs`, `dev smoketest failures`
+  - `smoke-e2e` job: `dev smoketest e2e`
 - Ran local gates:
   - `GOWORK=off go test ./... -count=1`
   - `make lint`
@@ -310,7 +310,7 @@ Expanded the remaining testing coverage called out by the ticket: supervisor-lev
 ### Code review instructions
 - Start at `devctl/pkg/supervise/supervisor_test.go` and `devctl/.github/workflows/push.yml`.
 - Validate locally:
-  - `cd devctl && GOWORK=off go test ./... -count=1 && make lint && GOWORK=off go run ./cmd/devctl smoketest-e2e`
+  - `cd devctl && GOWORK=off go test ./... -count=1 && make lint && GOWORK=off go run ./cmd/devctl dev smoketest e2e`
 
 ### Technical details
 - The readiness-timeout test writes the service PID to a file before sleeping so the test can assert `Start` properly terminates the process on failure.

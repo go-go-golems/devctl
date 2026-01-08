@@ -77,9 +77,9 @@
 - [x] Testing: add Go test app log-spewer (stdout/stderr at controlled rate)
 - [ ] Testing: add Go test app slow-start (bind after delay; readiness tests)
 - [ ] Testing: add Go test app hang (never ready; timeout tests)
-- [x] Testing: implement devctl smoketest-e2e (build testapps; up/status/logs/down)
-- [x] Testing: implement devctl smoketest-logs (follow; assert lines; cancel)
-- [x] Testing: implement devctl smoketest-failures (validate fail, launch fail, plugin timeout)
+- [x] Testing: implement devctl dev smoketest e2e (build testapps; up/status/logs/down)
+- [x] Testing: implement devctl dev smoketest logs (follow; assert lines; cancel)
+- [x] Testing: implement devctl dev smoketest failures (validate fail, launch fail, plugin timeout)
 - [x] Testing: add runtime tests for request cancellation + plugin timeout
 - [x] Testing: add supervisor tests for readiness timeout and post-ready crash handling
 - [x] Testing: add CI targets to run go test + smoketests (fast vs slow split)

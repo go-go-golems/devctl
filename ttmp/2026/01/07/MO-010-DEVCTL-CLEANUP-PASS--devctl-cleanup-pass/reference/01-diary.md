@@ -842,7 +842,7 @@ The outcome is a large set of MO-010 tasks covering: core CLI flows (`plan/up/st
 
 ### What I did
 - Enumerated fixtures and test surfaces:
-  - CLI smoketests (`smoketest`, `smoketest-e2e`, `smoketest-failures`, `smoketest-logs`, `smoketest-supervise`)
+  - CLI smoketests (`dev smoketest`, `dev smoketest e2e`, `dev smoketest failures`, `dev smoketest logs`, `dev smoketest supervise`)
   - Fixture scripts:
     - `devctl/ttmp/2026/01/06/MO-006-DEVCTL-TUI--create-a-devctl-tui/scripts/setup-fixture-repo-root.sh`
     - `devctl/ttmp/2026/01/06/MO-009-TUI-COMPLETE-FEATURES--complete-tui-features-per-mo-006-design/scripts/setup-comprehensive-fixture.sh`

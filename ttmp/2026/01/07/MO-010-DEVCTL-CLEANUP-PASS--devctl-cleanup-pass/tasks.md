@@ -17,11 +17,11 @@
 - [x] Validation: gofmt/go test; update diary + changelog; commit code and docs
 - [x] [RealWorld/Build] cd devctl && go run ./cmd/devctl --help (binary starts, no panic)
 - [x] [RealWorld/Build] cd devctl && go run ./cmd/devctl --version (prints version)
-- [x] [RealWorld/Smoke] cd devctl && go run ./cmd/devctl smoketest (protocol handshake + ping)
-- [x] [RealWorld/Smoke] cd devctl && go run ./cmd/devctl smoketest-failures (validate fail, launch fail, plugin timeout)
-- [x] [RealWorld/Smoke] cd devctl && go run ./cmd/devctl smoketest-logs (follow + cancel promptness)
-- [x] [RealWorld/Smoke] cd devctl && go run ./cmd/devctl smoketest-supervise (http-service plugin + GET)
-- [x] [RealWorld/Smoke] cd devctl && go run ./cmd/devctl smoketest-e2e (build testapps; up/status/logs/down)
+- [x] [RealWorld/Smoke] cd devctl && go run ./cmd/devctl dev smoketest (protocol handshake + ping)
+- [x] [RealWorld/Smoke] cd devctl && go run ./cmd/devctl dev smoketest failures (validate fail, launch fail, plugin timeout)
+- [x] [RealWorld/Smoke] cd devctl && go run ./cmd/devctl dev smoketest logs (follow + cancel promptness)
+- [x] [RealWorld/Smoke] cd devctl && go run ./cmd/devctl dev smoketest supervise (http-service plugin + GET)
+- [x] [RealWorld/Smoke] cd devctl && go run ./cmd/devctl dev smoketest e2e (build testapps; up/status/logs/down)
 - [x] [RealWorld/Plugins] cd devctl && go run ./cmd/devctl --config .devctl.example.yaml plugins list (protocol_version shows v2)
 - [x] [RealWorld/Dynamic] Create temp repo with testdata/plugins/command; run devctl echo hello (dynamic command wired from handshake)
 - [x] [RealWorld/Dynamic] Dynamic command collision: two command plugins both advertise echo; confirm warning and command still runs
@@ -30,7 +30,7 @@
 - [x] [RealWorld/Strict] Config collision strictness: configure two pipeline plugins that set same config key; verify strictness behavior (warn vs error)
 - [x] [RealWorld/Protocol] Negative: v1 handshake rejected (create temp v1 plugin; devctl plugins list should fail with E_PROTOCOL_INVALID_HANDSHAKE)
 - [x] [RealWorld/Runtime] Negative: noisy-handshake plugin (non-JSON before handshake) causes plugins list failure
-- [x] [RealWorld/Runtime] Negative: noisy-after-handshake plugin causes a call to fail (cd devctl && go run ./cmd/devctl smoketest --plugin ./testdata/plugins/noisy-after-handshake/plugin.py)
+- [x] [RealWorld/Runtime] Negative: noisy-after-handshake plugin causes a call to fail (cd devctl && go run ./cmd/devctl dev smoketest --plugin ./testdata/plugins/noisy-after-handshake/plugin.py)
 - [x] [RealWorld/Meta] Verify request ctx repo_root/cwd/dry_run correctness by using a temp plugin that logs request.ctx to stderr
 - [x] [Fixture/MO-006] Run ttmp/2026/01/06/MO-006-DEVCTL-TUI--create-a-devctl-tui/scripts/setup-fixture-repo-root.sh to create REPO_ROOT
 - [x] [Fixture/MO-006] On MO-006 fixture: devctl plan (returns 2+ services; no errors)

@@ -54,7 +54,7 @@ However, capability checking is *inconsistent* for:
 - **Dynamic CLI command discovery**: `devctl/cmd/devctl/cmds/dynamic_commands.go` calls `commands.list` for every plugin unconditionally (3s timeout), even when the plugin does not declare it. A plugin that ignores unknown ops will stall startup for the full timeout.
 - **Dynamic command execution**: the same file calls `command.run` unconditionally when a dynamic command is invoked (risk: stall until the per-op timeout).
 - **Streams**: `runtime.Client.StartStream()` sends a request without any “supports” check (and there is no `SupportsStream` helper).
-- **Misc smoke tests**: `smoketest` commands call “ping” without checking capabilities (less important for users, but it’s the same pattern).
+- **Misc smoke tests**: `dev smoketest` commands call “ping” without checking capabilities (less important for users, but it’s the same pattern).
 
 The root cause is structural: `runtime.Client.Call()` has no built-in “supports” check (it only implements the protocol send+wait), so every call site must remember to gate on handshake capabilities (and many don’t).
 
@@ -268,7 +268,7 @@ Call sites inside the repo are mostly tests today. But structurally:
 
 ### E) Smoke tests (no gate, but test-only)
 
-`devctl/cmd/devctl/cmds/smoketest.go` and `smoketest_failures.go` call:
+`devctl/cmd/devctl/cmds/dev/smoketest/root.go` and `smoketest_failures.go` call:
 - `c.Call(ctx, "ping", ...)`
 
 These are developer-facing test commands, not production flows, but they show the “raw Call” style that can hang if the plugin ignores requests.

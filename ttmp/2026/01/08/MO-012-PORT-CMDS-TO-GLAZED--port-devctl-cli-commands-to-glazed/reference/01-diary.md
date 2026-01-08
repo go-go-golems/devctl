@@ -163,7 +163,7 @@ This also introduces a concrete command layout convention we’ll follow going f
 - The `smoketest*` commands are referenced in both “living” docs (`pkg/doc`) and CI; those will break immediately if we change the CLI path without updating them.
 
 ### What was tricky to build
-- Deciding what to treat as “must update now” vs “historical record”: old ticket diaries contain `go run ./cmd/devctl smoketest-*` commands that are no longer correct once we change the CLI shape.
+- Deciding what to treat as “must update now” vs “historical record”: older ticket docs contained `go run ./cmd/devctl smoketest-*` examples and `cmd/devctl/cmds/smoketest_*.go` paths, and we wanted those to remain copy/pasteable after the refactor.
 
 ### What warrants a second pair of eyes
 - Whether we want a temporary compatibility shim (aliases for `smoketest-*`) or to make this a clean breaking change and update all call sites at once.
@@ -181,3 +181,64 @@ This also introduces a concrete command layout convention we’ll follow going f
 - Repo-wide searches used to find call sites:
   - `rg -n "\\bsmoketest\\b" -S .` (from `devctl/`)
   - `rg -n "devctl\\s+smoketest" -S .` (from `devctl/`)
+
+## Step 4: Implement `dev smoketest` Group + Update Call Sites (completed)
+
+This step landed the actual CLI refactor: smoketests are no longer top-level verbs, and are now accessible under `devctl dev smoketest ...`. The `dev` group is hidden, so it doesn’t clutter the normal help surface, but it remains available for CI and developer workflows.
+
+Alongside the code move, this step updated CI and docs to use the new command paths so that `go test` and the smoketest suite remain runnable and copy/pasteable without needing tribal knowledge.
+
+**Commit (code):** b27aec404b887a5ec5cf98e887c5652fd6c686f0 — "devctl: move smoketests under dev group"
+
+### What I did
+- Refactored Cobra command registration so smoketests live under a `dev` group:
+  - `devctl/cmd/devctl/cmds/root.go`
+  - `devctl/cmd/devctl/cmds/dev/root.go`
+  - `devctl/cmd/devctl/cmds/dev/smoketest/root.go`
+  - `devctl/cmd/devctl/cmds/dev/smoketest/{e2e,logs,failures,supervise}.go`
+- Updated CI + docs to the new CLI paths:
+  - `devctl/.github/workflows/push.yml`
+  - `devctl/pkg/doc/topics/devctl-plugin-authoring.md`
+- Updated older ticket docs under `devctl/ttmp/...` so the smoketest commands and referenced file paths remain correct after the move.
+
+### Why
+- Keeps the user-facing CLI surface area focused while preserving high-value integration coverage for dev/CI.
+- Establishes the filesystem-backed group convention (`cmd/devctl/cmds/<group>/...`) we’ll use while porting the main verbs to Glazed.
+
+### What worked
+- All smoketests still run successfully under the new paths.
+- The CI workflow and docs no longer reference the removed `smoketest-*` top-level verbs.
+
+### What didn't work
+- N/A.
+
+### What I learned
+- Smoketest helper code that locates the devctl repo root via `runtime.Caller` is sensitive to directory depth; moving the command files required updating the “walk up” logic.
+
+### What was tricky to build
+- Keeping documentation consistent across both “living” docs and ticket docs: once the CLI path changed, any remaining `smoketest-*` references became immediate foot-guns.
+
+### What warrants a second pair of eyes
+- Whether we should add temporary aliases for `smoketest-*` (currently: no aliases; we updated call sites instead).
+- Whether `Hidden: true` for `dev` has any unintended impact on completion/help UX in shells we care about.
+
+### What should be done in the future
+- N/A.
+
+### Code review instructions
+- Start with the command tree change and registration:
+  - `devctl/cmd/devctl/cmds/root.go`
+  - `devctl/cmd/devctl/cmds/dev/root.go`
+  - `devctl/cmd/devctl/cmds/dev/smoketest/root.go`
+- Validate by running:
+  - `cd devctl && go test ./... -count=1`
+  - `cd devctl && GOWORK=off go run ./cmd/devctl dev smoketest e2e`
+
+### Technical details
+- Validation commands executed:
+  - `cd devctl && go test ./... -count=1`
+  - `cd devctl && GOWORK=off go run ./cmd/devctl dev smoketest`
+  - `cd devctl && GOWORK=off go run ./cmd/devctl dev smoketest supervise`
+  - `cd devctl && GOWORK=off go run ./cmd/devctl dev smoketest logs`
+  - `cd devctl && GOWORK=off go run ./cmd/devctl dev smoketest failures`
+  - `cd devctl && GOWORK=off go run ./cmd/devctl dev smoketest e2e`
