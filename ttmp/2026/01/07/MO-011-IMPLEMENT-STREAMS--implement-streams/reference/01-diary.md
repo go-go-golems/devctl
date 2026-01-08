@@ -143,3 +143,53 @@ The concrete outcome is that `runtime.Client.StartStream` now short-circuits wit
 - Commands run:
   - `gofmt -w devctl/pkg/runtime/client.go devctl/pkg/runtime/runtime_test.go`
   - `cd devctl && go test ./...`
+
+## Step 3: Add telemetry + negative stream fixtures (tests prove “no hangs”)
+
+This step added two new plugin fixtures under `devctl/testdata/plugins/` so stream behavior can be validated without touching any real repo plugins. One fixture is “happy path telemetry” (a deterministic finite stream), and the other is a deliberately misbehaving plugin that advertises `capabilities.streams` but not `capabilities.ops` and never responds—exactly the kind of thing that would previously cause a hang in stream-start code paths.
+
+The key outcome is a concrete safety net: runtime tests now cover both “telemetry stream works” and “streams-only advertisement does not enable invocation,” ensuring that future UIStreamRunner/CLI work can rely on fail-fast behavior rather than timeouts.
+
+**Commit (code):** 25819fd — "runtime: add telemetry and negative stream fixtures"
+
+### What I did
+- Added `devctl/testdata/plugins/telemetry/plugin.py` implementing `telemetry.stream` and emitting 3 deterministic `metric` events then `end`.
+- Added `devctl/testdata/plugins/streams-only-never-respond/plugin.py` that advertises `streams:["telemetry.stream"]`, declares `ops:[]`, and never responds.
+- Added runtime tests:
+  - `TestRuntime_TelemetryStreamFixture`
+  - `TestRuntime_StartStreamIgnoresStreamsCapabilityForInvocation`
+- Ran `go test ./...` to confirm no regressions.
+
+### Why
+- The TUI runner and CLI will depend on stream semantics; having fixtures makes both development and regression testing straightforward.
+- The negative fixture encodes the real-world failure mode we care about: “stream capability advertised” must not imply “safe to invoke”.
+
+### What worked
+- The telemetry fixture is deterministic and yields a stable assertion (`[0,1,2]` counter values) without relying on timing beyond a tiny sleep.
+- The negative fixture test demonstrates that `StartStream("telemetry.stream")` fails with `E_UNSUPPORTED` even though the op is listed in `capabilities.streams`.
+
+### What didn't work
+- N/A
+
+### What I learned
+- Having the plugin end on its own (finite count) is much easier to test than relying on client-close-driven termination.
+
+### What was tricky to build
+- `protocol.Event.Fields` values arrive as `float64` when encoded/decoded through JSON, so the test needs to handle numeric types carefully.
+
+### What warrants a second pair of eyes
+- Confirm that the telemetry fixture event schema (`fields.name/value/unit`) is a good canonical pattern for future telemetry/metrics streams in real plugins.
+
+### What should be done in the future
+- Use these fixtures as the baseline validation path for `devctl stream start` and `UIStreamRunner` (happy path + hang-proofing).
+
+### Code review instructions
+- Review the fixtures:
+  - `devctl/testdata/plugins/telemetry/plugin.py`
+  - `devctl/testdata/plugins/streams-only-never-respond/plugin.py`
+- Review tests in `devctl/pkg/runtime/runtime_test.go` for both positive and negative behaviors.
+- Validate: `cd devctl && go test ./... -count=1`.
+
+### Technical details
+- Commands run:
+  - `cd devctl && go test ./...`
