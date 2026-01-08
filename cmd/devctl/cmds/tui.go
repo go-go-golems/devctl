@@ -52,6 +52,13 @@ func newTuiCmd() *cobra.Command {
 				DryRun:   opts.DryRun,
 				Timeout:  opts.Timeout,
 			})
+			tui.RegisterUIStreamRunner(bus, tui.RootOptions{
+				RepoRoot: opts.RepoRoot,
+				Config:   opts.Config,
+				Strict:   opts.Strict,
+				DryRun:   opts.DryRun,
+				Timeout:  opts.Timeout,
+			})
 
 			model := models.NewRootModel(models.RootModelOptions{
 				PublishAction: func(req tui.ActionRequest) error {
