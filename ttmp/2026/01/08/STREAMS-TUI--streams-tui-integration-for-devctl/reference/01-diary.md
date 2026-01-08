@@ -117,12 +117,50 @@ This caused streams to immediately fail with "context canceled".
 
 ---
 
-## Step 3: Enhance Stream Row Display (pending)
+## Step 3: Enhance Stream Row Display
 
-Will add duration and event count to stream rows for better visibility.
+Added duration and event count to stream rows for better visibility.
+
+**Commit (code):** 946fcc3 — "Enhance: add duration and event count to stream rows"
+
+### What I did
+- Added `EventCount` field to `streamRow` struct
+- Updated `onStreamEvent` to increment event count for each event
+- Enhanced `renderStreamList` to display:
+  - Status icon (●/○/✗)
+  - Status text
+  - Operation name
+  - Plugin ID
+  - Duration (using existing `formatDuration` from service_model.go)
+  - Event count
+
+### What worked
+- Stream row now shows: `> ○ ended  telemetry.stream  telemetry  4s  11 events`
+- Much more informative than the old: `> ended telemetry.stream (plugin=telemetry)`
+
+### What was tricky to build
+- Had to reuse the existing `formatDuration` function from service_model.go rather than creating a duplicate
+
+### Code review instructions
+- Look at `streams_model.go` streamRow struct and renderStreamList function
+- Run TUI, start a stream, verify the new display format
 
 ---
 
-## Step 4: Test and Validate (pending)
+## Step 4: Summary and Next Steps
 
-Will validate all fixes with comprehensive testing.
+### Completed
+1. ✅ Fixed critical context cancellation bug (commit f1b1761)
+2. ✅ Enhanced stream row display with duration/event count (commit 946fcc3)
+
+### Remaining (from design doc)
+- [ ] Show available stream ops in empty state
+- [ ] Add quick-start stream picker [q]
+- [ ] Add stream indicator to Plugins view
+- [ ] Add streams widget to Dashboard
+
+### Testing Performed
+- Started telemetry stream with 10 events
+- Verified all events received
+- Verified stream completes with "ended" status
+- Verified duration and event count display correctly

@@ -13,3 +13,12 @@ Fixed critical stream context bug (commit f1b1761) - streams now run to completi
 
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/stream_runner.go — Fixed context.Background() usage for stream/plugin lifecycle
 
+
+## 2026-01-08
+
+Enhanced stream row display with duration and event count (commit 946fcc3)
+
+### Related Files
+
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/models/streams_model.go — Added EventCount field and enhanced renderStreamList
+
