@@ -2,7 +2,7 @@
 
 ## TODO
 
-- [ ] Add tasks here
+- [x] Add tasks here
 
 - [x] Decide and document capability gating semantics for StartStream (ops authoritative; streams informational vs strict ops+streams)
 - [x] Add TUI stream envelope types + structs (StreamStartRequest/StreamEvent/StreamEnded) and Bubble Tea msg types

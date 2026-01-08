@@ -103,3 +103,12 @@ Step 8: Added a Streams TUI+CLI validation playbook (task 12).
 
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/ttmp/2026/01/07/MO-011-IMPLEMENT-STREAMS--implement-streams/playbook/01-streams-tui-cli-validation-playbook.md — Copy/paste manual validation procedure for streams
 
+
+## 2026-01-07
+
+Checked off initial placeholder task line in tasks.md (cleanup).
+
+### Related Files
+
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/ttmp/2026/01/07/MO-011-IMPLEMENT-STREAMS--implement-streams/tasks.md — Marked placeholder as done
+
