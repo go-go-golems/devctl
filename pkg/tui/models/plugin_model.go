@@ -56,7 +56,8 @@ func (m PluginModel) WithPlugins(plugins []tui.PluginSummary) PluginModel {
 			Status:   p.Status,
 			Priority: p.Priority,
 			Protocol: "v1", // Default protocol
-			// Ops, Streams, Commands would come from introspection
+			Ops:      p.Ops,
+			Streams:  p.Streams,
 		})
 	}
 	// Reset selection if out of bounds
@@ -161,6 +162,12 @@ func (m PluginModel) renderPluginCard(index int, p PluginInfo, selected, expande
 		cursor = theme.KeybindKey.Render("> ")
 	}
 
+	// Stream indicator
+	streamIndicator := ""
+	if len(p.Streams) > 0 {
+		streamIndicator = theme.StatusRunning.Render("  📊 stream")
+	}
+
 	// Plugin name with status
 	titleLine := lipgloss.JoinHorizontal(lipgloss.Center,
 		cursor,
@@ -169,6 +176,7 @@ func (m PluginModel) renderPluginCard(index int, p PluginInfo, selected, expande
 		theme.Title.Render(p.ID),
 		"  ",
 		theme.TitleMuted.Render(fmt.Sprintf("priority: %d", p.Priority)),
+		streamIndicator,
 	)
 
 	if !expanded {

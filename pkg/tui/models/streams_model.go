@@ -150,12 +150,19 @@ func (m StreamsModel) View() string {
 
 	if len(m.streams) == 0 && !m.creating {
 		box := widgets.NewBox("Streams").
+			WithTitleRight("[n] new stream").
 			WithContent(lipgloss.JoinVertical(lipgloss.Left,
 				theme.TitleMuted.Render("No active streams."),
 				"",
-				theme.TitleMuted.Render("Press [n] to start a new stream."),
+				theme.Title.Render("How to start a stream:"),
+				theme.TitleMuted.Render("Press [n] and enter JSON with op, plugin_id, and input:"),
+				"",
+				theme.KeybindKey.Render(`  {"op":"telemetry.stream","plugin_id":"...","input":{...}}`),
+				"",
+				theme.TitleMuted.Render("Stream ops are defined by plugins (see Plugins view)."),
+				theme.TitleMuted.Render("Use `devctl stream start --op <op>` for CLI access."),
 			)).
-			WithSize(m.width, 6)
+			WithSize(m.width, 12)
 		return box.Render()
 	}
 

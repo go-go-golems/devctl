@@ -36,10 +36,12 @@ type HealthCheckResult struct {
 
 // PluginSummary contains summary information about a plugin.
 type PluginSummary struct {
-	ID       string `json:"id"`
-	Path     string `json:"path"`
-	Priority int    `json:"priority"`
-	Status   string `json:"status"` // "active" | "disabled" | "error"
+	ID       string   `json:"id"`
+	Path     string   `json:"path"`
+	Priority int      `json:"priority"`
+	Status   string   `json:"status"` // "active" | "disabled" | "error"
+	Ops      []string `json:"ops,omitempty"`
+	Streams  []string `json:"streams,omitempty"`
 }
 
 type StateSnapshot struct {
