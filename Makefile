@@ -46,14 +46,14 @@ tag-patch:
 
 release:
 	git push origin --tags
-	GOPROXY=proxy.golang.org go list -m github.com/go-go-golems/XXX@$(shell svu current)
+	GOPROXY=proxy.golang.org go list -m github.com/go-go-golems/devctl@$(shell svu current)
 
 bump-glazed:
 	go get github.com/go-go-golems/glazed@latest
 	go get github.com/go-go-golems/clay@latest
 	go mod tidy
 
-XXX_BINARY=$(shell which XXX)
+devctl_BINARY=$(shell which devctl)
 install:
-	go build -o ./dist/XXX ./cmd/XXX && \
-		cp ./dist/XXX $(XXX_BINARY)
+	go build -o ./dist/devctl ./cmd/devctl && \
+		cp ./dist/devctl $(devctl_BINARY)
