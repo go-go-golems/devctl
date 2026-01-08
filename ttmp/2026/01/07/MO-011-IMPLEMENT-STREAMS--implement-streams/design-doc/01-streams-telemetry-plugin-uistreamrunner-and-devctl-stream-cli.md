@@ -10,24 +10,35 @@ DocType: design-doc
 Intent: long-term
 Owners: []
 RelatedFiles:
-    - Path: devctl/pkg/protocol/types.go
+    - Path: cmd/devctl/cmds/stream.go
+      Note: devctl stream CLI implementation
+    - Path: pkg/protocol/types.go
       Note: Event/handshake schema used by telemetry stream design
-    - Path: devctl/pkg/runtime/client.go
-      Note: StartStream API used by UIStreamRunner and devctl stream CLI
-    - Path: devctl/pkg/runtime/router.go
-      Note: Stream event routing/buffering behavior that shapes runner backpressure design
-    - Path: devctl/pkg/tui/action_runner.go
+    - Path: pkg/runtime/client.go
+      Note: |-
+        StartStream API used by UIStreamRunner and devctl stream CLI
+        StartStream API used by UIStreamRunner + devctl stream
+    - Path: pkg/runtime/router.go
+      Note: |-
+        Stream event routing/buffering behavior that shapes runner backpressure design
+        Stream event routing/buffering that shapes runner behavior
+    - Path: pkg/tui/action_runner.go
       Note: Pattern for a centralized runner in the TUI process
-    - Path: devctl/pkg/tui/forward.go
+    - Path: pkg/tui/forward.go
       Note: Must be extended to forward stream UI messages to Bubble Tea
-    - Path: devctl/pkg/tui/transform.go
+    - Path: pkg/tui/stream_runner.go
+      Note: UIStreamRunner implementation
+    - Path: pkg/tui/transform.go
       Note: Must be extended to map domain stream events to UI messages
+    - Path: testdata/plugins/telemetry/plugin.py
+      Note: Telemetry fixture plugin example
 ExternalSources: []
 Summary: 'Design for a telemetry streaming plugin shape plus two devctl surfaces that leverage protocol streams: a centralized TUI UIStreamRunner and a devctl stream CLI.'
 LastUpdated: 2026-01-07T20:43:08-05:00
 WhatFor: Provide an implementable plan to make protocol streams usable from the TUI and CLI while keeping stream lifecycles centralized and robust against misbehaving plugins.
 WhenToUse: When implementing MO-011 (streams), adding stream-producing plugin ops (telemetry/logs/metrics), or building debugging tools around StartStream.
 ---
+
 
 
 # Streams: telemetry plugin, UIStreamRunner, and devctl stream CLI

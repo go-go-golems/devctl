@@ -10,37 +10,47 @@ DocType: analysis
 Intent: long-term
 Owners: []
 RelatedFiles:
-    - Path: devctl/cmd/devctl/cmds/tui.go
+    - Path: cmd/devctl/cmds/stream.go
       Note: |-
-        Registers the stream runner and wires stream publish helpers into the root model.
-    - Path: devctl/pkg/protocol/types.go
-      Note: |-
-        Protocol frame schemas (handshake/request/response/event) and capabilities fields.
-    - Path: devctl/pkg/runtime/client.go
+        devctl stream CLI (start a stream op and print events).
+        devctl stream CLI
+    - Path: cmd/devctl/cmds/tui.go
+      Note: Registers the stream runner and wires stream publish helpers into the root model.
+    - Path: pkg/protocol/types.go
+      Note: Protocol frame schemas (handshake/request/response/event) and capabilities fields.
+    - Path: pkg/runtime/client.go
       Note: |-
         StartStream implementation; capability gating; Close semantics.
-    - Path: devctl/pkg/runtime/router.go
-      Note: |-
-        Stream multiplexing, buffering, end-of-stream closure behavior.
-    - Path: devctl/pkg/runtime/runtime_test.go
+        StartStream capability gating (ops authoritative)
+    - Path: pkg/runtime/router.go
+      Note: Stream multiplexing, buffering, end-of-stream closure behavior.
+    - Path: pkg/runtime/runtime_test.go
       Note: |-
         Tests that validate StartStream behavior and close semantics.
-    - Path: devctl/pkg/tui/stream_runner.go
-      Note: Central stream lifecycle manager for the TUI (UIStreamRunner).
-    - Path: devctl/pkg/tui/models/streams_model.go
-      Note: Streams tab UI and interaction model (start/stop, event log).
-    - Path: devctl/cmd/devctl/cmds/stream.go
-      Note: devctl stream CLI (start a stream op and print events).
-    - Path: devctl/testdata/plugins/telemetry/plugin.py
-      Note: Positive fixture plugin that implements telemetry.stream and emits metric events.
-    - Path: devctl/testdata/plugins/streams-only-never-respond/plugin.py
-      Note: Negative fixture plugin that advertises capabilities.streams but never responds (hang prevention).
+        StartStream fail-fast tests + telemetry fixture coverage
+    - Path: pkg/tui/models/streams_model.go
+      Note: |-
+        Streams tab UI and interaction model (start/stop, event log).
+        Streams tab UI rendering + interactions
+    - Path: pkg/tui/stream_runner.go
+      Note: |-
+        Central stream lifecycle manager for the TUI (UIStreamRunner).
+        UIStreamRunner central stream lifecycle management
+    - Path: testdata/plugins/streams-only-never-respond/plugin.py
+      Note: |-
+        Negative fixture plugin that advertises capabilities.streams but never responds (hang prevention).
+        Negative fixture (streams-only
+    - Path: testdata/plugins/telemetry/plugin.py
+      Note: |-
+        Positive fixture plugin that implements telemetry.stream and emits metric events.
+        Telemetry stream fixture plugin
 ExternalSources: []
 Summary: Textbook-style mapping of devctl plugin streaming (protocol + runtime) and its integration into the TUI + CLI, including capability-gating that prevents hangs from “streams-only” plugins.
 LastUpdated: 2026-01-07T20:43:08-05:00
 WhatFor: Map how devctl “streams” are implemented (protocol + runtime), where they are intended to be used (logs.follow, telemetry/metrics/log aggregation), and how they integrate into the Bubble Tea TUI and devctl CLI.
 WhenToUse: When extending stream-producing plugin ops, debugging stream initiation/cancellation, or evolving the TUI/CLI stream UX.
 ---
+
 
 
 # Streams: codebase analysis and TUI integration

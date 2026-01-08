@@ -235,6 +235,73 @@ The key outcome is a single, copy/paste document that validates: stream start wo
 ### Technical details
 - No code changes in this step; playbook is intended for manual execution.
 
+## Step 9: Refresh MO-011 docs and upload to reMarkable
+
+This step reconciled the original “streams are not integrated yet” analysis/design writeups with the now-implemented stream integration (ops-only `StartStream` gating, `UIStreamRunner`, Streams tab, and `devctl stream start`). The goal was to remove stale statements so the ticket docs remain trustworthy reference material rather than a pre-implementation plan.
+
+It also uploaded the key MO-011 documents (analysis, design doc, playbook, and diary) to reMarkable as PDFs, mirroring the ticket structure on-device for easy reading/annotation.
+
+**Commit (docs):** f453a99 — "Docs: refresh MO-011 streams analysis"
+
+### What I did
+- Updated ticket docs to match the implemented reality:
+  - `analysis/01-streams-codebase-analysis-and-tui-integration.md` (exec summary, fixtures, current implementation status).
+  - `design-doc/01-streams-telemetry-plugin-uistreamrunner-and-devctl-stream-cli.md` (clarified ops-only capability gating).
+- Ran `go test ./... -count=1` to ensure nothing regressed while editing docs.
+- Validated doc frontmatter with `docmgr validate frontmatter`.
+- Cleaned up unrelated noise files that appeared in `vhs/` (restored and removed untracked `.gif` files) to keep commits focused.
+- Refreshed `RelatedFiles` notes via `docmgr doc relate` and recorded the update in the ticket changelog.
+- Uploaded PDFs to reMarkable using `remarkable_upload.py --mirror-ticket-structure`.
+
+### Why
+- The analysis doc is meant to be “textbook ground truth”; leaving “missing integration” statements after implementing the integration would confuse future work.
+- Uploading to reMarkable makes the long-form docs much easier to review end-to-end and annotate.
+
+### What worked
+- `go test ./... -count=1` remained green.
+- `docmgr validate frontmatter` reported “Frontmatter OK” for both docs.
+- `remarkable_upload.py` successfully produced PDFs and uploaded them under:
+  - `ai/2026/01/07/MO-011-IMPLEMENT-STREAMS--implement-streams/analysis/`
+  - `ai/2026/01/07/MO-011-IMPLEMENT-STREAMS--implement-streams/design-doc/`
+  - `ai/2026/01/07/MO-011-IMPLEMENT-STREAMS--implement-streams/playbook/`
+  - `ai/2026/01/07/MO-011-IMPLEMENT-STREAMS--implement-streams/reference/`
+
+### What didn't work
+- First attempt at frontmatter validation used a `ttmp/...` doc path and failed because docmgr already resolves `--doc` relative to its root:
+  - `Error: open .../devctl/ttmp/ttmp/2026/...: no such file or directory`
+- First attempt at `docmgr doc relate --doc 2026/...` failed (expected `--doc ttmp/2026/...`):
+  - `Error: expected exactly 1 doc for --doc "...", got 0`
+- Unrelated `vhs/*.gif` files appeared and needed cleanup (`git clean -f vhs/*.gif`).
+
+### What I learned
+- docmgr subcommands do not consistently interpret `--doc` paths the same way; it’s safest to follow each subcommand’s help/examples.
+- The reMarkable uploader’s `--mirror-ticket-structure` mode is ideal for multi-doc tickets: it avoids filename collisions and preserves context.
+
+### What was tricky to build
+- Keeping docs and docmgr metadata in sync without accidentally committing unrelated generated assets (the recurring `vhs/` noise) required vigilance and explicit `git restore`/`git clean` steps.
+
+### What warrants a second pair of eyes
+- Whether the now-larger `RelatedFiles` lists are too noisy; we may want to prune back down to a smaller set per doc while keeping the ticket index as the “overview” link hub.
+
+### What should be done in the future
+- If we implement protocol-level stop semantics (task [14]), re-upload updated docs so the reMarkable copy stays in sync.
+
+### Code review instructions
+- Review the updated docs:
+  - `devctl/ttmp/2026/01/07/MO-011-IMPLEMENT-STREAMS--implement-streams/analysis/01-streams-codebase-analysis-and-tui-integration.md`
+  - `devctl/ttmp/2026/01/07/MO-011-IMPLEMENT-STREAMS--implement-streams/design-doc/01-streams-telemetry-plugin-uistreamrunner-and-devctl-stream-cli.md`
+- Sanity-check that their “current behavior” statements match code:
+  - `devctl/pkg/runtime/client.go`
+  - `devctl/pkg/tui/stream_runner.go`
+  - `devctl/cmd/devctl/cmds/stream.go`
+
+### Technical details
+- Commands run:
+  - `cd devctl && go test ./... -count=1`
+  - `cd devctl && docmgr validate frontmatter --doc 2026/01/07/MO-011-IMPLEMENT-STREAMS--implement-streams/analysis/01-streams-codebase-analysis-and-tui-integration.md --suggest-fixes`
+  - `cd devctl && docmgr validate frontmatter --doc 2026/01/07/MO-011-IMPLEMENT-STREAMS--implement-streams/design-doc/01-streams-telemetry-plugin-uistreamrunner-and-devctl-stream-cli.md --suggest-fixes`
+  - `cd devctl && python3 /home/manuel/.local/bin/remarkable_upload.py --ticket-dir /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/ttmp/2026/01/07/MO-011-IMPLEMENT-STREAMS--implement-streams --mirror-ticket-structure <md...>`
+
 ## Step 7: Implement `devctl stream start` CLI (stream debugging harness)
 
 This step added a dedicated CLI surface for streams so we can start a stream op and observe `protocol.Event` frames without the TUI. This is both a real feature (for power users / scripting) and a practical debugging tool for plugin authors: it makes it easy to test “does my stream start quickly, does it emit events, does it end cleanly?” without needing to wire a full UI.
