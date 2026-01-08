@@ -194,6 +194,59 @@ The key outcome is a concrete safety net: runtime tests now cover both “teleme
 - Commands run:
   - `cd devctl && go test ./...`
 
+## Step 5: Implement `UIStreamRunner` (central stream lifecycle management in the TUI process)
+
+This step implemented the first production subsystem that actually calls `runtime.Client.StartStream`: `UIStreamRunner`. It follows the same architectural pattern as `UIActionRunner`, but for long-lived stream lifecycles instead of short-lived pipeline actions. The runner centralizes start/stop, chooses a plugin client, publishes `stream.*` domain events, and ensures plugin processes are cleaned up when streams end or are stopped.
+
+The key outcome is that the TUI now has a correct “backend” for streams: if the UI publishes a `tui.stream.start` request, the runner will start a plugin, initiate the stream (with a short start timeout), forward events into the bus, and publish a terminal `stream.ended` event. This unblocks building a Streams UI view next.
+
+**Commit (code):** e0db4d5 — "tui: add UIStreamRunner"
+
+### What I did
+- Added `RegisterUIStreamRunner` in `devctl/pkg/tui/stream_runner.go`:
+  - consumes `tui.stream.start` / `tui.stream.stop` on `TopicUIActions`
+  - loads repo config via `repository.Load`
+  - starts plugin clients via `runtime.Factory`
+  - gates stream-start on `SupportsOp(op)` and then calls `StartStream` with a 2s start timeout
+  - publishes domain events: `stream.started`, `stream.event`, `stream.ended`
+  - stop semantics: close the per-stream client (v1 = one client per stream)
+- Wired the runner into the TUI startup alongside the action runner in `devctl/cmd/devctl/cmds/tui.go`.
+- Ran `go test ./...` in `devctl/`.
+
+### Why
+- Streams require long-lived goroutines and resource cleanup; concentrating that in a single runner avoids model-level leaks and “forgot to stop” bugs.
+- `UIStreamRunner` makes stream usage testable and debuggable independently of any specific UI view.
+
+### What worked
+- The runner builds on the existing envelope/bus architecture cleanly and compiles without changes to unrelated packages.
+- Per-stream “one client per stream” makes stop semantics reliable without needing protocol-level `stream.stop` yet.
+
+### What didn't work
+- N/A
+
+### What I learned
+- Picking a plugin “by op support” (when plugin_id isn’t provided) requires starting plugins to read handshakes; doing that per stream is acceptable for v1 but will motivate future caching/stop semantics.
+
+### What was tricky to build
+- Avoiding duplicate/multiple `stream.ended` emissions required centralizing ended emission in the event-forwarding goroutine.
+- Telemetry flood risks are real; this runner intentionally does not try to mirror events into the global Events log (transformer logs only start/end).
+
+### What warrants a second pair of eyes
+- The “one client per stream” choice is pragmatic but potentially heavy; review whether we should pursue a protocol stop op sooner.
+- Confirm the selection policy when `plugin_id` is omitted (first plugin supporting op by priority/id) is acceptable.
+
+### What should be done in the future
+- Implement a Streams UI view that can publish `tui.stream.start` requests and render `tui.stream.*` messages.
+
+### Code review instructions
+- Review `devctl/pkg/tui/stream_runner.go` end-to-end (it owns lifecycle, selection, and publishing).
+- Review `devctl/cmd/devctl/cmds/tui.go` to confirm the runner is wired in.
+- Validate: `cd devctl && go test ./... -count=1`.
+
+### Technical details
+- Commands run:
+  - `cd devctl && go test ./...`
+
 ## Step 4: Add TUI stream message plumbing (topics + transformer + forwarder)
 
 This step introduced the basic “wiring harness” needed for streams to exist as first-class events inside the TUI process, without actually starting any streams yet. The focus was on adding stable message types and ensuring the existing Watermill pipeline can carry stream lifecycle events from a future runner into Bubble Tea.
