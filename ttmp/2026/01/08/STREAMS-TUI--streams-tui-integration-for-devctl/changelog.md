@@ -31,3 +31,23 @@ Improved streams empty state with instructions (commit d50557b)
 
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/models/streams_model.go — Enhanced empty state view with help text
 
+
+## 2026-01-08
+
+Step 7: treat missing state as stopped (commit 32c537d)
+
+### Related Files
+
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/status.go — Status output treats missing state as normal
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/models/dashboard_model.go — Dashboard shows stopped when state missing
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/transform.go — UI missing state event now info
+
+
+## 2026-01-08
+
+Step 8: fix status missing-state payload scope (commit a0c50b3)
+
+### Related Files
+
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/status.go — Move svc type before missing-state return
+
