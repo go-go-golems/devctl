@@ -1,7 +1,7 @@
 ---
 Title: devctl User Guide (CLI + TUI + Plugins)
 Slug: devctl-user-guide
-Short: A practical, end-to-end guide to using devctl: from your first .devctl.yaml to the TUI and real plugins.
+Short: "A practical, end-to-end guide to using devctl: from your first .devctl.yaml to the TUI and real plugins."
 Topics:
   - devctl
   - dev-environment
@@ -176,7 +176,14 @@ devctl logs --service api --follow # Live tail
 devctl down   # Stop all services, remove state
 ```
 
-### Global flags you'll use
+### Common flags you'll use (command-local)
+
+devctl has a small set of “repo context” flags that apply to most verbs. These are **command-local** flags, which means they appear after the verb:
+
+```bash
+devctl status --repo-root /path/to/repo
+devctl plan --repo-root /path/to/repo --timeout 10s
+```
 
 | Flag | Purpose |
 |------|---------|
@@ -291,7 +298,7 @@ You can safely `rm -rf .devctl/` to reset state. Add `.devctl/` to `.gitignore`.
 Your `.devctl.yaml` isn't being found. Check `--repo-root`:
 
 ```bash
-devctl --repo-root /path/to/repo plugins list
+devctl plugins list --repo-root /path/to/repo
 ```
 
 ### Plugin fails with "stdout contamination"
@@ -330,8 +337,8 @@ devctl status
 A plugin is blocking too long. Debug by reducing scope:
 
 ```bash
-devctl --timeout 5s plugins list   # Does handshake work?
-devctl --timeout 5s plan           # Does planning work?
+devctl plugins list --timeout 5s   # Does handshake work?
+devctl plan --timeout 5s           # Does planning work?
 ```
 
 ## Next steps

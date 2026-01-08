@@ -1,7 +1,7 @@
 ---
 Title: devctl TUI Guide
 Slug: devctl-tui-guide
-Short: A practical guide to devctl's terminal UI: views, keybindings, workflows, and capture/debug tips.
+Short: "A practical guide to devctl's terminal UI: views, keybindings, workflows, and capture/debug tips."
 Topics:
   - devctl
   - tui
@@ -188,4 +188,3 @@ If you want to extend devctl with real repo logic, move on to scripting and plug
 glaze help devctl-scripting-guide
 glaze help devctl-plugin-authoring
 ```
-

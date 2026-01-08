@@ -1,7 +1,7 @@
 ---
 Title: devctl Scripting Guide (Writing Practical Plugins)
 Slug: devctl-scripting-guide
-Short: How to write real devctl plugins in Python or shell: patterns, pitfalls, testing loops, and dynamic commands.
+Short: "How to write real devctl plugins in Python or shell: patterns, pitfalls, testing loops, and dynamic commands."
 Topics:
   - devctl
   - plugins
