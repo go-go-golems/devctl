@@ -41,6 +41,41 @@ func TestDynamicCommands_RegisterAndRun(t *testing.T) {
 	require.NoError(t, root.Execute())
 }
 
+func TestDynamicCommands_SkipsBuiltIns(t *testing.T) {
+	repoRoot, err := os.MkdirTemp("", "devctl-dyncmd-skip-builtins-*")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(repoRoot) }()
+
+	devctlRoot := findDevctlRootForTest(t)
+	plugin := filepath.Join(devctlRoot, "testdata", "plugins", "command", "plugin.py")
+
+	cfg := []byte("plugins:\n  - id: cmd\n    path: python3\n    args:\n      - \"" + plugin + "\"\n    priority: 10\n")
+	cfgPath := filepath.Join(repoRoot, ".devctl.yaml")
+	require.NoError(t, os.WriteFile(cfgPath, cfg, 0o644))
+
+	root := &cobra.Command{Use: "devctl"}
+	AddRootFlags(root)
+	require.NoError(t, AddCommands(root))
+
+	// If we are invoking a built-in command (like `status`), dynamic command discovery should be skipped.
+	err = AddDynamicPluginCommands(root, []string{
+		"devctl",
+		"--repo-root", repoRoot,
+		"--config", cfgPath,
+		"status",
+	})
+	require.NoError(t, err)
+
+	found := false
+	for _, c := range root.Commands() {
+		if c.Name() == "echo" {
+			found = true
+			break
+		}
+	}
+	require.False(t, found)
+}
+
 func TestDynamicCommands_SkipsWrapService(t *testing.T) {
 	repoRoot, err := os.MkdirTemp("", "devctl-wrap-skip-test-*")
 	require.NoError(t, err)

@@ -27,6 +27,12 @@ func AddDynamicPluginCommands(root *cobra.Command, args []string) error {
 	if len(positionals) > 0 && positionals[0] == "__wrap-service" {
 		return nil
 	}
+	if len(positionals) == 0 {
+		return nil
+	}
+	if positionals[0] != "completion" && rootHasCommand(root, positionals[0]) {
+		return nil
+	}
 
 	repo, err := repository.Load(repository.Options{RepoRoot: repoRoot, ConfigPath: cfgPath, Cwd: repoRoot, DryRun: false})
 	if err != nil {
@@ -163,4 +169,18 @@ func parseRepoArgs(args []string) (string, string, []string, error) {
 		cfgPath = filepath.Join(repoRoot, cfgPath)
 	}
 	return repoRoot, cfgPath, fs.Args(), nil
+}
+
+func rootHasCommand(root *cobra.Command, name string) bool {
+	for _, c := range root.Commands() {
+		if c.Name() == name {
+			return true
+		}
+		for _, a := range c.Aliases {
+			if a == name {
+				return true
+			}
+		}
+	}
+	return false
 }
