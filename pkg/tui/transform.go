@@ -151,6 +151,40 @@ func RegisterDomainToUITransformer(bus *Bus) {
 			}
 			return publishUI(UITypePipelineLaunchPlan, ev)
 
+		case DomainTypeStreamStarted:
+			var ev StreamStarted
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
+				return errors.Wrap(err, "unmarshal stream started")
+			}
+			if err := publishUI(UITypeStreamStarted, ev); err != nil {
+				return err
+			}
+			return publishEventText(ev.At, "streams", LogLevelInfo, fmt.Sprintf("stream started: %s (plugin=%s)", ev.Op, ev.PluginID))
+		case DomainTypeStreamEvent:
+			var ev StreamEvent
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
+				return errors.Wrap(err, "unmarshal stream event")
+			}
+			// Intentionally do not echo every stream event into the global event log: telemetry can be high-frequency.
+			return publishUI(UITypeStreamEvent, ev)
+		case DomainTypeStreamEnded:
+			var ev StreamEnded
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
+				return errors.Wrap(err, "unmarshal stream ended")
+			}
+			if err := publishUI(UITypeStreamEnded, ev); err != nil {
+				return err
+			}
+			level := LogLevelInfo
+			text := fmt.Sprintf("stream ended: %s (plugin=%s)", ev.Op, ev.PluginID)
+			if !ev.Ok {
+				level = LogLevelError
+				if ev.Error != "" {
+					text = fmt.Sprintf("%s: %s", text, ev.Error)
+				}
+			}
+			return publishEventText(ev.At, "streams", level, text)
+
 		default:
 			return nil
 		}

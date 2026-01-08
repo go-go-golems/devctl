@@ -18,6 +18,14 @@ type ActionRequestMsg struct {
 	Request ActionRequest
 }
 
+type StreamStartRequestMsg struct {
+	Request StreamStartRequest
+}
+
+type StreamStopRequestMsg struct {
+	Request StreamStopRequest
+}
+
 type PipelineRunStartedMsg struct {
 	Run PipelineRunStarted
 }
@@ -65,4 +73,16 @@ type PipelineStepProgressMsg struct {
 	RunID   string `json:"run_id"`
 	Step    string `json:"step"`
 	Percent int    `json:"percent"` // 0-100
+}
+
+type StreamStartedMsg struct {
+	Stream StreamStarted
+}
+
+type StreamEventMsg struct {
+	Event StreamEvent
+}
+
+type StreamEndedMsg struct {
+	End StreamEnded
 }

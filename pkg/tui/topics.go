@@ -19,6 +19,10 @@ const (
 	DomainTypePipelinePrepareResult  = "pipeline.prepare.result"
 	DomainTypePipelineValidateResult = "pipeline.validate.result"
 	DomainTypePipelineLaunchPlan     = "pipeline.launch.plan"
+
+	DomainTypeStreamStarted = "stream.started"
+	DomainTypeStreamEvent   = "stream.event"
+	DomainTypeStreamEnded   = "stream.ended"
 )
 
 const (
@@ -34,4 +38,10 @@ const (
 	UITypePipelinePrepareResult  = "tui.pipeline.prepare.result"
 	UITypePipelineValidateResult = "tui.pipeline.validate.result"
 	UITypePipelineLaunchPlan     = "tui.pipeline.launch.plan"
+
+	UITypeStreamStartRequest = "tui.stream.start"
+	UITypeStreamStopRequest  = "tui.stream.stop"
+	UITypeStreamStarted      = "tui.stream.started"
+	UITypeStreamEvent        = "tui.stream.event"
+	UITypeStreamEnded        = "tui.stream.ended"
 )

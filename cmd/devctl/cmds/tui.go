@@ -57,6 +57,12 @@ func newTuiCmd() *cobra.Command {
 				PublishAction: func(req tui.ActionRequest) error {
 					return tui.PublishAction(bus.Publisher, req)
 				},
+				PublishStreamStart: func(req tui.StreamStartRequest) error {
+					return tui.PublishStreamStart(bus.Publisher, req)
+				},
+				PublishStreamStop: func(req tui.StreamStopRequest) error {
+					return tui.PublishStreamStop(bus.Publisher, req)
+				},
 			})
 			programOptions := []tea.ProgramOption{
 				tea.WithInput(cmd.InOrStdin()),

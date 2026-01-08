@@ -78,6 +78,24 @@ func RegisterUIForwarder(bus *Bus, p *tea.Program) {
 				return errors.Wrap(err, "unmarshal pipeline launch plan payload")
 			}
 			p.Send(PipelineLaunchPlanMsg{Plan: ev})
+		case UITypeStreamStarted:
+			var ev StreamStarted
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
+				return errors.Wrap(err, "unmarshal stream started payload")
+			}
+			p.Send(StreamStartedMsg{Stream: ev})
+		case UITypeStreamEvent:
+			var ev StreamEvent
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
+				return errors.Wrap(err, "unmarshal stream event payload")
+			}
+			p.Send(StreamEventMsg{Event: ev})
+		case UITypeStreamEnded:
+			var ev StreamEnded
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
+				return errors.Wrap(err, "unmarshal stream ended payload")
+			}
+			p.Send(StreamEndedMsg{End: ev})
 		}
 		return nil
 	})
