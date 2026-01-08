@@ -19,7 +19,7 @@ RelatedFiles:
       Note: Stream lifetime now derives from TUI context; cleanup uses bounded close helper.
 ExternalSources: []
 Summary: Implementation diary for scoping TUI context lifetimes across background work.
-LastUpdated: 2026-01-08T15:07:24-05:00
+LastUpdated: 2026-01-08T15:08:13-05:00
 WhatFor: Track context-lifetime refactors and validation steps for MO-017.
 WhenToUse: Reference when reviewing or extending TUI context wiring changes.
 ---
@@ -37,6 +37,8 @@ Ensure all TUI-initiated long-lived work derives from the TUI context while clea
 Refactored the stream and action runners to take a TUI-scoped context at registration, then derived all long-lived operations from that context. This aligns stream lifetimes and action phases with the UI lifecycle instead of message or background contexts.
 
 Added a bounded cleanup helper for stream client shutdown so cancellation of the TUI context does not prevent cleanup. This sets the baseline behavior for the MO-017 fix before deciding on Bubbletea context propagation or message context wiring.
+
+**Commit (code):** 1cfee17 — "Fix: scope TUI background work to UI context"
 
 ### What I did
 - Updated `RegisterUIActionRunner` to accept a TUI context and use it for action execution
@@ -85,6 +87,8 @@ Added a bounded cleanup helper for stream client shutdown so cancellation of the
 Enabled `tea.WithContext` on the TUI program so canceling the TUI context cleanly stops the UI loop. This implements the agreed decision to bind the Bubbletea lifecycle to the same context already used by the bus and background runners.
 
 Skipped message context propagation as requested, since explicit runner context injection already establishes the desired lifetimes.
+
+**Commit (code):** 1cfee17 — "Fix: scope TUI background work to UI context"
 
 ### What I did
 - Added `tea.WithContext(ctx)` to the Bubbletea program options in `tui.go`
