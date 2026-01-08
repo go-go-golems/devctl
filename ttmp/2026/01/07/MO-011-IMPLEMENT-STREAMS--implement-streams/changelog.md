@@ -52,3 +52,15 @@ Step 3: Added telemetry and negative stream fixtures + runtime tests (commit 258
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/testdata/plugins/streams-only-never-respond/plugin.py — Streams-only advertisement fixture (never responds)
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/testdata/plugins/telemetry/plugin.py — Deterministic telemetry.stream fixture
 
+
+## 2026-01-07
+
+Step 4: Added TUI stream message plumbing (topics, transformer, forwarder) (commit 472593f).
+
+### Related Files
+
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/forward.go — Forwards stream UI messages into Bubble Tea
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/models/root_model.go — Publishes stream start/stop requests via bus
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/topics.go — New stream-related domain/UI envelope types
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/tui/transform.go — Maps stream domain events to UI messages (logs only start/end)
+

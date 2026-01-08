@@ -193,3 +193,56 @@ The key outcome is a concrete safety net: runtime tests now cover both “teleme
 ### Technical details
 - Commands run:
   - `cd devctl && go test ./...`
+
+## Step 4: Add TUI stream message plumbing (topics + transformer + forwarder)
+
+This step introduced the basic “wiring harness” needed for streams to exist as first-class events inside the TUI process, without actually starting any streams yet. The focus was on adding stable message types and ensuring the existing Watermill pipeline can carry stream lifecycle events from a future runner into Bubble Tea.
+
+The practical outcome is that we can now publish a `tui.stream.start` request (from the UI) and receive `tui.stream.*` messages in Bubble Tea, once a `UIStreamRunner` starts emitting the corresponding domain events. This keeps stream management centralized and prevents models from calling `StartStream` directly.
+
+**Commit (code):** 472593f — "tui: add stream message plumbing"
+
+### What I did
+- Added stream topic constants:
+  - domain: `stream.started`, `stream.event`, `stream.ended`
+  - ui: `tui.stream.start`, `tui.stream.stop`, `tui.stream.started`, `tui.stream.event`, `tui.stream.ended`
+- Added stream event/request structs in `devctl/pkg/tui/stream_events.go`.
+- Added `PublishStreamStart/PublishStreamStop` helpers (mirroring `PublishAction`) in `devctl/pkg/tui/stream_actions.go`.
+- Extended:
+  - `devctl/pkg/tui/transform.go` to map domain stream events to UI messages (and log only start/end to avoid telemetry spam),
+  - `devctl/pkg/tui/forward.go` to forward stream UI messages into Bubble Tea,
+  - `devctl/pkg/tui/models/root_model.go` to accept `StreamStartRequestMsg`/`StreamStopRequestMsg` and publish to the bus.
+- Wired publish functions into `devctl tui` startup via `devctl/cmd/devctl/cmds/tui.go`.
+- Ran `gofmt` and `go test ./...`.
+
+### Why
+- The TUI already has a clean separation: side-effectful subsystems publish domain events, transformer maps to UI envelopes, forwarder injects into Bubble Tea. Streams should reuse this pipeline.
+- By adding message plumbing first, we can implement `UIStreamRunner` next with less churn and clearer responsibilities.
+
+### What worked
+- The new plumbing compiles cleanly and all tests pass.
+- Transformer avoids flooding the global Events log by not echoing every `stream.event` as a text log line.
+
+### What didn't work
+- N/A
+
+### What I learned
+- RootModel already has a nice “request message → publish → append EventLogEntry” pattern for actions; streams fit the same structure cleanly.
+
+### What was tricky to build
+- Making stream events visible without accidentally creating an unbounded “event log spam” path required being deliberate in `transform.go` about what becomes a log line vs a typed message.
+
+### What warrants a second pair of eyes
+- Confirm the chosen “log only start/end” policy in `devctl/pkg/tui/transform.go` is acceptable for early debugging; we may want a debug flag that also logs individual stream events.
+
+### What should be done in the future
+- Implement `UIStreamRunner` to actually start plugin streams and publish `stream.*` domain events.
+
+### Code review instructions
+- Review `devctl/pkg/tui/topics.go`, `devctl/pkg/tui/stream_events.go`, and `devctl/pkg/tui/msgs.go` for the new message surface.
+- Review `devctl/pkg/tui/transform.go` and `devctl/pkg/tui/forward.go` for correct mapping/forwarding behavior.
+- Review `devctl/pkg/tui/models/root_model.go` for the publish-on-request pattern.
+
+### Technical details
+- Commands run:
+  - `cd devctl && go test ./...`
