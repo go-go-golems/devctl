@@ -245,3 +245,67 @@ func TestRuntime_StartStreamUnsupportedFailsFast(t *testing.T) {
 	require.Equal(t, "t", opErr.PluginID)
 	require.Equal(t, "E_UNSUPPORTED", opErr.Code)
 }
+
+func TestRuntime_StartStreamIgnoresStreamsCapabilityForInvocation(t *testing.T) {
+	repoRoot, err := os.Getwd()
+	require.NoError(t, err)
+	plugin := filepath.Join(repoRoot, "..", "..", "testdata", "plugins", "streams-only-never-respond", "plugin.py")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	f := NewFactory(FactoryOptions{HandshakeTimeout: 2 * time.Second, ShutdownTimeout: 2 * time.Second})
+	c, err := f.Start(ctx, PluginSpec{
+		ID:      "t",
+		Path:    "python3",
+		Args:    []string{plugin},
+		WorkDir: repoRoot,
+	}, StartOptions{})
+	require.NoError(t, err)
+	defer func() { _ = c.Close(context.Background()) }()
+
+	callCtx, callCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer callCancel()
+
+	_, _, err = c.StartStream(callCtx, "telemetry.stream", map[string]any{"count": 1})
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ErrUnsupported))
+	require.False(t, errors.Is(err, context.DeadlineExceeded))
+}
+
+func TestRuntime_TelemetryStreamFixture(t *testing.T) {
+	repoRoot, err := os.Getwd()
+	require.NoError(t, err)
+	plugin := filepath.Join(repoRoot, "..", "..", "testdata", "plugins", "telemetry", "plugin.py")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	f := NewFactory(FactoryOptions{HandshakeTimeout: 2 * time.Second, ShutdownTimeout: 2 * time.Second})
+	c, err := f.Start(ctx, PluginSpec{
+		ID:      "t",
+		Path:    "python3",
+		Args:    []string{plugin},
+		WorkDir: repoRoot,
+	}, StartOptions{})
+	require.NoError(t, err)
+	defer func() { _ = c.Close(context.Background()) }()
+
+	_, events, err := c.StartStream(ctx, "telemetry.stream", map[string]any{"count": 3, "interval_ms": 1})
+	require.NoError(t, err)
+
+	var got []int
+	for ev := range events {
+		if ev.Event == "metric" && ev.Fields != nil {
+			if name, ok := ev.Fields["name"].(string); ok && name == "counter" {
+				switch v := ev.Fields["value"].(type) {
+				case float64:
+					got = append(got, int(v))
+				case int:
+					got = append(got, v)
+				}
+			}
+		}
+	}
+	require.Equal(t, []int{0, 1, 2}, got)
+}
