@@ -11,6 +11,6 @@
 - [ ] P3: Add quick-start stream picker [q]
 - [x] P3: Add stream indicator to Plugins view
 - [ ] DEFERRED: P3 quick-start picker requires plugin introspection (future work)
-- [ ] Add streams summary widget to Dashboard view
-- [ ] Pass active streams data from RootModel to DashboardModel
-- [ ] Show active stream count and names on Dashboard
+- [x] Add streams summary widget to Dashboard view
+- [x] Pass active streams data from RootModel to DashboardModel
+- [x] Show active stream count and names on Dashboard

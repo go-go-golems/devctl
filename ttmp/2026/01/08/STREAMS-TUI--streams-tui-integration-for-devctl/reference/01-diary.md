@@ -350,3 +350,71 @@ Adjusted the status command to keep the missing-state payload type in scope, fix
 
 ### Technical details
 - `svc` is now declared before the call to `state.Load`
+
+---
+
+## Step 9: Add Streams Widget to Dashboard
+
+Added a summary widget to the Dashboard that shows active and recently-ended streams. This provides visibility into stream activity without leaving the main dashboard view.
+
+**Commit (code):** cf4dcaf — "feat(tui): add streams widget to dashboard"
+
+### What I did
+- Added `streamSummary` struct to DashboardModel for tracking streams
+- Added `activeStreams []streamSummary` field to DashboardModel
+- Implemented `WithStreamStarted()`, `WithStreamEvent()`, `WithStreamEnded()` methods
+- Created `renderStreamsSummary()` to render the widget box
+- Updated `RootModel.Update()` to forward stream messages to both StreamsModel and DashboardModel
+- Added streams widget to running, stopped, and error dashboard states
+
+### Why
+- Users wanted visibility into stream activity from the main dashboard
+- Switching to the Streams view just to see if anything is running is cumbersome
+- The dashboard already shows services, events, plugins - streams should be visible too
+
+### What worked
+- Stream appears immediately when started with status indicator
+- Event count updates in real-time as events arrive
+- Status transitions correctly from running (●) to ended (○) or error (✗)
+- Duration shows elapsed time since stream started
+- Widget only appears when there are active or recent streams
+
+### What didn't work
+- N/A
+
+### What I learned
+- The dashboard model can track stream state independently from StreamsModel
+- Forwarding messages to multiple models is straightforward in RootModel
+
+### What was tricky to build
+- Avoiding duplicate `formatDuration` function (service_model.go already has one)
+- Balancing how many ended streams to show (settled on 2)
+
+### What warrants a second pair of eyes
+- Memory management: activeStreams grows unbounded. Consider limiting total entries.
+- The dashboard now receives stream messages even when not visible. Performance impact is minimal but worth noting.
+
+### What should be done in the future
+- Add ability to click/navigate from dashboard streams widget to Streams view
+- Consider showing stream error messages inline in the widget
+- Limit activeStreams slice to prevent memory growth
+
+### Code review instructions
+- Start with `dashboard_model.go` - look for `streamSummary` and `renderStreamsSummary`
+- Check `root_model.go` for `StreamStartedMsg`, `StreamEventMsg`, `StreamEndedMsg` forwarding
+- Test: start TUI, go to Streams, start a stream, go back to Dashboard - stream should be visible
+
+### Technical details
+Widget shows:
+```
+╭─────────────────────────────────────────────────────────────────────╮
+│Streams (1 running)                              [tab→streams] manage│
+│ ● telemetry.stream  9s  19 events                                   │
+╰─────────────────────────────────────────────────────────────────────╯
+```
+
+After stream ends:
+```
+│Streams (0 running)                              [tab→streams] manage│
+│ ○ telemetry.stream  23s  21 events                                  │
+```
