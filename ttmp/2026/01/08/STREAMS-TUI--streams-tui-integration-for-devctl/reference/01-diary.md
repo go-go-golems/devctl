@@ -147,20 +147,63 @@ Added duration and event count to stream rows for better visibility.
 
 ---
 
-## Step 4: Summary and Next Steps
+## Step 4: Improve Empty State and Plugin Stream Indicator
+
+Added helpful instructions to empty state and prepared plugin stream indicator.
+
+**Commit (code):** d50557b — "Enhance: improve streams empty state and add plugin stream indicator"
+
+### What I did
+- Updated streams empty state with:
+  - Explanation of how to start a stream
+  - JSON format example
+  - Reference to Plugins view and CLI alternative
+- Added Ops and Streams fields to PluginSummary struct
+- Added stream indicator (📊 stream) to plugin row title line
+- Updated PluginModel.WithPlugins to pass through Ops/Streams
+
+### What worked
+- Empty state now shows helpful instructions
+- Infrastructure for stream indicator is in place
+
+### What requires future work
+- **Plugin introspection**: To show stream capabilities, we need to start plugins
+  and read their handshake. The state watcher doesn't do this currently.
+- **Quick-start picker**: Without introspection, we can't show available stream ops.
+
+### Technical decision
+Rather than implementing runtime plugin introspection (expensive, starts all plugins),
+I focused on improving the UX with better empty state instructions. Users can still:
+1. Check plugin documentation for available stream ops
+2. Use `devctl stream start --op <op>` to discover ops (fails fast if unsupported)
+3. Look at plugin source code to see handshake capabilities
+
+---
+
+## Step 5: Summary
 
 ### Completed
 1. ✅ Fixed critical context cancellation bug (commit f1b1761)
 2. ✅ Enhanced stream row display with duration/event count (commit 946fcc3)
+3. ✅ Improved empty state with instructions (commit d50557b)
+4. ✅ Added plugin stream indicator infrastructure (commit d50557b)
 
-### Remaining (from design doc)
-- [ ] Show available stream ops in empty state
+### Deferred (requires plugin introspection)
+- [ ] Populate plugin Ops/Streams from runtime handshake
 - [ ] Add quick-start stream picker [q]
-- [ ] Add stream indicator to Plugins view
 - [ ] Add streams widget to Dashboard
+
+### All commits
+```
+d50557b Enhance: improve streams empty state and add plugin stream indicator
+946fcc3 Enhance: add duration and event count to stream rows
+5f9483e Docs: add STREAMS-TUI ticket with analysis and design
+f1b1761 Fix: use background context for stream lifecycle
+```
 
 ### Testing Performed
 - Started telemetry stream with 10 events
 - Verified all events received
 - Verified stream completes with "ended" status
 - Verified duration and event count display correctly
+- Verified empty state shows helpful instructions
