@@ -4,7 +4,7 @@
 
 - [ ] Add tasks here
 
-- [ ] Decide and document capability gating semantics for StartStream (ops authoritative; streams informational vs strict ops+streams)
+- [x] Decide and document capability gating semantics for StartStream (ops authoritative; streams informational vs strict ops+streams)
 - [ ] Add TUI stream envelope types + structs (StreamStartRequest/StreamEvent/StreamEnded) and Bubble Tea msg types
 - [ ] Implement RegisterUIStreamRunner: load repo config, start one plugin client per stream, SupportsOp gate, StartStream with start-timeout, forward events, cleanup
 - [ ] Extend domain→UI transformer to map stream domain events to UI messages (and add corresponding topic constants)

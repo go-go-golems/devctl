@@ -31,3 +31,13 @@ Added implementation task breakdown for streams (UIStreamRunner + devctl stream 
 
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/ttmp/2026/01/07/MO-011-IMPLEMENT-STREAMS--implement-streams/tasks.md — Stream implementation tasks
 
+
+## 2026-01-07
+
+Step 2: Make StartStream fail fast when op not declared in capabilities.ops (commit a2013d4).
+
+### Related Files
+
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/runtime/client.go — StartStream now gates on capabilities.ops
+- /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/runtime/runtime_test.go — Added StartStream unsupported fail-fast test
+

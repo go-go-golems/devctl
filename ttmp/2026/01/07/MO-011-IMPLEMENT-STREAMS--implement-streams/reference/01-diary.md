@@ -97,3 +97,49 @@ The key outcome was confirming that streams are already implemented and tested i
   - `rg -n "\\bstream(s|ing)?\\b" -S devctl moments pinocchio glazed`
   - `sed -n '1,260p' devctl/pkg/runtime/client.go`
   - `sed -n '1,260p' devctl/pkg/runtime/router.go`
+
+## Step 2: Make stream-start capability gating fail fast
+
+This step implemented the key robustness decision from the analysis/design docs: starting a stream is still invoking a request op, so it must be gated by `handshake.capabilities.ops`. The goal was to prevent the “streams-only advertised, never responds” hang class before we add any production call sites (TUI runner or CLI).
+
+The concrete outcome is that `runtime.Client.StartStream` now short-circuits with `E_UNSUPPORTED` unless the op is present in `capabilities.ops`, and a new unit test asserts the behavior is truly “fails fast” (not “wait for deadline then fail”) against a plugin that ignores unknown ops.
+
+**Commit (code):** a2013d4 — "runtime: gate StartStream on ops"
+
+### What I did
+- Updated `StartStream` to require `op ∈ handshake.capabilities.ops` (treat `capabilities.streams` as informational only for invocation).
+- Added `TestRuntime_StartStreamUnsupportedFailsFast` mirroring the existing “call unsupported fails fast” test.
+- Ran `gofmt` and `go test ./...` in `devctl/`.
+
+### Why
+- The repo already contains (and future plugins will likely contain) “streams advertised but not actually implemented” cases; waiting for timeouts would make the TUI/CLI feel hung.
+- Fixing this in the runtime makes future call sites simpler and harder to get wrong.
+
+### What worked
+- The new test reliably asserts `errors.Is(err, ErrUnsupported)` and `!errors.Is(err, context.DeadlineExceeded)` for `StartStream` on an unsupported op.
+- Existing stream tests (`TestRuntime_Stream`, `TestRuntime_StreamClosesOnClientClose`) still pass.
+
+### What didn't work
+- N/A
+
+### What I learned
+- `ignore-unknown` is a good “misbehaving plugin” fixture for proving fail-fast behavior because it consumes stdin but never responds to unknown ops.
+
+### What was tricky to build
+- Ensuring the test proves “fast” failure required using a short context deadline and explicitly asserting it did not trip the deadline error path.
+
+### What warrants a second pair of eyes
+- Confirm the intended semantics: should `capabilities.streams` ever be considered authoritative for invocation, or should it remain purely UI/metadata? This change commits to “metadata only”.
+
+### What should be done in the future
+- Update any future stream-start call sites (TUI runner, CLI) to rely on `SupportsOp`/runtime gating and keep `capabilities.streams` as presentation/informational unless a stricter rule is adopted.
+
+### Code review instructions
+- Review `devctl/pkg/runtime/client.go` and focus on `StartStream`’s capability check.
+- Review `devctl/pkg/runtime/runtime_test.go` and focus on `TestRuntime_StartStreamUnsupportedFailsFast`.
+- Validate: `cd devctl && go test ./... -count=1`.
+
+### Technical details
+- Commands run:
+  - `gofmt -w devctl/pkg/runtime/client.go devctl/pkg/runtime/runtime_test.go`
+  - `cd devctl && go test ./...`
