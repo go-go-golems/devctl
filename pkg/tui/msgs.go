@@ -86,3 +86,5 @@ type StreamEventMsg struct {
 type StreamEndedMsg struct {
 	End StreamEnded
 }
+
+type PluginIntrospectionRefreshMsg struct{}

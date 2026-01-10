@@ -106,3 +106,7 @@ Edit the `.tape` files to:
 - Change theme with `Set Theme` (try "GitHub Dark", "Tokyo Night", "Catppuccin Mocha")
 - Modify typing speed with `Type@<speed>ms`
 
+
+
+
+

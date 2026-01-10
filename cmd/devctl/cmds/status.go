@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"time"
 
@@ -60,11 +61,6 @@ func (c *StatusCommand) RunIntoWriter(ctx context.Context, parsedLayers *layers.
 		return err
 	}
 
-	st, err := state.Load(rc.RepoRoot)
-	if err != nil {
-		return err
-	}
-
 	type svc struct {
 		Name   string          `json:"name"`
 		PID    int             `json:"pid"`
@@ -72,6 +68,21 @@ func (c *StatusCommand) RunIntoWriter(ctx context.Context, parsedLayers *layers.
 		Stdout string          `json:"stdout_log"`
 		Stderr string          `json:"stderr_log"`
 		Exit   *state.ExitInfo `json:"exit,omitempty"`
+	}
+	st, err := state.Load(rc.RepoRoot)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, fs.ErrNotExist) {
+			b, err := json.MarshalIndent(map[string]any{
+				"exists":   false,
+				"services": []svc{},
+			}, "", "  ")
+			if err != nil {
+				return errors.Wrap(err, "marshal status")
+			}
+			_, _ = fmt.Fprintln(w, string(b))
+			return nil
+		}
+		return err
 	}
 	var services []svc
 
@@ -121,7 +132,10 @@ func (c *StatusCommand) RunIntoWriter(ctx context.Context, parsedLayers *layers.
 		})
 	}
 
-	b, err := json.MarshalIndent(map[string]any{"services": services}, "", "  ")
+	b, err := json.MarshalIndent(map[string]any{
+		"exists":   true,
+		"services": services,
+	}, "", "  ")
 	if err != nil {
 		return errors.Wrap(err, "marshal status")
 	}

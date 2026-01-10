@@ -17,7 +17,10 @@ import (
 	"github.com/pkg/errors"
 )
 
-func RegisterUIActionRunner(bus *Bus, opts RootOptions) {
+func RegisterUIActionRunner(tuiCtx context.Context, bus *Bus, opts RootOptions) {
+	if tuiCtx == nil {
+		tuiCtx = context.Background()
+	}
 	bus.AddHandler("devctl-ui-actions", TopicUIActions, func(msg *message.Message) error {
 		defer msg.Ack()
 
@@ -42,10 +45,7 @@ func RegisterUIActionRunner(bus *Bus, opts RootOptions) {
 			req.At = time.Now()
 		}
 
-		ctx := msg.Context()
-		if ctx == nil {
-			ctx = context.Background()
-		}
+		ctx := tuiCtx
 
 		runID := watermill.NewUUID()
 		runStart := time.Now()

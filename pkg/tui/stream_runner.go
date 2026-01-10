@@ -34,17 +34,22 @@ type streamManager struct {
 	factory *runtime.Factory
 	opts    RootOptions
 	pub     message.Publisher
+	tuiCtx  context.Context
 }
 
-func RegisterUIStreamRunner(bus *Bus, opts RootOptions) {
+func RegisterUIStreamRunner(tuiCtx context.Context, bus *Bus, opts RootOptions) {
+	if tuiCtx == nil {
+		tuiCtx = context.Background()
+	}
 	m := &streamManager{
 		byKey: map[string]*streamHandle{},
 		factory: runtime.NewFactory(runtime.FactoryOptions{
 			HandshakeTimeout: 2 * time.Second,
 			ShutdownTimeout:  3 * time.Second,
 		}),
-		opts: opts,
-		pub:  bus.Publisher,
+		opts:   opts,
+		pub:    bus.Publisher,
+		tuiCtx: tuiCtx,
 	}
 
 	bus.AddHandler("devctl-ui-streams", TopicUIActions, func(msg *message.Message) error {
@@ -61,7 +66,7 @@ func RegisterUIStreamRunner(bus *Bus, opts RootOptions) {
 			if err := json.Unmarshal(env.Payload, &req); err != nil {
 				return nil
 			}
-			return m.handleStart(msg.Context(), req)
+			return m.handleStart(req)
 		case UITypeStreamStopRequest:
 			var req StreamStopRequest
 			if err := json.Unmarshal(env.Payload, &req); err != nil {
@@ -74,13 +79,21 @@ func RegisterUIStreamRunner(bus *Bus, opts RootOptions) {
 	})
 }
 
-func (m *streamManager) handleStart(ctx context.Context, req StreamStartRequest) error {
+func (m *streamManager) handleStart(req StreamStartRequest) error {
 	if m.opts.RepoRoot == "" {
 		return nil
 	}
 	if req.Op == "" {
 		return nil
 	}
+
+	streamCtx, cancel := context.WithCancel(m.tuiCtx)
+	created := false
+	defer func() {
+		if !created {
+			cancel()
+		}
+	}()
 
 	repo, err := repository.Load(repository.Options{RepoRoot: m.opts.RepoRoot, ConfigPath: m.opts.Config, Cwd: m.opts.RepoRoot, DryRun: m.opts.DryRun})
 	if err != nil {
@@ -120,7 +133,8 @@ func (m *streamManager) handleStart(ctx context.Context, req StreamStartRequest)
 			})
 			return nil
 		}
-		client, err = m.factory.Start(ctx, spec, runtime.StartOptions{Meta: repo.Request})
+		// NOTE: Use the TUI-scoped stream context for plugin lifetime.
+		client, err = m.factory.Start(streamCtx, spec, runtime.StartOptions{Meta: repo.Request})
 		if err != nil {
 			_ = m.publishStreamEnded(StreamEnded{
 				StreamKey: streamKey(pluginID, req.Op, req.Input),
@@ -133,7 +147,7 @@ func (m *streamManager) handleStart(ctx context.Context, req StreamStartRequest)
 			return nil
 		}
 		if !client.SupportsOp(req.Op) {
-			_ = client.Close(context.Background())
+			closeClient(client)
 			_ = m.publishStreamEnded(StreamEnded{
 				StreamKey: streamKey(pluginID, req.Op, req.Input),
 				PluginID:  pluginID,
@@ -146,7 +160,7 @@ func (m *streamManager) handleStart(ctx context.Context, req StreamStartRequest)
 		}
 	} else {
 		for _, spec := range specs {
-			c, err := m.factory.Start(ctx, spec, runtime.StartOptions{Meta: repo.Request})
+			c, err := m.factory.Start(streamCtx, spec, runtime.StartOptions{Meta: repo.Request})
 			if err != nil {
 				continue
 			}
@@ -155,7 +169,7 @@ func (m *streamManager) handleStart(ctx context.Context, req StreamStartRequest)
 				pluginID = spec.ID
 				break
 			}
-			_ = c.Close(context.Background())
+			closeClient(c)
 		}
 		if client == nil {
 			_ = m.publishStreamEnded(StreamEnded{
@@ -175,10 +189,9 @@ func (m *streamManager) handleStart(ctx context.Context, req StreamStartRequest)
 	m.mu.Lock()
 	if m.byKey[key] != nil {
 		m.mu.Unlock()
-		_ = client.Close(context.Background())
+		closeClient(client)
 		return nil
 	}
-	streamCtx, cancel := context.WithCancel(ctx)
 	h := &streamHandle{
 		key:      key,
 		pluginID: pluginID,
@@ -188,6 +201,7 @@ func (m *streamManager) handleStart(ctx context.Context, req StreamStartRequest)
 	}
 	m.byKey[key] = h
 	m.mu.Unlock()
+	created = true
 
 	startCtx, startCancel := context.WithTimeout(streamCtx, 2*time.Second)
 	streamID, events, err := client.StartStream(startCtx, req.Op, req.Input)
@@ -196,7 +210,7 @@ func (m *streamManager) handleStart(ctx context.Context, req StreamStartRequest)
 		m.mu.Lock()
 		delete(m.byKey, key)
 		m.mu.Unlock()
-		_ = client.Close(context.Background())
+		closeClient(client)
 		_ = m.publishStreamEnded(StreamEnded{
 			StreamKey: key,
 			PluginID:  pluginID,
@@ -236,7 +250,7 @@ func (m *streamManager) handleStop(req StreamStopRequest) error {
 	if h.cancel != nil {
 		h.cancel()
 	}
-	_ = h.client.Close(context.Background())
+	closeClient(h.client)
 	return nil
 }
 
@@ -245,7 +259,10 @@ func (m *streamManager) forwardEvents(ctx context.Context, h *streamHandle, even
 
 	// Ensure cleanup and ended event no matter how we exit.
 	defer func() {
-		_ = h.client.Close(context.Background())
+		if h.cancel != nil {
+			h.cancel()
+		}
+		closeClient(h.client)
 		m.mu.Lock()
 		_, still := m.byKey[h.key]
 		if still {
@@ -298,6 +315,15 @@ func (m *streamManager) forwardEvents(ctx context.Context, h *streamHandle, even
 			}
 		}
 	}
+}
+
+func closeClient(client runtime.Client) {
+	if client == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = client.Close(ctx)
 }
 
 func orderedSpecs(specs []runtime.PluginSpec) []runtime.PluginSpec {
