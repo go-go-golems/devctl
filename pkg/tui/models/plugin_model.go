@@ -14,14 +14,14 @@ import (
 
 // PluginInfo contains detailed information about a plugin.
 type PluginInfo struct {
-	ID       string
-	Path     string
-	Status   string // "active" | "disabled" | "error"
-	Priority int
-	Protocol string
-	Ops      []string
-	Streams  []string
-	Commands []string
+	ID        string
+	Path      string
+	Status    string // "active" | "disabled" | "error"
+	Priority  int
+	Protocol  string
+	Ops       []string
+	Streams   []string
+	Commands  []string
 	CapStatus string
 	CapError  string
 	CapStart  time.Time

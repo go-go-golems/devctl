@@ -20,9 +20,13 @@ RelatedFiles:
       Note: Transforms domain events to UI events
     - Path: devctl/pkg/tui/forward.go
       Note: Forwards UI events to bubbletea Program
+    - Path: devctl/pkg/tui/bus.go
+      Note: In-memory Watermill bus configuration used by the TUI
+    - Path: devctl/cmd/devctl/cmds/tui.go
+      Note: Bus startup ordering and program wiring
 ExternalSources: []
 Summary: Step-by-step investigation of pipeline view stuck state issues.
-LastUpdated: 2026-01-08T15:45:00-05:00
+LastUpdated: 2026-01-08T15:33:02-05:00
 WhatFor: Track investigation and fix progress for pipeline view bugs
 WhenToUse: Reference when debugging or fixing pipeline view state management
 ---
@@ -166,6 +170,61 @@ for _, phase := range m.phaseOrder {
 ### What should be done in the future
 - Add debug logging as first step
 - Consider message batching for phase updates
+
+---
+
+## Step 3: Validate Analysis Against Source and Dependencies
+
+I reviewed the analysis document against the actual source paths and the upstream Watermill/Bubbletea behavior. The goal was to confirm which hypotheses are supported and to isolate any ordering or concurrency behavior that could explain the stuck "running..." phase without additional runtime evidence.
+
+This validation confirmed the event flow but surfaced a more precise failure mode: Watermill handlers and GoChannel publishing are concurrent, and the pipeline model resets phase state on `PipelinePhaseStarted`. If a finish event is processed first and the start arrives later, the "running..." state is restored even though the phase completed.
+
+### What I did
+- Read `analysis/01-pipeline-view-stuck-state-analysis.md` to enumerate hypotheses and claims
+- Traced phase state updates in `devctl/pkg/tui/models/pipeline_model.go`
+- Verified publish order in `devctl/pkg/tui/action_runner.go`
+- Reviewed UI transform/forward handlers in `devctl/pkg/tui/transform.go` and `devctl/pkg/tui/forward.go`
+- Checked bus wiring/startup in `devctl/cmd/devctl/cmds/tui.go`
+- Reviewed Watermill GoChannel and router behavior in module sources
+- Checked Bubbletea `Program.Send` semantics for delivery guarantees
+
+### Why
+- The analysis is likely correct, but we need to validate ordering assumptions before implementing a fix.
+
+### What worked
+- Confirmed that Watermill handlers process messages concurrently and GoChannel publishes concurrently, so ordering is not guaranteed.
+- Identified a concrete ordering failure: a `PipelinePhaseStarted` message arriving after a finish message will reset the phase to "running...".
+
+### What didn't work
+- N/A (no runtime tests were requested or run)
+
+### What I learned
+- Watermill router dispatches each message in its own goroutine, so sequential publish does not imply sequential handling.
+- GoChannel publishes to subscribers in goroutines, further weakening ordering guarantees.
+- Bubbletea does not drop messages on `Send`, but ordering can vary across goroutines.
+
+### What was tricky to build
+- Reasoning across three asynchronous stages (domain bus, UI bus, bubbletea program) without logs or runtime traces.
+
+### What warrants a second pair of eyes
+- Confirm whether out-of-order start/finish events are observed in real logs (and if any other phase besides build is affected).
+- Check whether the startup window (publishes before subscribers attach) is a contributor in practice.
+
+### What should be done in the future
+- Add logging that records phase, event type, and timestamps at each hop to confirm ordering.
+- Consider guarding `PipelinePhaseStarted` to avoid clearing a phase that is already finished.
+- If ordering is critical, consider a deterministic event sequencing strategy (timestamp/sequence checks).
+
+### Code review instructions
+- Start with `devctl/pkg/tui/models/pipeline_model.go` and review the `PipelinePhaseStartedMsg` and `PipelinePhaseFinishedMsg` handlers.
+- Review concurrency in `/home/manuel/go/pkg/mod/github.com/!three!dots!labs/watermill@v1.5.1/message/router.go` and `/home/manuel/go/pkg/mod/github.com/!three!dots!labs/watermill@v1.5.1/pubsub/gochannel/pubsub.go`.
+- Confirm `Program.Send` behavior in `/home/manuel/go/pkg/mod/github.com/charmbracelet/bubbletea@v1.3.10/tea.go`.
+
+### Technical details
+- `PipelinePhaseStartedMsg` clears `ok` and `finishedAt`, so a late start overwrites a finished phase.
+- Watermill `handler.run` calls `go h.handleMessage(...)` per message (unordered processing).
+- GoChannel `Publish` sends to subscribers via goroutines; per-subscriber ordering is not guaranteed.
+- Bubbletea `Program.Send` writes to a channel; it is reliable but ordering is determined by goroutine scheduling.
 
 ---
 

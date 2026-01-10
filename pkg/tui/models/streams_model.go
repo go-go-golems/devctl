@@ -255,7 +255,6 @@ func (m StreamsModel) renderStreamList(theme styles.Theme) string {
 		Render()
 }
 
-
 func (m StreamsModel) renderEventsBox(theme styles.Theme) string {
 	title := "Stream Events"
 	if r := m.selectedRow(); r != nil {

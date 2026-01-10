@@ -38,9 +38,9 @@ type RootModel struct {
 	plugins   PluginModel
 	streams   StreamsModel
 
-	publishAction      func(tui.ActionRequest) error
-	publishStreamStart func(tui.StreamStartRequest) error
-	publishStreamStop  func(tui.StreamStopRequest) error
+	publishAction               func(tui.ActionRequest) error
+	publishStreamStart          func(tui.StreamStartRequest) error
+	publishStreamStop           func(tui.StreamStopRequest) error
 	publishIntrospectionRefresh func() error
 
 	statusLine   string
@@ -50,9 +50,9 @@ type RootModel struct {
 }
 
 type RootModelOptions struct {
-	PublishAction      func(tui.ActionRequest) error
-	PublishStreamStart func(tui.StreamStartRequest) error
-	PublishStreamStop  func(tui.StreamStopRequest) error
+	PublishAction               func(tui.ActionRequest) error
+	PublishStreamStart          func(tui.StreamStartRequest) error
+	PublishStreamStop           func(tui.StreamStopRequest) error
 	PublishIntrospectionRefresh func() error
 }
 
@@ -61,18 +61,18 @@ func NewRootModel(opts RootModelOptions) RootModel {
 	const defaultHeight = 24
 
 	m := RootModel{
-		width:              defaultWidth,
-		height:             defaultHeight,
-		active:             ViewDashboard,
-		dashboard:          NewDashboardModel(),
-		service:            NewServiceModel(),
-		events:             NewEventLogModel(),
-		pipeline:           NewPipelineModel(),
-		plugins:            NewPluginModel(),
-		streams:            NewStreamsModel(),
-		publishAction:      opts.PublishAction,
-		publishStreamStart: opts.PublishStreamStart,
-		publishStreamStop:  opts.PublishStreamStop,
+		width:                       defaultWidth,
+		height:                      defaultHeight,
+		active:                      ViewDashboard,
+		dashboard:                   NewDashboardModel(),
+		service:                     NewServiceModel(),
+		events:                      NewEventLogModel(),
+		pipeline:                    NewPipelineModel(),
+		plugins:                     NewPluginModel(),
+		streams:                     NewStreamsModel(),
+		publishAction:               opts.PublishAction,
+		publishStreamStart:          opts.PublishStreamStart,
+		publishStreamStop:           opts.PublishStreamStop,
 		publishIntrospectionRefresh: opts.PublishIntrospectionRefresh,
 	}
 	m = m.applyChildSizes()
