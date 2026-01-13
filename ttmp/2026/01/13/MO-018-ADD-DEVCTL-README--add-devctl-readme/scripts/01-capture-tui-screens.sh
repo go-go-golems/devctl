@@ -49,12 +49,12 @@ sleep 5
 
 tmux capture-pane -e -p -t "$TMUX_SESSION" > "$OUT_DIR/devctl-tui-dashboard.ansi"
 
-tmux send-keys -t "$TMUX_SESSION" "\t\t"
+tmux send-keys -t "$TMUX_SESSION" Tab Tab
 sleep 2
 
 tmux capture-pane -e -p -t "$TMUX_SESSION" > "$OUT_DIR/devctl-tui-pipeline.ansi"
 
-tmux send-keys -t "$TMUX_SESSION" "\t"
+tmux send-keys -t "$TMUX_SESSION" Tab
 sleep 2
 
 tmux capture-pane -e -p -t "$TMUX_SESSION" > "$OUT_DIR/devctl-tui-plugins.ansi"

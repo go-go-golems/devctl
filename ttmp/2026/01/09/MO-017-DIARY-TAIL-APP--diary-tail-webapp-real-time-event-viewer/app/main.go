@@ -339,7 +339,9 @@ func (dw *DiaryWatcher) eventLoop() {
 				// Check if it's a new directory
 				if event.Has(fsnotify.Create) {
 					if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
-						dw.watcher.Add(event.Name)
+						if err := dw.watcher.Add(event.Name); err != nil {
+							log.Printf("Watcher add failed for %s: %v", event.Name, err)
+						}
 					}
 				}
 				continue
@@ -541,7 +543,9 @@ func (s *Server) handleAPIDiaries(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(diaries)
+	if err := json.NewEncoder(w).Encode(diaries); err != nil {
+		log.Printf("encode diaries response failed: %v", err)
+	}
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
@@ -588,7 +592,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	events := s.watcher.GetRecentEvents(50)
-	json.NewEncoder(w).Encode(events)
+	if err := json.NewEncoder(w).Encode(events); err != nil {
+		log.Printf("encode events response failed: %v", err)
+	}
 }
 
 // handleDiary serves the full diary content for a given file path
@@ -626,12 +632,14 @@ func (s *Server) handleDiary(w http.ResponseWriter, r *http.Request) {
 	meta := parseTicketMeta(ticketDir)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	if err := json.NewEncoder(w).Encode(map[string]string{
 		"content":  string(content),
 		"filePath": filePath,
 		"ticketId": meta.TicketID,
 		"title":    meta.Title,
-	})
+	}); err != nil {
+		log.Printf("encode diary response failed: %v", err)
+	}
 }
 
 func main() {
@@ -677,6 +685,12 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", *port)
 	log.Printf("Server listening on http://localhost%s", addr)
-	log.Fatal(http.ListenAndServe(addr, nil))
+	srv := &http.Server{
+		Addr:              addr,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	log.Fatal(srv.ListenAndServe())
 }
-
