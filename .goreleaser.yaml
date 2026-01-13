@@ -1,5 +1,5 @@
 version: 2
-project_name: XXX
+project_name: devctl
 
 before:
   hooks:
@@ -17,8 +17,8 @@ builds:
       - CXX_linux_arm64=aarch64-linux-gnu-g++
       - 'CC={{ index .Env (print "CC_" .Os "_" .Arch) }}'
       - 'CXX={{ index .Env (print "CXX_" .Os "_" .Arch) }}'
-    main: ./cmd/XXX
-    binary: XXX
+    main: ./cmd/devctl
+    binary: devctl
     goos:
       - linux
 # I am not able to test windows at the time
@@ -29,8 +29,8 @@ builds:
   - id: devctl-darwin
     env:
       - CGO_ENABLED=1
-    main: ./cmd/XXX
-    binary: XXX
+    main: ./cmd/devctl
+    binary: devctl
     goos:
       - darwin
     goarch:
@@ -53,9 +53,9 @@ signs:
     args: [ "--batch", "-u", "{{ .Env.GPG_FINGERPRINT }}", "--output", "${signature}", "--detach-sign", "${artifact}" ]
 
 brews:
-  - name: XXX
-    description: "XXX is a tool"
-    homepage: "https://github.com/go-go-golems/XXX"
+  - name: devctl
+    description: "devctl is a tool"
+    homepage: "https://github.com/go-go-golems/devctl"
     repository:
       owner: go-go-golems
       name: homebrew-go-go-go
@@ -70,7 +70,7 @@ nfpms:
     maintainer: Manuel Odendahl <wesen@ruinwesen.com>
 
     description: |-
-      XXX is a tool
+      devctl is a tool
 
     license: MIT
 
