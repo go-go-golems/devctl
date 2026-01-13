@@ -119,4 +119,3 @@ func (b Box) Render() string {
 func SimpleBox(content string, width int) string {
 	return NewBox("").WithContent(content).WithSize(width, 0).Render()
 }
-

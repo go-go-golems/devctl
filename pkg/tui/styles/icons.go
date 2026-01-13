@@ -82,4 +82,3 @@ func EventIcon(eventType string) string {
 		return IconBullet
 	}
 }
-

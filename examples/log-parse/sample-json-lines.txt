@@ -1,0 +1,5 @@
+{"ts":"2026-01-06T18:00:00Z","level":"INFO","service":"api","trace_id":"abc","msg":"startup"}
+{"ts":"2026-01-06T18:00:01Z","level":"DEBUG","service":"api","trace_id":"def","msg":"debug noise"}
+{"ts":"2026-01-06T18:00:02Z","level":"ERROR","service":"api","trace_id":"abc","msg":"boom","code":500}
+not json at all
+

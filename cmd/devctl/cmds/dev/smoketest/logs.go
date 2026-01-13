@@ -154,4 +154,3 @@ func followFile(ctx context.Context, path string, w io.Writer) error {
 		return err
 	}
 }
-

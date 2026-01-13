@@ -24,7 +24,12 @@ func TailLines(path string, tailLines int, maxBytes int64) ([]string, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "open")
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil {
+			// Best-effort close; no caller-visible action.
+			_ = cerr
+		}
+	}()
 
 	info, err := f.Stat()
 	if err != nil {

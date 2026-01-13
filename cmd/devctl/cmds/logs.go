@@ -17,6 +17,7 @@ func newLogsCmd() *cobra.Command {
 	var service string
 	var stderr bool
 	var follow bool
+	var tail int
 
 	cmd := &cobra.Command{
 		Use:   "logs",
@@ -49,22 +50,31 @@ func newLogsCmd() *cobra.Command {
 			}
 
 			if follow {
+				if tail != 0 {
+					if err := writeTail(cmd.OutOrStdout(), logPath, tail); err != nil {
+						return err
+					}
+				}
 				ctx, cancel := context.WithCancel(cmd.Context())
 				defer cancel()
 				return followFile(ctx, logPath, cmd.OutOrStdout())
 			}
-			b, err := os.ReadFile(logPath)
-			if err != nil {
-				return err
+			if tail == 0 {
+				b, err := os.ReadFile(logPath)
+				if err != nil {
+					return err
+				}
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), string(b))
+				return nil
 			}
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), string(b))
-			return nil
+			return writeTail(cmd.OutOrStdout(), logPath, tail)
 		},
 	}
 
 	cmd.Flags().StringVar(&service, "service", "", "Service name")
 	cmd.Flags().BoolVar(&stderr, "stderr", false, "Show stderr log instead of stdout")
 	cmd.Flags().BoolVar(&follow, "follow", false, "Follow log output")
+	cmd.Flags().IntVar(&tail, "tail", 50, "Number of lines to show from the end (0 for all)")
 	AddRepoFlags(cmd)
 	return cmd
 }
@@ -95,4 +105,75 @@ func followFile(ctx context.Context, path string, w io.Writer) error {
 		}
 		return err
 	}
+}
+
+func writeTail(w io.Writer, path string, tail int) error {
+	lines, err := readTailLines(path, tail)
+	if err != nil {
+		return err
+	}
+	for _, line := range lines {
+		_, _ = fmt.Fprintln(w, line)
+	}
+	return nil
+}
+
+func readTailLines(path string, tail int) ([]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+
+	if tail <= 0 {
+		b, err := io.ReadAll(f)
+		if err != nil {
+			return nil, err
+		}
+		text := string(b)
+		if text == "" {
+			return nil, nil
+		}
+		return splitLines(text), nil
+	}
+
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	lines := make([]string, 0, tail)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if len(lines) < tail {
+			lines = append(lines, line)
+			continue
+		}
+		copy(lines, lines[1:])
+		lines[len(lines)-1] = line
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return lines, nil
+}
+
+func splitLines(text string) []string {
+	var lines []string
+	start := 0
+	for i := 0; i < len(text); i++ {
+		if text[i] == '\n' {
+			line := text[start:i]
+			if len(line) > 0 && line[len(line)-1] == '\r' {
+				line = line[:len(line)-1]
+			}
+			lines = append(lines, line)
+			start = i + 1
+		}
+	}
+	if start < len(text) {
+		line := text[start:]
+		if len(line) > 0 && line[len(line)-1] == '\r' {
+			line = line[:len(line)-1]
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }

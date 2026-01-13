@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        :root {
+            --diary-accent: #00d9ff;
+            --diary-accent-dim: #0099b3;
+            --diary-bg-dark: #0a0e14;
+            --diary-bg-card: #131920;
+            --diary-bg-hover: #1a2129;
+            --diary-text-muted: #6b7a8f;
+            --diary-border: #1e2a38;
+            --diary-success: #00ff88;
+            --diary-warning: #ffaa00;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--diary-bg-dark);
+            font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .app-container {
+            display: flex;
+            height: 100vh;
+            flex-direction: column;
+        }
+
+        .navbar {
+            background: linear-gradient(135deg, var(--diary-bg-card) 0%, #0d1117 100%);
+            border-bottom: 1px solid var(--diary-border);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            flex-shrink: 0;
+        }
+
+        .brand-icon {
+            color: var(--diary-accent);
+            font-size: 1.5rem;
+            margin-right: 0.5rem;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .status-badge {
+            background: var(--diary-bg-card);
+            border: 1px solid var(--diary-success);
+            color: var(--diary-success);
+            font-size: 0.75rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--diary-success);
+            border-radius: 50%;
+            animation: blink 1.5s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .nav-link {
+            color: var(--diary-text-muted);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            color: var(--diary-accent);
+            background: rgba(0, 217, 255, 0.1);
+        }
+
+        .main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Event Feed Panel */
+        .event-panel {
+            width: 400px;
+            min-width: 350px;
+            border-right: 1px solid var(--diary-border);
+            display: flex;
+            flex-direction: column;
+            background: var(--diary-bg-dark);
+        }
+
+        .panel-header {
+            padding: 1rem;
+            border-bottom: 1px solid var(--diary-border);
+            background: var(--diary-bg-card);
+            font-weight: 600;
+            color: var(--diary-accent);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .event-feed {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+
+        .event-card {
+            background: var(--diary-bg-card);
+            border: 1px solid var(--diary-border);
+            border-radius: 8px;
+            margin-bottom: 0.75rem;
+            overflow: hidden;
+            transition: all 0.2s ease;
+            animation: slideIn 0.3s ease-out;
+            cursor: pointer;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .event-card:hover {
+            border-color: var(--diary-accent-dim);
+            background: var(--diary-bg-hover);
+        }
+
+        .event-card.active {
+            border-color: var(--diary-accent);
+            box-shadow: 0 0 0 1px var(--diary-accent);
+        }
+
+        .event-header {
+            padding: 0.75rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+
+        .ticket-badge {
+            background: linear-gradient(135deg, var(--diary-accent) 0%, #0077ff 100%);
+            color: #000;
+            font-weight: 600;
+            font-size: 0.65rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .event-time {
+            color: var(--diary-text-muted);
+            font-size: 0.7rem;
+            white-space: nowrap;
+        }
+
+        .event-body {
+            padding: 0 1rem 0.75rem;
+        }
+
+        .event-section {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .event-section i {
+            color: var(--diary-accent);
+            font-size: 0.75rem;
+        }
+
+        .event-type-badge {
+            font-size: 0.6rem;
+            padding: 0.15rem 0.35rem;
+            border-radius: 3px;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-left: auto;
+        }
+
+        .event-type-new_section {
+            background: rgba(0, 255, 136, 0.15);
+            color: var(--diary-success);
+        }
+
+        .event-preview {
+            font-size: 0.75rem;
+            color: var(--diary-text-muted);
+            margin-top: 0.5rem;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        /* Diary Reader Panel */
+        .diary-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--diary-bg-dark);
+        }
+
+        .diary-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--diary-border);
+            background: var(--diary-bg-card);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .diary-header .ticket-badge {
+            font-size: 0.8rem;
+            padding: 0.35rem 0.75rem;
+        }
+
+        .diary-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .diary-path {
+            font-size: 0.75rem;
+            color: var(--diary-text-muted);
+            margin-left: auto;
+        }
+
+        .close-diary {
+            background: none;
+            border: 1px solid var(--diary-border);
+            color: var(--diary-text-muted);
+            padding: 0.4rem 0.75rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+        }
+
+        .close-diary:hover {
+            border-color: var(--diary-accent);
+            color: var(--diary-accent);
+        }
+
+        .diary-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 2rem;
+        }
+
+        .diary-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--diary-text-muted);
+            text-align: center;
+        }
+
+        .diary-empty i {
+            font-size: 4rem;
+            color: var(--diary-accent-dim);
+            opacity: 0.3;
+            margin-bottom: 1.5rem;
+        }
+
+        .diary-empty h4 {
+            color: #adb5bd;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Markdown Rendering */
+        .markdown-body {
+            color: #c9d1d9;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .markdown-body h1 {
+            font-size: 2rem;
+            color: #fff;
+            border-bottom: 2px solid var(--diary-accent);
+            padding-bottom: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .markdown-body h2 {
+            font-size: 1.4rem;
+            color: #fff;
+            margin-top: 2.5rem;
+            margin-bottom: 1rem;
+            padding: 0.75rem 1rem;
+            background: linear-gradient(90deg, rgba(0, 217, 255, 0.1) 0%, transparent 100%);
+            border-left: 3px solid var(--diary-accent);
+            border-radius: 0 8px 8px 0;
+            scroll-margin-top: 1rem;
+        }
+
+        .markdown-body h2.highlight {
+            animation: highlightPulse 2s ease-out;
+        }
+
+        @keyframes highlightPulse {
+            0% { background: rgba(0, 217, 255, 0.4); }
+            100% { background: linear-gradient(90deg, rgba(0, 217, 255, 0.1) 0%, transparent 100%); }
+        }
+
+        .markdown-body h3 {
+            font-size: 1rem;
+            color: var(--diary-accent);
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .markdown-body p {
+            margin-bottom: 1rem;
+            line-height: 1.7;
+        }
+
+        .markdown-body ul, .markdown-body ol {
+            margin-bottom: 1rem;
+            padding-left: 1.5rem;
+        }
+
+        .markdown-body li {
+            margin-bottom: 0.4rem;
+            line-height: 1.6;
+        }
+
+        .markdown-body code {
+            background: rgba(0, 217, 255, 0.1);
+            color: var(--diary-accent);
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .markdown-body pre {
+            background: #0d1117;
+            border: 1px solid var(--diary-border);
+            border-radius: 8px;
+            padding: 1rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        .markdown-body pre code {
+            background: none;
+            padding: 0;
+            color: #c9d1d9;
+        }
+
+        .markdown-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        .markdown-body th, .markdown-body td {
+            border: 1px solid var(--diary-border);
+            padding: 0.5rem 0.75rem;
+            text-align: left;
+        }
+
+        .markdown-body th {
+            background: rgba(0, 217, 255, 0.1);
+            color: var(--diary-accent);
+        }
+
+        .markdown-body blockquote {
+            border-left: 3px solid var(--diary-accent);
+            margin: 1rem 0;
+            padding: 0.5rem 1rem;
+            color: var(--diary-text-muted);
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 0 8px 8px 0;
+        }
+
+        .markdown-body hr {
+            border: none;
+            border-top: 1px solid var(--diary-border);
+            margin: 2rem 0;
+        }
+
+        .markdown-body a {
+            color: var(--diary-accent);
+            text-decoration: none;
+        }
+
+        .markdown-body a:hover {
+            text-decoration: underline;
+        }
+
+        /* Empty state for event feed */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--diary-text-muted);
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            color: var(--diary-accent-dim);
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .empty-state h5 {
+            color: #adb5bd;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .empty-state p {
+            font-size: 0.8rem;
+        }
+
+        .connection-status {
+            position: fixed;
+            bottom: 1rem;
+            right: 1rem;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            z-index: 1000;
+        }
+
+        .connection-status.connected {
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid var(--diary-success);
+            color: var(--diary-success);
+        }
+
+        .connection-status.disconnected {
+            background: rgba(255, 68, 68, 0.1);
+            border: 1px solid #ff4444;
+            color: #ff4444;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--diary-bg-dark);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--diary-border);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--diary-accent-dim);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .event-panel {
+                width: 100%;
+                min-width: 100%;
+            }
+            .diary-panel {
+                display: none;
+            }
+            .diary-panel.active {
+                display: flex;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                z-index: 100;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <nav class="navbar">
+            <div class="container-fluid px-4">
+                <a class="navbar-brand d-flex align-items-center" href="/">
+                    <i class="bi bi-journal-text brand-icon"></i>
+                    <span>Diary Tail</span>
+                </a>
+                <div class="d-flex align-items-center gap-3">
+                    <a class="nav-link active" href="/">
+                        <i class="bi bi-lightning-charge"></i>Events
+                    </a>
+                    <a class="nav-link" href="/diaries">
+                        <i class="bi bi-list-ul"></i>All Diaries
+                    </a>
+                    <span class="status-badge">
+                        <span class="status-dot"></span>
+                        <span>Watching</span>
+                    </span>
+                </div>
+            </div>
+        </nav>
+
+        <div class="main-content">
+            <!-- Event Feed Panel -->
+            <div class="event-panel">
+                <div class="panel-header">
+                    <i class="bi bi-lightning-charge"></i>
+                    <span>Live Events</span>
+                </div>
+                <div class="event-feed" id="eventFeed">
+                    <div class="empty-state" id="emptyState">
+                        <i class="bi bi-journal-bookmark"></i>
+                        <h5>Waiting for updates...</h5>
+                        <p>New sections will appear here</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Diary Reader Panel -->
+            <div class="diary-panel" id="diaryPanel">
+                <div class="diary-header" id="diaryHeader" style="display: none;">
+                    <span class="ticket-badge" id="diaryTicketId"></span>
+                    <span class="diary-title" id="diaryTitle"></span>
+                    <span class="diary-path" id="diaryPath"></span>
+                    <button class="close-diary" onclick="closeDiary()">
+                        <i class="bi bi-x-lg"></i> Close
+                    </button>
+                </div>
+                <div class="diary-content" id="diaryContent">
+                    <div class="diary-empty">
+                        <i class="bi bi-book"></i>
+                        <h4>Select an event</h4>
+                        <p>Click on an event to view the full diary</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="connection-status connected" id="connectionStatus">
+        <i class="bi bi-wifi"></i>
+        <span>Connected</span>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const eventFeed = document.getElementById('eventFeed');
+        const emptyState = document.getElementById('emptyState');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const diaryPanel = document.getElementById('diaryPanel');
+        const diaryHeader = document.getElementById('diaryHeader');
+        const diaryContent = document.getElementById('diaryContent');
+        const diaryTicketId = document.getElementById('diaryTicketId');
+        const diaryTitle = document.getElementById('diaryTitle');
+        const diaryPath = document.getElementById('diaryPath');
+
+        let currentFile = null;
+        let currentSection = null;
+
+        // Configure marked
+        marked.setOptions({
+            breaks: true,
+            gfm: true
+        });
+
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('en-US', { hour12: false });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function slugify(text) {
+            return text.toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/(^-|-$)/g, '');
+        }
+
+        function updateURL(file, section) {
+            const params = new URLSearchParams();
+            if (file) params.set('file', file);
+            if (section) params.set('section', section);
+            const newUrl = params.toString() ? `?${params.toString()}` : '/';
+            window.history.pushState({file, section}, '', newUrl);
+        }
+
+        async function openDiary(filePath, sectionTitle) {
+            try {
+                const response = await fetch(`/api/diary?file=${encodeURIComponent(filePath)}`);
+                if (!response.ok) throw new Error('Failed to load diary');
+                
+                const data = await response.json();
+                
+                // Update header
+                diaryHeader.style.display = 'flex';
+                diaryTicketId.textContent = data.ticketId || 'Unknown';
+                diaryTitle.textContent = data.title || 'Diary';
+                diaryPath.textContent = filePath.split('/').slice(-3).join('/');
+
+                // Render markdown with section IDs
+                let html = marked.parse(data.content);
+                
+                // Add IDs to h2 elements for scrolling
+                html = html.replace(/<h2([^>]*)>([^<]+)<\/h2>/g, (match, attrs, text) => {
+                    const id = slugify(text);
+                    return `<h2${attrs} id="${id}">${text}</h2>`;
+                });
+
+                diaryContent.innerHTML = `<div class="markdown-body">${html}</div>`;
+
+                // Update URL
+                currentFile = filePath;
+                currentSection = sectionTitle;
+                updateURL(filePath, sectionTitle);
+
+                // Scroll to section if specified
+                if (sectionTitle) {
+                    setTimeout(() => scrollToSection(sectionTitle), 100);
+                }
+
+                // Update active state in event list
+                document.querySelectorAll('.event-card').forEach(card => {
+                    card.classList.remove('active');
+                    if (card.dataset.filePath === filePath && card.dataset.section === sectionTitle) {
+                        card.classList.add('active');
+                    }
+                });
+
+                // Mobile: show diary panel
+                diaryPanel.classList.add('active');
+
+            } catch (err) {
+                console.error('Failed to load diary:', err);
+                diaryContent.innerHTML = `<div class="diary-empty"><i class="bi bi-exclamation-triangle"></i><h4>Error loading diary</h4><p>${err.message}</p></div>`;
+            }
+        }
+
+        function scrollToSection(sectionTitle) {
+            const id = slugify(sectionTitle);
+            const element = document.getElementById(id);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                element.classList.add('highlight');
+                setTimeout(() => element.classList.remove('highlight'), 2000);
+            }
+        }
+
+        function closeDiary() {
+            diaryHeader.style.display = 'none';
+            diaryContent.innerHTML = `<div class="diary-empty"><i class="bi bi-book"></i><h4>Select an event</h4><p>Click on an event to view the full diary</p></div>`;
+            currentFile = null;
+            currentSection = null;
+            updateURL(null, null);
+            document.querySelectorAll('.event-card').forEach(card => card.classList.remove('active'));
+            diaryPanel.classList.remove('active');
+        }
+
+        function createEventCard(event) {
+            const card = document.createElement('div');
+            card.className = 'event-card';
+            card.dataset.eventId = event.id;
+            card.dataset.filePath = event.filePath;
+            card.dataset.section = event.section;
+
+            const title = event.title ? escapeHtml(event.title) : '';
+            const preview = event.preview ? event.preview.split('\n')[0] : '';
+
+            card.innerHTML = `
+                <div class="event-header">
+                    <div>
+                        <span class="ticket-badge">${escapeHtml(event.ticketId)}</span>
+                    </div>
+                    <span class="event-time">
+                        <i class="bi bi-clock me-1"></i>${formatTime(event.timestamp)}
+                    </span>
+                </div>
+                <div class="event-body">
+                    <div class="event-section">
+                        <i class="bi bi-bookmark-fill"></i>
+                        <span>${escapeHtml(event.section)}</span>
+                        <span class="event-type-badge event-type-${event.eventType}">${event.eventType.replace('_', ' ')}</span>
+                    </div>
+                    ${preview ? `<div class="event-preview">${escapeHtml(preview)}</div>` : ''}
+                </div>
+            `;
+
+            card.addEventListener('click', () => {
+                openDiary(event.filePath, event.section);
+            });
+
+            return card;
+        }
+
+        function setConnectionStatus(connected) {
+            if (connected) {
+                connectionStatus.className = 'connection-status connected';
+                connectionStatus.innerHTML = '<i class="bi bi-wifi"></i><span>Connected</span>';
+            } else {
+                connectionStatus.className = 'connection-status disconnected';
+                connectionStatus.innerHTML = '<i class="bi bi-wifi-off"></i><span>Disconnected</span>';
+            }
+        }
+
+        function connect() {
+            const eventSource = new EventSource('/events');
+
+            eventSource.onopen = () => {
+                console.log('SSE connected');
+                setConnectionStatus(true);
+            };
+
+            eventSource.onmessage = (e) => {
+                try {
+                    const event = JSON.parse(e.data);
+                    console.log('Received event:', event);
+
+                    // Remove empty state if present
+                    if (emptyState && emptyState.parentNode) {
+                        emptyState.remove();
+                    }
+
+                    // Insert new event at the top
+                    const card = createEventCard(event);
+                    eventFeed.insertBefore(card, eventFeed.firstChild);
+
+                    // Limit displayed events
+                    while (eventFeed.children.length > 100) {
+                        eventFeed.removeChild(eventFeed.lastChild);
+                    }
+
+                    // If we're viewing this file, refresh and scroll
+                    if (currentFile === event.filePath) {
+                        openDiary(event.filePath, event.section);
+                    }
+                } catch (err) {
+                    console.error('Failed to parse event:', err);
+                }
+            };
+
+            eventSource.onerror = () => {
+                console.log('SSE error, reconnecting...');
+                setConnectionStatus(false);
+                eventSource.close();
+                setTimeout(connect, 3000);
+            };
+        }
+
+        // Handle browser back/forward
+        window.addEventListener('popstate', (e) => {
+            if (e.state && e.state.file) {
+                openDiary(e.state.file, e.state.section);
+            } else {
+                closeDiary();
+            }
+        });
+
+        // Check URL on load
+        function checkURL() {
+            const params = new URLSearchParams(window.location.search);
+            const file = params.get('file');
+            const section = params.get('section');
+            if (file) {
+                openDiary(file, section);
+            }
+        }
+
+        // Start SSE connection
+        connect();
+        checkURL();
+    </script>
+</body>
+</html>

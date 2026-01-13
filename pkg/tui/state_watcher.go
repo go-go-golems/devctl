@@ -9,15 +9,27 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/go-go-golems/devctl/pkg/config"
 	"github.com/go-go-golems/devctl/pkg/proc"
+	"github.com/go-go-golems/devctl/pkg/protocol"
+	"github.com/go-go-golems/devctl/pkg/repository"
+	"github.com/go-go-golems/devctl/pkg/runtime"
 	"github.com/go-go-golems/devctl/pkg/state"
 	"github.com/pkg/errors"
 )
+
+type pluginIntrospection struct {
+	Status     string
+	Err        string
+	StartedAt  time.Time
+	FinishedAt time.Time
+	Handshake  protocol.Handshake
+}
 
 type StateWatcher struct {
 	RepoRoot string
@@ -27,6 +39,10 @@ type StateWatcher struct {
 	lastAlive  map[string]bool
 	lastExists bool
 	cpuTracker *proc.CPUTracker
+
+	introspectCh chan struct{}
+	capsMu       sync.RWMutex
+	capsByID     map[string]pluginIntrospection
 }
 
 func (w *StateWatcher) Run(ctx context.Context) error {
@@ -42,6 +58,9 @@ func (w *StateWatcher) Run(ctx context.Context) error {
 
 	// Initialize CPU tracker for calculating CPU percentages
 	w.cpuTracker = proc.NewCPUTracker()
+	w.ensureIntrospectionState()
+	go w.introspectionLoop(ctx)
+	w.requestIntrospection()
 
 	t := time.NewTicker(w.Interval)
 	defer t.Stop()
@@ -57,6 +76,92 @@ func (w *StateWatcher) Run(ctx context.Context) error {
 		case <-t.C:
 		}
 	}
+}
+
+func (w *StateWatcher) ensureIntrospectionState() {
+	if w.introspectCh == nil {
+		w.introspectCh = make(chan struct{}, 1)
+	}
+	if w.capsByID == nil {
+		w.capsByID = make(map[string]pluginIntrospection)
+	}
+}
+
+func (w *StateWatcher) requestIntrospection() {
+	if w.introspectCh == nil {
+		return
+	}
+	select {
+	case w.introspectCh <- struct{}{}:
+	default:
+	}
+}
+
+func (w *StateWatcher) RequestIntrospection() {
+	w.ensureIntrospectionState()
+	w.requestIntrospection()
+}
+
+func (w *StateWatcher) introspectionLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-w.introspectCh:
+			w.runIntrospection(ctx)
+		}
+	}
+}
+
+func (w *StateWatcher) runIntrospection(ctx context.Context) {
+	if w.RepoRoot == "" {
+		return
+	}
+
+	repo, err := repository.Load(repository.Options{RepoRoot: w.RepoRoot, ConfigPath: "", Cwd: w.RepoRoot})
+	if err != nil {
+		return
+	}
+
+	factory := runtime.NewFactory(runtime.FactoryOptions{
+		HandshakeTimeout: 2 * time.Second,
+		ShutdownTimeout:  2 * time.Second,
+	})
+
+	for _, spec := range repo.Specs {
+		startedAt := time.Now()
+		w.updateIntrospection(spec.ID, pluginIntrospection{
+			Status:    "introspecting",
+			StartedAt: startedAt,
+		})
+
+		c, err := factory.Start(ctx, spec, runtime.StartOptions{Meta: repo.Request})
+		if err != nil {
+			w.updateIntrospection(spec.ID, pluginIntrospection{
+				Status:     "error",
+				Err:        err.Error(),
+				StartedAt:  startedAt,
+				FinishedAt: time.Now(),
+			})
+			continue
+		}
+
+		hs := c.Handshake()
+		_ = c.Close(ctx)
+
+		w.updateIntrospection(spec.ID, pluginIntrospection{
+			Status:     "ok",
+			StartedAt:  startedAt,
+			FinishedAt: time.Now(),
+			Handshake:  hs,
+		})
+	}
+}
+
+func (w *StateWatcher) updateIntrospection(id string, info pluginIntrospection) {
+	w.capsMu.Lock()
+	defer w.capsMu.Unlock()
+	w.capsByID[id] = info
 }
 
 func (w *StateWatcher) emitSnapshot(ctx context.Context) error {
@@ -170,15 +275,42 @@ func (w *StateWatcher) readPlugins() []PluginSummary {
 			}
 		}
 
-		plugins = append(plugins, PluginSummary{
-			ID:       p.ID,
-			Path:     p.Path,
-			Priority: p.Priority,
-			Status:   status,
-		})
+		summary := PluginSummary{
+			ID:        p.ID,
+			Path:      p.Path,
+			Priority:  p.Priority,
+			Status:    status,
+			CapStatus: "unknown",
+		}
+
+		if capInfo, ok := w.lookupIntrospection(p.ID); ok {
+			summary.CapStatus = capInfo.Status
+			summary.CapError = capInfo.Err
+			summary.CapStart = capInfo.StartedAt
+			summary.CapEnd = capInfo.FinishedAt
+			if capInfo.Status == "ok" {
+				summary.Protocol = string(capInfo.Handshake.ProtocolVersion)
+				summary.Ops = capInfo.Handshake.Capabilities.Ops
+				summary.Streams = capInfo.Handshake.Capabilities.Streams
+				for _, cmd := range capInfo.Handshake.Capabilities.Commands {
+					if cmd.Name != "" {
+						summary.Commands = append(summary.Commands, cmd.Name)
+					}
+				}
+			}
+		}
+
+		plugins = append(plugins, summary)
 	}
 
 	return plugins
+}
+
+func (w *StateWatcher) lookupIntrospection(id string) (pluginIntrospection, bool) {
+	w.capsMu.RLock()
+	defer w.capsMu.RUnlock()
+	info, ok := w.capsByID[id]
+	return info, ok
 }
 
 // isCommandPath returns true if the path looks like a command name (no slashes).

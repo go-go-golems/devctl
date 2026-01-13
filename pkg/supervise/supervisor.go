@@ -117,19 +117,20 @@ func (s *Supervisor) startService(ctx context.Context, svc engine.ServiceSpec) (
 	readyPath := filepath.Join(state.LogsDir(s.opts.RepoRoot), svc.Name+"-"+ts+".ready")
 
 	if s.opts.WrapperExe == "" {
-		stdoutFile, err := os.OpenFile(stdoutPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		stdoutFile, err := os.OpenFile(stdoutPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 		if err != nil {
 			return state.ServiceRecord{}, errors.Wrap(err, "open stdout log")
 		}
 		defer func() { _ = stdoutFile.Close() }()
 
-		stderrFile, err := os.OpenFile(stderrPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		stderrFile, err := os.OpenFile(stderrPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 		if err != nil {
 			return state.ServiceRecord{}, errors.Wrap(err, "open stderr log")
 		}
 		defer func() { _ = stderrFile.Close() }()
 
-		cmd := exec.CommandContext(ctx, svc.Command[0], svc.Command[1:]...) //nolint:gosec
+		// #nosec G204 -- command is configured in the repo spec.
+		cmd := exec.CommandContext(ctx, svc.Command[0], svc.Command[1:]...)
 		cmd.Dir = cwd
 		cmd.Env = mergeEnv(os.Environ(), svc.Env)
 		cmd.Stdout = stdoutFile
@@ -178,7 +179,8 @@ func (s *Supervisor) startService(ctx context.Context, svc engine.ServiceSpec) (
 	args = append(args, "--")
 	args = append(args, svc.Command...)
 
-	cmd := exec.Command(s.opts.WrapperExe, args...) //nolint:gosec
+	// #nosec G204 -- wrapper executable is configured in the repo spec.
+	cmd := exec.Command(s.opts.WrapperExe, args...)
 	cmd.Dir = s.opts.RepoRoot
 	cmd.Env = os.Environ()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

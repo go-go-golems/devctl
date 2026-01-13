@@ -237,4 +237,3 @@ func readServiceLog(st *state.State, name string, stderr bool) (string, error) {
 	}
 	return "", errors.Errorf("unknown service %q", name)
 }
-

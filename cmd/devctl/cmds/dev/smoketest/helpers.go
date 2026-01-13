@@ -15,4 +15,3 @@ func findDevctlRootFromCaller() string {
 	// this file: devctl/cmd/devctl/cmds/dev/smoketest/helpers.go
 	return filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..", ".."))
 }
-

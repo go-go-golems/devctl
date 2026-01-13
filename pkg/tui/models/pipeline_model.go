@@ -556,7 +556,7 @@ func (m PipelineModel) renderStyledValidation(theme styles.Theme) string {
 		sel := issues[clampInt(m.validationCursor, 0, maxInt(0, len(issues)-1))]
 		headerLines = append(headerLines, "")
 		headerLines = append(headerLines, theme.Title.Render(fmt.Sprintf("Details: %s %s", sel.kind, sel.code)))
-		if sel.details == nil || len(sel.details) == 0 {
+		if len(sel.details) == 0 {
 			headerLines = append(headerLines, theme.TitleMuted.Render("(no details)"))
 		} else {
 			j, err := json.MarshalIndent(sel.details, "  ", "  ")
@@ -617,62 +617,28 @@ func (m PipelineModel) renderLiveOutput(theme styles.Theme) string {
 
 func (m PipelineModel) moveCursor(delta int) PipelineModel {
 	switch m.focus {
+	case pipelineFocusBuild:
+		m.buildCursor = clampInt(m.buildCursor+delta, 0, maxInt(0, len(m.buildSteps)-1))
 	case pipelineFocusPrepare:
 		m.prepareCursor = clampInt(m.prepareCursor+delta, 0, maxInt(0, len(m.prepareSteps)-1))
 	case pipelineFocusValidation:
 		v := m.validate
 		issues := validationIssues(v)
 		m.validationCursor = clampInt(m.validationCursor+delta, 0, maxInt(0, len(issues)-1))
-	default:
-		m.buildCursor = clampInt(m.buildCursor+delta, 0, maxInt(0, len(m.buildSteps)-1))
 	}
 	return m
 }
 
 func (m PipelineModel) toggleDetails() PipelineModel {
 	switch m.focus {
+	case pipelineFocusBuild:
+		m.buildShow = !m.buildShow
 	case pipelineFocusPrepare:
 		m.prepareShow = !m.prepareShow
 	case pipelineFocusValidation:
 		m.validationShow = !m.validationShow
-	default:
-		m.buildShow = !m.buildShow
 	}
 	return m
-}
-
-func (m PipelineModel) renderBuildDetails(b *strings.Builder) {
-	if len(m.buildSteps) == 0 {
-		return
-	}
-	idx := clampInt(m.buildCursor, 0, len(m.buildSteps)-1)
-	sel := m.buildSteps[idx]
-	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("Details: build step %q\n", sel.Name))
-	b.WriteString(fmt.Sprintf("- ok: %v\n", sel.Ok))
-	if sel.DurationMs > 0 {
-		b.WriteString(fmt.Sprintf("- duration: %s\n", formatDurationMs(sel.DurationMs)))
-	}
-	if len(m.buildArtifacts) > 0 {
-		b.WriteString(fmt.Sprintf("- artifacts: %d\n", len(m.buildArtifacts)))
-	}
-}
-
-func (m PipelineModel) renderPrepareDetails(b *strings.Builder) {
-	if len(m.prepareSteps) == 0 {
-		return
-	}
-	idx := clampInt(m.prepareCursor, 0, len(m.prepareSteps)-1)
-	sel := m.prepareSteps[idx]
-	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("Details: prepare step %q\n", sel.Name))
-	b.WriteString(fmt.Sprintf("- ok: %v\n", sel.Ok))
-	if sel.DurationMs > 0 {
-		b.WriteString(fmt.Sprintf("- duration: %s\n", formatDurationMs(sel.DurationMs)))
-	}
-	if len(m.prepareArtifacts) > 0 {
-		b.WriteString(fmt.Sprintf("- artifacts: %d\n", len(m.prepareArtifacts)))
-	}
 }
 
 type validationIssue struct {
@@ -727,40 +693,6 @@ func (m PipelineModel) phase(p tui.PipelinePhase) *pipelinePhaseState {
 		m.phases[p] = st
 	}
 	return st
-}
-
-func formatPhaseState(st *pipelinePhaseState) string {
-	if st == nil {
-		return "pending"
-	}
-	if st.ok == nil && !st.startedAt.IsZero() {
-		return "running"
-	}
-	if st.ok == nil {
-		return "pending"
-	}
-	state := "ok"
-	if !*st.ok {
-		state = "failed"
-	}
-	if st.durationMs > 0 {
-		state = fmt.Sprintf("%s (%s)", state, formatDurationMs(st.durationMs))
-	}
-	if st.errText != "" && !*st.ok {
-		state = fmt.Sprintf("%s: %s", state, st.errText)
-	}
-	return state
-}
-
-func formatStep(s tui.PipelineStepResult) string {
-	state := "ok"
-	if !s.Ok {
-		state = "failed"
-	}
-	if s.DurationMs > 0 {
-		state = fmt.Sprintf("%s (%s)", state, formatDurationMs(s.DurationMs))
-	}
-	return state
 }
 
 func formatDurationMs(ms int64) string {

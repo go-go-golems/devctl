@@ -51,15 +51,13 @@ func RegisterDomainToUITransformer(bus *Bus) {
 			}
 
 			text := "state: missing"
+			level := LogLevelInfo
 			if snap.Exists {
 				text = "state: loaded"
 				if snap.Error != "" {
 					text = "state: error"
+					level = LogLevelWarn
 				}
-			}
-			level := LogLevelInfo
-			if snap.Error != "" || !snap.Exists {
-				level = LogLevelWarn
 			}
 			if err := publishEventText(time.Now(), "system", level, text); err != nil {
 				return errors.Wrap(err, "publish ui event")

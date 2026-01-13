@@ -90,4 +90,3 @@ func (p ProgressBar) RenderCompact() string {
 
 	return fmt.Sprintf("[%s%s]", p.style.Render(filledStr), emptyStr)
 }
-

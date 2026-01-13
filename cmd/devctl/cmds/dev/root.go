@@ -15,4 +15,3 @@ func NewCmd() *cobra.Command {
 	cmd.AddCommand(smoketest.NewCmd())
 	return cmd
 }
-

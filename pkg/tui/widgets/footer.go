@@ -60,4 +60,3 @@ func (f Footer) Render() string {
 
 	return lipgloss.JoinVertical(lipgloss.Left, separator, paddedKeybinds)
 }
-

@@ -48,6 +48,7 @@ func NewFactory(opts FactoryOptions) *Factory {
 }
 
 func (f *Factory) Start(ctx context.Context, spec PluginSpec, opts StartOptions) (Client, error) {
+	// #nosec G204 -- plugin path and args are defined by the repo configuration.
 	cmd := exec.CommandContext(ctx, spec.Path, spec.Args...)
 	cmd.Dir = spec.WorkDir
 	cmd.Env = mergeEnv(os.Environ(), spec.Env)

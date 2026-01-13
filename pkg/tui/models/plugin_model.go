@@ -3,6 +3,7 @@ package models
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -13,14 +14,18 @@ import (
 
 // PluginInfo contains detailed information about a plugin.
 type PluginInfo struct {
-	ID       string
-	Path     string
-	Status   string // "active" | "disabled" | "error"
-	Priority int
-	Protocol string
-	Ops      []string
-	Streams  []string
-	Commands []string
+	ID        string
+	Path      string
+	Status    string // "active" | "disabled" | "error"
+	Priority  int
+	Protocol  string
+	Ops       []string
+	Streams   []string
+	Commands  []string
+	CapStatus string
+	CapError  string
+	CapStart  time.Time
+	CapEnd    time.Time
 }
 
 // PluginModel displays and manages the list of plugins.
@@ -51,12 +56,18 @@ func (m PluginModel) WithPlugins(plugins []tui.PluginSummary) PluginModel {
 	m.plugins = make([]PluginInfo, 0, len(plugins))
 	for _, p := range plugins {
 		m.plugins = append(m.plugins, PluginInfo{
-			ID:       p.ID,
-			Path:     p.Path,
-			Status:   p.Status,
-			Priority: p.Priority,
-			Protocol: "v1", // Default protocol
-			// Ops, Streams, Commands would come from introspection
+			ID:        p.ID,
+			Path:      p.Path,
+			Status:    p.Status,
+			Priority:  p.Priority,
+			Protocol:  p.Protocol,
+			Ops:       p.Ops,
+			Streams:   p.Streams,
+			Commands:  p.Commands,
+			CapStatus: p.CapStatus,
+			CapError:  p.CapError,
+			CapStart:  p.CapStart,
+			CapEnd:    p.CapEnd,
 		})
 	}
 	// Reset selection if out of bounds
@@ -95,6 +106,8 @@ func (m PluginModel) Update(msg tea.Msg) (PluginModel, tea.Cmd) {
 			// Collapse all
 			m.expanded = map[int]bool{}
 			return m, nil
+		case "r":
+			return m, func() tea.Msg { return tui.PluginIntrospectionRefreshMsg{} }
 		case "esc":
 			return m, func() tea.Msg { return tui.NavigateBackMsg{} }
 		}
@@ -123,7 +136,7 @@ func (m PluginModel) View() string {
 	headerContent := lipgloss.JoinHorizontal(lipgloss.Center,
 		theme.Title.Render(fmt.Sprintf("%d Plugins", len(m.plugins))),
 		"  ",
-		theme.TitleMuted.Render("[↑/↓] select  [enter] expand  [a/A] expand/collapse all  [esc] back"),
+		theme.TitleMuted.Render("[↑/↓] select  [enter] expand  [a/A] expand/collapse all  [r] refresh  [esc] back"),
 	)
 	sections = append(sections, headerContent, "")
 
@@ -161,6 +174,14 @@ func (m PluginModel) renderPluginCard(index int, p PluginInfo, selected, expande
 		cursor = theme.KeybindKey.Render("> ")
 	}
 
+	// Stream indicator
+	streamIndicator := ""
+	if len(p.Streams) > 0 {
+		streamIndicator = theme.StatusRunning.Render("  📊 stream")
+	}
+
+	capIndicator := m.renderCapStatusInline(p, theme)
+
 	// Plugin name with status
 	titleLine := lipgloss.JoinHorizontal(lipgloss.Center,
 		cursor,
@@ -169,6 +190,8 @@ func (m PluginModel) renderPluginCard(index int, p PluginInfo, selected, expande
 		theme.Title.Render(p.ID),
 		"  ",
 		theme.TitleMuted.Render(fmt.Sprintf("priority: %d", p.Priority)),
+		streamIndicator,
+		capIndicator,
 	)
 
 	if !expanded {
@@ -190,6 +213,14 @@ func (m PluginModel) renderPluginCard(index int, p PluginInfo, selected, expande
 			"    ",
 			theme.TitleMuted.Render("Priority: "),
 			theme.Title.Render(fmt.Sprintf("%d", p.Priority)),
+		),
+	)
+
+	// Capabilities status
+	contentLines = append(contentLines,
+		lipgloss.JoinHorizontal(lipgloss.Left,
+			theme.TitleMuted.Width(12).Render("Caps:"),
+			m.renderCapStatusLine(p, theme),
 		),
 	)
 
@@ -217,7 +248,9 @@ func (m PluginModel) renderPluginCard(index int, p PluginInfo, selected, expande
 
 	// Ops
 	opsText := "(none)"
-	if len(p.Ops) > 0 {
+	if p.CapStatus != "ok" {
+		opsText = "(unknown)"
+	} else if len(p.Ops) > 0 {
 		opsText = strings.Join(p.Ops, ", ")
 	}
 	contentLines = append(contentLines,
@@ -229,7 +262,9 @@ func (m PluginModel) renderPluginCard(index int, p PluginInfo, selected, expande
 
 	// Streams
 	streamsText := "(none)"
-	if len(p.Streams) > 0 {
+	if p.CapStatus != "ok" {
+		streamsText = "(unknown)"
+	} else if len(p.Streams) > 0 {
 		streamsText = strings.Join(p.Streams, ", ")
 	}
 	contentLines = append(contentLines,
@@ -241,7 +276,9 @@ func (m PluginModel) renderPluginCard(index int, p PluginInfo, selected, expande
 
 	// Commands
 	commandsText := "(none)"
-	if len(p.Commands) > 0 {
+	if p.CapStatus != "ok" {
+		commandsText = "(unknown)"
+	} else if len(p.Commands) > 0 {
 		commandsText = strings.Join(p.Commands, ", ")
 	}
 	contentLines = append(contentLines,
@@ -257,6 +294,44 @@ func (m PluginModel) renderPluginCard(index int, p PluginInfo, selected, expande
 		WithSize(m.width, len(contentLines)+3)
 
 	return box.Render()
+}
+
+func (m PluginModel) renderCapStatusInline(p PluginInfo, theme styles.Theme) string {
+	status := strings.TrimSpace(p.CapStatus)
+	if status == "" {
+		status = "unknown"
+	}
+	return theme.TitleMuted.Render(fmt.Sprintf("  cap: %s", status))
+}
+
+func (m PluginModel) renderCapStatusLine(p PluginInfo, theme styles.Theme) string {
+	status := strings.TrimSpace(p.CapStatus)
+	if status == "" {
+		status = "unknown"
+	}
+
+	switch status {
+	case "introspecting":
+		elapsed := ""
+		if !p.CapStart.IsZero() {
+			elapsed = fmt.Sprintf(" (%.1fs)", time.Since(p.CapStart).Seconds())
+		}
+		return theme.StatusPending.Render(status + elapsed)
+	case "ok":
+		ago := ""
+		if !p.CapEnd.IsZero() {
+			ago = fmt.Sprintf(" (%.1fs ago)", time.Since(p.CapEnd).Seconds())
+		}
+		return theme.StatusRunning.Render(status + ago)
+	case "error":
+		errText := strings.TrimSpace(p.CapError)
+		if errText != "" {
+			return theme.StatusDead.Render(status + ": " + errText)
+		}
+		return theme.StatusDead.Render(status)
+	default:
+		return theme.TitleMuted.Render(status)
+	}
 }
 
 // truncatePath shortens a path if it exceeds maxLen.
@@ -277,4 +352,3 @@ func truncatePath(path string, maxLen int) string {
 	}
 	return path[:maxLen-3] + "..."
 }
-

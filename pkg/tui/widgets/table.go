@@ -94,9 +94,10 @@ func (t Table) Render() string {
 		// Icon
 		if row.Icon != "" {
 			iconStyle := theme.StatusRunning
-			if row.Icon == styles.IconError {
+			switch row.Icon {
+			case styles.IconError:
 				iconStyle = theme.StatusDead
-			} else if row.Icon == styles.IconPending || row.Icon == styles.IconSkipped {
+			case styles.IconPending, styles.IconSkipped:
 				iconStyle = theme.StatusPending
 			}
 			parts = append(parts, iconStyle.Render(row.Icon)+" ")
@@ -150,4 +151,3 @@ func ServiceRow(icon, name, status, pid, extra string, selected bool) TableRow {
 		Selected: selected,
 	}
 }
-

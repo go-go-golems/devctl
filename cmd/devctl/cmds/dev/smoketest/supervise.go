@@ -135,4 +135,3 @@ func newSuperviseCmd() *cobra.Command {
 	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Second, "Overall timeout for the smoketest")
 	return cmd
 }
-

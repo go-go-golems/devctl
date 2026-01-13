@@ -34,7 +34,7 @@ func NewInMemoryBus() (*Bus, error) {
 }
 
 func (b *Bus) AddHandler(name, topic string, handler func(*message.Message) error) {
-	b.Router.AddNoPublisherHandler(name, topic, b.Subscriber, handler)
+	b.Router.AddConsumerHandler(name, topic, b.Subscriber, handler)
 }
 
 func (b *Bus) Run(ctx context.Context) error {

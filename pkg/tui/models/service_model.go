@@ -219,7 +219,7 @@ func (m ServiceModel) View() string {
 
 	rec, alive, found := m.lookupService()
 	if !found {
-		box := widgets.NewBox("Service: " + m.name).
+		box := widgets.NewBox("Service: "+m.name).
 			WithContent(theme.TitleMuted.Render("No record for this service in the current state snapshot.")).
 			WithSize(m.width, 5)
 		return box.Render()
@@ -543,7 +543,6 @@ func (m ServiceModel) resizeViewport() ServiceModel {
 
 	m.vp.Width = maxInt(0, m.width-4) // Account for box borders
 	m.vp.Height = vpHeight
-	m.vp.HighPerformanceRendering = false
 	m = m.refreshViewportContent(false)
 	return m
 }
@@ -620,6 +619,10 @@ func (m ServiceModel) renderHealthInfo(theme styles.Theme) string {
 				healthIcon = styles.IconUnhealthy
 				statusText = "Unhealthy"
 				statusStyle = theme.StatusDead
+			case tui.HealthUnknown:
+				healthIcon = styles.IconUnknown
+				statusText = "Unknown"
+				statusStyle = theme.TitleMuted
 			}
 			if !h.LastCheck.IsZero() {
 				lastCheck = formatDuration(time.Since(h.LastCheck)) + " ago"
@@ -737,87 +740,6 @@ func (m ServiceModel) syncExitInfoFromSnapshot() ServiceModel {
 	return m.recalculateViewportHeight()
 }
 
-func (m ServiceModel) renderStyledExitInfo(theme styles.Theme) string {
-	if m.exitInfo == nil {
-		msg := "unknown"
-		if m.exitInfoErr != "" {
-			msg = m.exitInfoErr
-		}
-		return lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(theme.Warning).
-			Padding(0, 1).
-			Width(m.width - 4).
-			Render(lipgloss.JoinHorizontal(lipgloss.Center,
-				theme.StatusDead.Render(styles.IconError),
-				" ",
-				theme.Title.Render("Exit: "),
-				theme.TitleMuted.Render(msg),
-			))
-	}
-
-	ei := m.exitInfo
-	var lines []string
-
-	// Exit status line
-	exitKind := "unknown"
-	exitIcon := styles.IconError
-	if ei.Signal != "" {
-		exitKind = "signal " + ei.Signal
-		exitIcon = styles.IconWarning
-	} else if ei.ExitCode != nil {
-		if *ei.ExitCode == 0 {
-			exitKind = "exit_code=0 (success)"
-			exitIcon = styles.IconSuccess
-		} else {
-			exitKind = fmt.Sprintf("exit_code=%d", *ei.ExitCode)
-		}
-	}
-
-	lines = append(lines, lipgloss.JoinHorizontal(lipgloss.Center,
-		theme.StatusDead.Render(exitIcon),
-		" ",
-		theme.Title.Render("Exit: "),
-		theme.TitleMuted.Render(exitKind),
-		"  ",
-		theme.TitleMuted.Render(fmt.Sprintf("PID %d", ei.PID)),
-	))
-
-	// Exited at
-	if !ei.ExitedAt.IsZero() {
-		lines = append(lines, theme.TitleMuted.Render("Exited: "+ei.ExitedAt.Format("2006-01-02 15:04:05")))
-	}
-
-	// Error message
-	if ei.Error != "" {
-		lines = append(lines, theme.StatusDead.Render("Error: "+ei.Error))
-	}
-
-	// Stderr tail
-	stderrLines := ei.StderrTail
-	if len(stderrLines) > 6 {
-		stderrLines = stderrLines[len(stderrLines)-6:]
-	}
-	if len(stderrLines) > 0 {
-		lines = append(lines, "")
-		lines = append(lines, theme.TitleMuted.Render("Last stderr:"))
-		for _, line := range stderrLines {
-			// Truncate long lines
-			if len(line) > m.width-8 {
-				line = line[:m.width-11] + "..."
-			}
-			lines = append(lines, theme.StatusDead.Render("! "+line))
-		}
-	}
-
-	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(theme.Error).
-		Padding(0, 1).
-		Width(m.width - 4).
-		Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
-}
-
 func (m ServiceModel) loadInitialTail() ServiceModel {
 	m.stdout = m.loadTailForStream(m.stdout)
 	m.stderr = m.loadTailForStream(m.stderr)
@@ -865,7 +787,12 @@ func (m ServiceModel) readNewBytes(s logStreamState) logStreamState {
 		s.lastErr = err.Error()
 		return s
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil {
+			// Best-effort close; no caller-visible action.
+			_ = cerr
+		}
+	}()
 
 	info, err := f.Stat()
 	if err != nil {
@@ -906,9 +833,7 @@ func (m ServiceModel) readNewBytes(s logStreamState) logStreamState {
 			parts = parts[:len(parts)-1]
 		}
 	}
-	for _, line := range parts {
-		s.lines = append(s.lines, line)
-	}
+	s.lines = append(s.lines, parts...)
 	if m.maxLines > 0 && len(s.lines) > m.maxLines {
 		s.lines = append([]string{}, s.lines[len(s.lines)-m.maxLines:]...)
 	}
@@ -956,7 +881,12 @@ func readTailLines(path string, tailLines int, maxBytes int64) ([]string, int64,
 	if err != nil {
 		return nil, 0, err
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil {
+			// Best-effort close; no caller-visible action.
+			_ = cerr
+		}
+	}()
 
 	info, err := f.Stat()
 	if err != nil {

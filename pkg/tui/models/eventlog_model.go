@@ -160,9 +160,7 @@ func (m EventLogModel) Update(msg tea.Msg) (EventLogModel, tea.Cmd) {
 			m.paused = !m.paused
 			if !m.paused && len(m.pausedQueue) > 0 {
 				// Unpause: append queued events
-				for _, e := range m.pausedQueue {
-					m.entries = append(m.entries, e)
-				}
+				m.entries = append(m.entries, m.pausedQueue...)
 				m.pausedQueue = nil
 				if m.max > 0 && len(m.entries) > m.max {
 					m.droppedCount += len(m.entries) - m.max
@@ -300,7 +298,6 @@ func (m EventLogModel) resizeViewport() EventLogModel {
 
 	m.vp.Width = maxInt(0, m.width-4) // Account for box borders
 	m.vp.Height = usableHeight
-	m.vp.HighPerformanceRendering = false
 	m = m.refreshViewportContent(false)
 	return m
 }
@@ -385,6 +382,10 @@ func (m EventLogModel) formatEventLine(theme styles.Theme, e tui.EventLogEntry) 
 	// Apply level style to text too for errors/warnings
 	var textStyle lipgloss.Style
 	switch e.Level {
+	case tui.LogLevelDebug:
+		textStyle = theme.TitleMuted
+	case tui.LogLevelInfo:
+		textStyle = theme.TitleMuted
 	case tui.LogLevelError:
 		textStyle = theme.StatusDead
 	case tui.LogLevelWarn:
@@ -399,15 +400,6 @@ func (m EventLogModel) formatEventLine(theme styles.Theme, e tui.EventLogEntry) 
 		levelStr,
 		textStyle.Render(text),
 	)
-}
-
-func (m EventLogModel) boxChromeHeight() int {
-	// 2 borders + 1 title line + 2 fixed filter lines.
-	return 5
-}
-
-func (m EventLogModel) boxHeight() int {
-	return m.vp.Height + m.boxChromeHeight()
 }
 
 func (m EventLogModel) ensureServiceKnown(source string) EventLogModel {
@@ -536,10 +528,10 @@ func (m EventLogModel) renderStyledLevelFilterBar(theme styles.Theme) string {
 		level tui.LogLevel
 		color lipgloss.Color
 	}{
-		{tui.LogLevelDebug, lipgloss.Color("240")},  // gray
-		{tui.LogLevelInfo, lipgloss.Color("39")},    // blue
-		{tui.LogLevelWarn, theme.Warning},           // yellow
-		{tui.LogLevelError, lipgloss.Color("196")},  // red
+		{tui.LogLevelDebug, lipgloss.Color("240")}, // gray
+		{tui.LogLevelInfo, lipgloss.Color("39")},   // blue
+		{tui.LogLevelWarn, theme.Warning},          // yellow
+		{tui.LogLevelError, lipgloss.Color("196")}, // red
 	}
 
 	var parts []string
@@ -594,16 +586,6 @@ func (m EventLogModel) renderFooterKeybindings(theme styles.Theme) string {
 	parts = append(parts, theme.KeybindKey.Render("[↑/↓]")+" scroll")
 
 	return theme.TitleMuted.Render(strings.Join(parts, "   "))
-}
-
-// Deprecated: use renderStyledServiceFilterBar instead
-func (m EventLogModel) renderServiceFilterBar() string {
-	return m.renderStyledServiceFilterBar(styles.DefaultTheme())
-}
-
-// Deprecated: use renderStyledLevelFilterBar instead
-func (m EventLogModel) renderLevelFilterBar() string {
-	return m.renderStyledLevelFilterBar(styles.DefaultTheme())
 }
 
 func normalizeEventLogEntry(e tui.EventLogEntry) tui.EventLogEntry {

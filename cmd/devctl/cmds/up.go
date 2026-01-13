@@ -46,7 +46,7 @@ func newUpCmd() *cobra.Command {
 							return err
 						}
 
-						prompt := "state exists; run devctl down first or use --force"
+						var prompt string
 						if aliveCount == 0 {
 							prompt = "state exists but no services appear alive; remove state and continue? (y/N): "
 						} else {

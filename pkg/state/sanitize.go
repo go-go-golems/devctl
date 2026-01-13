@@ -61,11 +61,11 @@ func FilterEnvForDisplay(env map[string]string, maxVars int) map[string]string {
 
 	// Skip noisy/uninteresting variables
 	skipPrefixes := []string{
-		"_",           // Shell internals
-		"LESS",        // Pager settings
-		"LS_COLORS",   // ls coloring
-		"BASH",        // Bash internals
-		"SHELL",       // Already known
+		"_",            // Shell internals
+		"LESS",         // Pager settings
+		"LS_COLORS",    // ls coloring
+		"BASH",         // Bash internals
+		"SHELL",        // Already known
 		"TERM_PROGRAM", // Terminal metadata
 	}
 
@@ -106,4 +106,3 @@ func FilterEnvForDisplay(env map[string]string, maxVars int) map[string]string {
 
 	return result
 }
-

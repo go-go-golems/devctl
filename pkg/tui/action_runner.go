@@ -17,7 +17,10 @@ import (
 	"github.com/pkg/errors"
 )
 
-func RegisterUIActionRunner(bus *Bus, opts RootOptions) {
+func RegisterUIActionRunner(tuiCtx context.Context, bus *Bus, opts RootOptions) {
+	if tuiCtx == nil {
+		tuiCtx = context.Background()
+	}
 	bus.AddHandler("devctl-ui-actions", TopicUIActions, func(msg *message.Message) error {
 		defer msg.Ack()
 
@@ -42,10 +45,7 @@ func RegisterUIActionRunner(bus *Bus, opts RootOptions) {
 			req.At = time.Now()
 		}
 
-		ctx := msg.Context()
-		if ctx == nil {
-			ctx = context.Background()
-		}
+		ctx := tuiCtx
 
 		runID := watermill.NewUUID()
 		runStart := time.Now()
@@ -62,6 +62,12 @@ func RegisterUIActionRunner(bus *Bus, opts RootOptions) {
 		switch req.Kind {
 		case ActionDown:
 			err = runDown(ctx, opts, bus.Publisher, runID)
+		case ActionStop:
+			if req.Service == "" {
+				err = errors.New("missing service for stop action")
+				break
+			}
+			err = errors.New("stop action is not implemented")
 		case ActionUp:
 			err = runUp(ctx, opts, bus.Publisher, runID)
 		case ActionRestart:
@@ -213,6 +219,18 @@ func phasesForAction(kind ActionKind) []PipelinePhase {
 	switch kind {
 	case ActionDown:
 		return []PipelinePhase{PipelinePhaseStopSupervise, PipelinePhaseRemoveState}
+	case ActionStop:
+		return []PipelinePhase{PipelinePhaseStopSupervise}
+	case ActionUp:
+		return []PipelinePhase{
+			PipelinePhaseMutateConfig,
+			PipelinePhaseBuild,
+			PipelinePhasePrepare,
+			PipelinePhaseValidate,
+			PipelinePhaseLaunchPlan,
+			PipelinePhaseSupervise,
+			PipelinePhaseStateSave,
+		}
 	case ActionRestart:
 		return []PipelinePhase{
 			PipelinePhaseStopSupervise,

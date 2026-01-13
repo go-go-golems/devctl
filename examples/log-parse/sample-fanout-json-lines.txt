@@ -1,0 +1,5 @@
+{"ts":"2020-01-01T00:00:00Z","service":"api","level":"INFO","msg":"ok","route":"/health","duration_ms":12}
+{"ts":"2020-01-01T00:00:01Z","service":"api","level":"ERROR","msg":"db down","trace_id":"abc-123","route":"/v1/items","duration_ms":532}
+{"ts":"2020-01-01T00:00:02Z","service":"api","level":"INFO","msg":"authentication failed","user":"manuel","ip":"10.0.0.5","route":"/login","duration_ms":48}
+{"ts":"2020-01-01T00:00:03Z","service":"api","level":"INFO","msg":"ok","route":"/v1/items","duration_ms":87}
+

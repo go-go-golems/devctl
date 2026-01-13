@@ -61,13 +61,13 @@ func newWrapServiceCmd() *cobra.Command {
 				return errors.Wrap(err, "mkdir exit dir")
 			}
 
-			stdoutFile, err := os.OpenFile(stdoutLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+			stdoutFile, err := os.OpenFile(stdoutLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 			if err != nil {
 				return errors.Wrap(err, "open stdout log")
 			}
 			defer func() { _ = stdoutFile.Close() }()
 
-			stderrFile, err := os.OpenFile(stderrLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+			stderrFile, err := os.OpenFile(stderrLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 			if err != nil {
 				return errors.Wrap(err, "open stderr log")
 			}
@@ -79,7 +79,8 @@ func newWrapServiceCmd() *cobra.Command {
 				return errors.Wrap(err, "setpgid")
 			}
 
-			child := exec.Command(args[0], args[1:]...) //nolint:gosec
+			// #nosec G204 -- command comes from the supervised service spec.
+			child := exec.Command(args[0], args[1:]...)
 			child.Dir = cwd
 			child.Env = mergeEnv(os.Environ(), parseEnvPairs(envPairs))
 			child.Stdout = stdoutFile
