@@ -1,7 +1,7 @@
 ---
 Title: JavaScript log processor for devctl
 Ticket: MO-007-LOG-PARSER
-Status: active
+Status: complete
 Topics:
     - backend
 DocType: index
@@ -12,10 +12,11 @@ ExternalSources:
     - local:js-log-parser-spec.md
     - local:js-log-parser-examples.md
 Summary: ""
-LastUpdated: 2026-01-06T18:28:08-05:00
+LastUpdated: 2026-01-13T17:06:28.836339557-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
 
 
 

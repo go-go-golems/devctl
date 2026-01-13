@@ -122,3 +122,8 @@ Docs: refresh streams analysis/design to reflect implemented UI/CLI + ops-only S
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/ttmp/2026/01/07/MO-011-IMPLEMENT-STREAMS--implement-streams/analysis/01-streams-codebase-analysis-and-tui-integration.md — Update executive summary + fixtures + current implementation status
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/ttmp/2026/01/07/MO-011-IMPLEMENT-STREAMS--implement-streams/design-doc/01-streams-telemetry-plugin-uistreamrunner-and-devctl-stream-cli.md — Correct StartStream gating semantics
 
+
+## 2026-01-13
+
+Close: per request (optional stream stop remaining)
+

@@ -1,7 +1,7 @@
 ---
 Title: Persist launch plan state + plugin IO debug trace
 Ticket: MO-015-DEVCTL-PLAN-DEBUG-TRACE
-Status: active
+Status: complete
 Topics:
     - devctl
     - debugging
@@ -12,10 +12,11 @@ Owners: []
 RelatedFiles: []
 ExternalSources: []
 Summary: ""
-LastUpdated: 2026-01-08T08:59:19.653051078-05:00
+LastUpdated: 2026-01-13T17:06:03.267946702-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
 
 # Persist launch plan state + plugin IO debug trace
 

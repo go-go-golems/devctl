@@ -23,3 +23,8 @@ Step 2: bind Bubbletea program lifecycle to the TUI context (commit 1cfee17)
 ### Related Files
 
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/tui.go — Adds tea.WithContext to program options
+
+## 2026-01-13
+
+Close: per request (validation pending)
+

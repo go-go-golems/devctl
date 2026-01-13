@@ -1,7 +1,7 @@
 ---
 Title: devctl cleanup pass
 Ticket: MO-010-DEVCTL-CLEANUP-PASS
-Status: active
+Status: complete
 Topics:
     - backend
     - tui
@@ -13,10 +13,11 @@ Owners: []
 RelatedFiles: []
 ExternalSources: []
 Summary: ""
-LastUpdated: 2026-01-07T13:47:33.628021485-05:00
+LastUpdated: 2026-01-13T16:09:48.860734555-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
 
 # devctl cleanup pass
 

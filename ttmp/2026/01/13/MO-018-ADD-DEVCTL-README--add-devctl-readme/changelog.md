@@ -115,3 +115,37 @@ Recorded reMarkable uploads and commit hash in diary
 
 - /home/manuel/workspaces/2026-01-13/add-devctl-readme/devctl/ttmp/2026/01/13/MO-018-ADD-DEVCTL-README--add-devctl-readme/reference/02-diary.md — Logged commit and upload details
 
+
+## 2026-01-13
+
+Step 10: validate plugin introspection and close RUNTIME-PLUGIN-INTROSPECTION
+
+### Related Files
+
+- /home/manuel/workspaces/2026-01-13/add-devctl-readme/devctl/ttmp/2026/01/13/MO-018-ADD-DEVCTL-README--add-devctl-readme/reference/01-close-ticket-diary.md — Recorded TUI validation and ticket closure
+
+
+## 2026-01-13
+
+Step 11: close requested tickets and refresh report
+
+### Related Files
+
+- /home/manuel/workspaces/2026-01-13/add-devctl-readme/devctl/ttmp/2026/01/13/MO-018-ADD-DEVCTL-README--add-devctl-readme/analysis/01-active-ticket-status-report.md — Updated counts and closure list
+
+
+## 2026-01-13
+
+Step 6-7: Fixed screenshots with VHS Screenshot command, improved README structure
+
+### Related Files
+
+- devctl/README.md — Restructured with tables
+- devctl/docs/screenshots/PLAYBOOK.md — Updated to document VHS workflow
+- devctl/vhs/screenshot-tui.tape — New VHS tape for PNG screenshot generation
+
+
+## 2026-01-13
+
+Step 8: Rewrote README for newcomer accessibility - added Problem/Solution framing, explained what plugins are, added ASCII architecture diagram
+

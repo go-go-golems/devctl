@@ -1,114 +1,195 @@
-# devctl - Dev environment orchestrator
+# devctl — Dev Environment Orchestrator
 
-`devctl` turns repo-specific startup knowledge into a repeatable, testable workflow. Your plugins describe what to run; devctl handles ordering, process supervision, state, and logs.
+**devctl** makes starting your development environment as simple as `devctl up`.
 
-## Features
+Instead of remembering which services to start, what order they need, and what environment variables to set, you write a small script (a "plugin") that describes your environment — and devctl handles the rest.
 
-- NDJSON stdio plugin protocol (v2) with strict, debuggable boundaries.
-- Pipeline orchestration: config -> build -> prepare -> validate -> launch -> supervise.
-- Process supervision with health checks, PID tracking, and structured logs.
-- TUI dashboard for start/stop, logs, events, pipeline, and plugins.
-- Dynamic plugin commands (`devctl <command>`) defined by plugins.
-- Stream operations for long-running protocol events (`devctl stream start`).
-- Mergeable outputs from multiple plugins (priority ordering, strict collisions).
-- Built-in smoke tests and fixtures for plugin protocol behavior.
-- Companion `log-parse` tool for JS-based log parsing and tagging.
+<p align="center">
+  <img src="docs/screenshots/devctl-tui-dashboard.png" alt="devctl TUI dashboard" width="800">
+</p>
 
-## Installation
+## The Problem
 
-Choose one of the following methods (mirroring other go-go-golems CLIs):
+Starting a development environment often looks like this:
 
-### Homebrew
 ```bash
+# Terminal 1: Start the database
+docker-compose up -d postgres
+sleep 5  # wait for it...
+
+# Terminal 2: Run migrations
+cd backend && make migrate
+
+# Terminal 3: Start the API
+export DATABASE_URL=postgres://...
+go run ./cmd/api
+
+# Terminal 4: Start the frontend  
+cd frontend && npm run dev
+
+# Oh, and don't forget to set these env vars...
+# And restart the API if you change config...
+```
+
+This knowledge lives in your head, in scattered README files, or in tribal knowledge. New team members struggle. You forget steps after a vacation.
+
+## The Solution
+
+With devctl, you write a **plugin** — a simple script that answers three questions:
+
+1. **What configuration does my environment need?** (ports, env vars, etc.)
+2. **Is everything ready?** (dependencies installed, database running, etc.)
+3. **What services should run?** (API server, frontend, workers, etc.)
+
+Then starting your environment becomes:
+
+```bash
+devctl up      # Start everything
+devctl status  # See what's running
+devctl down    # Stop everything
+```
+
+## What's a Plugin?
+
+A plugin is just a script (Python, Bash, Node — any language) that communicates with devctl via JSON messages. It's not a framework or SDK — it's a simple protocol.
+
+Here's the mental model:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Your Repository                                                 │
+│  ┌──────────────────┐    ┌──────────────────────────────────┐   │
+│  │  .devctl.yaml    │    │  devctl-plugin.py (or .sh, .js)  │   │
+│  │  ───────────     │    │  ────────────────                │   │
+│  │  Points to your  │───▶│  Answers questions about your   │   │
+│  │  plugin script   │    │  environment (config, services)  │   │
+│  └──────────────────┘    └──────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  devctl                                                          │
+│  ───────                                                         │
+│  • Asks your plugin what to run                                  │
+│  • Starts services in the right order                            │
+│  • Manages logs, health checks, restarts                         │
+│  • Provides TUI dashboard and CLI                                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**The plugin describes WHAT to run. devctl handles HOW to run it.**
+
+## Quick Start
+
+### 1. Install devctl
+
+```bash
+# macOS
 brew tap go-go-golems/go-go-go
 brew install go-go-golems/go-go-go/devctl
-```
 
-### apt-get (Debian/Ubuntu)
-```bash
-echo "deb [trusted=yes] https://apt.fury.io/go-go-golems/ /" | sudo tee /etc/apt/sources.list.d/fury.list
-sudo apt-get update
-sudo apt-get install devctl
-```
-
-### yum (RHEL/CentOS/Fedora)
-```bash
-sudo bash -c 'cat > /etc/yum.repos.d/fury.repo <<EOF
-[fury]
-name=Gemfury Private Repo
-baseurl=https://yum.fury.io/go-go-golems/
-enabled=1
-gpgcheck=0
-EOF'
-sudo yum install devctl
-```
-
-### go install
-```bash
+# Or with Go
 go install github.com/go-go-golems/devctl/cmd/devctl@latest
 ```
 
-### Download binaries
-Download prebuilt binaries from GitHub Releases.
+(See [Installation](#installation) for more options.)
 
-### Run from source
-```bash
-git clone https://github.com/go-go-golems/devctl
-cd devctl
-go run ./cmd/devctl --help
-```
+### 2. Create a config file
 
-## Quick start
-
-1) Create a `.devctl.yaml` at your repo root:
+In your project root, create `.devctl.yaml`:
 
 ```yaml
 plugins:
-  - id: myrepo
+  - id: myproject
     path: python3
-    args:
-      - ./devctl-plugin.py
+    args: [./devctl-plugin.py]
     priority: 10
 ```
 
-2) Write a minimal plugin (`devctl-plugin.py`):
+This tells devctl: "Run my plugin using `python3 ./devctl-plugin.py`".
+
+### 3. Write your plugin
+
+Create `devctl-plugin.py`:
 
 ```python
 #!/usr/bin/env python3
+"""
+A minimal devctl plugin that starts a simple HTTP server.
+Plugins communicate via JSON over stdin/stdout.
+"""
 import json
 import sys
 
-def emit(obj):
-    sys.stdout.write(json.dumps(obj) + "\n")
-    sys.stdout.flush()
+def respond(obj):
+    """Send a JSON response to devctl."""
+    print(json.dumps(obj), flush=True)
 
-emit({
+# Step 1: Handshake - tell devctl what we can do
+respond({
     "type": "handshake",
     "protocol_version": "v2",
-    "plugin_name": "myrepo",
-    "capabilities": {"ops": ["config.mutate", "validate.run", "launch.plan"]},
+    "plugin_name": "myproject",
+    "capabilities": {
+        "ops": ["config.mutate", "validate.run", "launch.plan"]
+    },
 })
 
+# Step 2: Handle requests from devctl
 for line in sys.stdin:
-    line = line.strip()
-    if not line:
+    if not line.strip():
         continue
-    req = json.loads(line)
-    rid = req.get("request_id", "")
-    op = req.get("op", "")
+    
+    request = json.loads(line)
+    request_id = request.get("request_id", "")
+    operation = request.get("op", "")
 
-    if op == "config.mutate":
-        emit({"type": "response", "request_id": rid, "ok": True,
-              "output": {"config_patch": {"set": {"services.api.port": 8080}, "unset": []}}})
-    elif op == "validate.run":
-        emit({"type": "response", "request_id": rid, "ok": True,
-              "output": {"valid": True, "errors": [], "warnings": []}})
-    elif op == "launch.plan":
-        emit({"type": "response", "request_id": rid, "ok": True,
-              "output": {"services": [{"name": "api", "command": ["bash", "-lc", "python3 -m http.server 8080"]}]}})
+    if operation == "config.mutate":
+        # Tell devctl about configuration (e.g., which port to use)
+        respond({
+            "type": "response",
+            "request_id": request_id,
+            "ok": True,
+            "output": {
+                "config_patch": {
+                    "set": {"services.api.port": 8080},
+                    "unset": []
+                }
+            }
+        })
+
+    elif operation == "validate.run":
+        # Check if prerequisites are met (e.g., dependencies installed)
+        respond({
+            "type": "response",
+            "request_id": request_id,
+            "ok": True,
+            "output": {"valid": True, "errors": [], "warnings": []}
+        })
+
+    elif operation == "launch.plan":
+        # Tell devctl what services to start
+        respond({
+            "type": "response",
+            "request_id": request_id,
+            "ok": True,
+            "output": {
+                "services": [
+                    {
+                        "name": "api",
+                        "command": ["python3", "-m", "http.server", "8080"]
+                    }
+                ]
+            }
+        })
+
     else:
-        emit({"type": "response", "request_id": rid, "ok": False,
-              "error": {"code": "E_UNSUPPORTED", "message": f"unsupported op: {op}"}})
+        respond({
+            "type": "response",
+            "request_id": request_id,
+            "ok": False,
+            "error": {"code": "E_UNSUPPORTED", "message": f"Unknown: {operation}"}
+        })
 ```
 
 Make it executable:
@@ -117,175 +198,206 @@ Make it executable:
 chmod +x devctl-plugin.py
 ```
 
-3) Run the standard workflow:
+### 4. Use devctl
 
 ```bash
+# Verify your plugin loads correctly
 devctl plugins list
+
+# See what would run (without actually starting)
 devctl plan
+
+# Start your environment
 devctl up
+
+# Check status
 devctl status
+
+# View logs
 devctl logs --service api --follow
+
+# Stop everything
 devctl down
 ```
 
-## CLI workflow (plan -> up -> observe -> down)
+That's it! Your development environment is now codified and repeatable.
 
-```bash
-# Inspect
-devctl plugins list
-devctl plan
+## Features
 
-# Start
-devctl up
-devctl status
+### CLI Commands
 
-# Observe
-devctl logs --service api
-devctl logs --service api --stderr --follow
+| Command | What it does |
+|---------|--------------|
+| `devctl plugins list` | Show loaded plugins |
+| `devctl plan` | Preview what would run (dry-run) |
+| `devctl up` | Start all services |
+| `devctl status` | Show running services |
+| `devctl logs --service NAME` | View service logs |
+| `devctl down` | Stop all services |
 
-# Stop
-devctl down
-```
+### Interactive TUI
 
-Common repo flags (command-local):
-
-- `--repo-root <path>`: repo root (defaults to cwd)
-- `--config <file>`: config file (defaults to `.devctl.yaml`)
-- `--timeout <dur>`: per-op timeout (default `30s`)
-- `--dry-run`: best-effort no side effects
-- `--strict`: error on config/service collisions
-
-## The pipeline (phases and ownership)
-
-```
-config.mutate -> build.run -> prepare.run -> validate.run -> launch.plan -> supervise
-```
-
-- Plugins compute facts (config, validation, steps, services).
-- devctl runs the lifecycle (ordering, timeouts, processes, logs, health).
-
-## TUI (always-on dashboard)
+For a visual dashboard, run:
 
 ```bash
 devctl tui
 ```
 
-Key bindings (highlights):
+| Key | Action |
+|-----|--------|
+| `u` | Start environment |
+| `d` | Stop environment |
+| `l` | View logs for selected service |
+| `Tab` | Switch views (Dashboard, Events, Pipeline, Plugins) |
+| `?` | Help |
+| `q` | Quit |
 
-- `tab`: switch views (Dashboard, Events, Pipeline, Plugins)
-- `u`: start environment
-- `d`: stop environment
-- `r`: restart environment
-- `l` / `enter`: open logs for selected service
-- `?`: help overlay
-- `q`: quit
+<p align="center">
+  <img src="docs/screenshots/devctl-tui-pipeline.png" alt="Pipeline view" width="700">
+</p>
 
-Full reference: `devctl help devctl-tui-guide`
+### What Plugins Can Do
 
-### Screenshots
+Plugins participate in a **pipeline** — a series of phases that run in order:
 
-![devctl TUI dashboard](docs/screenshots/devctl-tui-dashboard.png)
-![devctl TUI pipeline](docs/screenshots/devctl-tui-pipeline.png)
-![devctl TUI plugins](docs/screenshots/devctl-tui-plugins.png)
-
-## Plugins and protocol (NDJSON v2)
-
-Hard rules:
-
-- stdout is protocol only (one JSON object per line).
-- stderr is for humans.
-- the first frame is always a handshake.
-
-Minimal handshake:
-
-```json
-{"type":"handshake","protocol_version":"v2","plugin_name":"example","capabilities":{"ops":["config.mutate","validate.run","launch.plan"]}}
+```
+config.mutate → build.run → prepare.run → validate.run → launch.plan → supervise
 ```
 
-Useful docs:
+| Phase | Purpose | Example |
+|-------|---------|---------|
+| `config.mutate` | Set configuration values | Ports, env vars, feature flags |
+| `build.run` | Build steps | `npm install`, `go build` |
+| `prepare.run` | Pre-launch setup | Run migrations, seed data |
+| `validate.run` | Check prerequisites | Is Docker running? Is the DB up? |
+| `launch.plan` | Define services | API server, frontend, workers |
 
-- `devctl help devctl-user-guide`
-- `devctl help devctl-scripting-guide`
-- `devctl help devctl-plugin-authoring`
-- `docs/plugin-authoring.md`
+You only implement the phases you need. Most simple plugins just implement `launch.plan`.
 
-## Streams and dynamic commands
+## Installation
 
-- Plugins can expose stream ops; run them via `devctl stream start --op <name>`.
-- Plugins can expose custom commands by advertising `command.run` in the handshake.
-
-Example command execution:
+### Homebrew (macOS/Linux)
 
 ```bash
-# Plugin exposes a command named "db-reset"
-devctl db-reset -- --force
+brew tap go-go-golems/go-go-go
+brew install go-go-golems/go-go-go/devctl
 ```
 
-## State and logs
+### apt-get (Debian/Ubuntu)
 
-devctl keeps per-repo state in `.devctl/`:
+```bash
+echo "deb [trusted=yes] https://apt.fury.io/go-go-golems/ /" | sudo tee /etc/apt/sources.list.d/fury.list
+sudo apt-get update
+sudo apt-get install devctl
+```
+
+### yum (RHEL/CentOS/Fedora)
+
+```bash
+sudo tee /etc/yum.repos.d/fury.repo <<EOF
+[fury]
+name=Gemfury Private Repo
+baseurl=https://yum.fury.io/go-go-golems/
+enabled=1
+gpgcheck=0
+EOF
+sudo yum install devctl
+```
+
+### go install
+
+```bash
+go install github.com/go-go-golems/devctl/cmd/devctl@latest
+```
+
+### Download binaries
+
+Download from [GitHub Releases](https://github.com/go-go-golems/devctl/releases).
+
+### Run from source
+
+```bash
+git clone https://github.com/go-go-golems/devctl
+cd devctl
+go run ./cmd/devctl --help
+```
+
+## Common Flags
+
+| Flag | Description |
+|------|-------------|
+| `--repo-root <path>` | Project root (defaults to current directory) |
+| `--config <file>` | Config file (defaults to `.devctl.yaml`) |
+| `--timeout <dur>` | Timeout per operation (default `30s`) |
+| `--dry-run` | Show what would happen without doing it |
+
+## Plugin Protocol Details
+
+Plugins communicate via **NDJSON** (newline-delimited JSON) over stdio.
+
+### Rules
+
+1. **stdout** — JSON messages only (one per line)
+2. **stderr** — Human-readable messages (for debugging)
+3. **First message** — Must be a handshake
+
+### Handshake Example
+
+```json
+{
+  "type": "handshake",
+  "protocol_version": "v2",
+  "plugin_name": "myproject",
+  "capabilities": {
+    "ops": ["config.mutate", "validate.run", "launch.plan"]
+  }
+}
+```
+
+### Learn More
+
+```bash
+devctl help devctl-plugin-authoring  # Plugin development guide
+devctl help devctl-user-guide        # Full user guide
+devctl help devctl-tui-guide         # TUI reference
+```
+
+Or see `docs/plugin-authoring.md` for extended examples.
+
+## State and Logs
+
+devctl stores state in `.devctl/` in your project:
 
 ```
 .devctl/
-  state.json
+  state.json              # Service state
   logs/
-    api.stdout.log
-    api.stderr.log
-    api.exit.json
+    api.stdout.log        # stdout for "api" service
+    api.stderr.log        # stderr for "api" service
 ```
 
-Delete `.devctl/` to reset local state.
-Add `.devctl/` to `.gitignore`.
+**Tip:** Add `.devctl/` to `.gitignore`.
 
-## log-parse (JS log parsing companion)
-
-The repo includes a companion CLI for JavaScript-driven log parsing and tagging.
-
-```bash
-# From devctl/ root
-cat examples/log-parse/sample-json-lines.txt | \
-  go run ./cmd/log-parse --module examples/log-parse/parser-json.js
-```
-
-Full guide: `devctl help log-parse-guide`
-
-## Help and docs
-
-- List help topics: `devctl help --all`
-- Open the interactive help TUI: `devctl help --ui`
-
-## Shell completion
-
-Static completion scripts are available via cobra:
+## Shell Completion
 
 ```bash
 # Bash
-devctl completion bash | sudo tee /etc/bash_completion.d/devctl >/dev/null
-# Zsh
+source <(devctl completion bash)
+
+# Zsh  
 devctl completion zsh > ~/.zfunc/_devctl
+
 # Fish
 devctl completion fish > ~/.config/fish/completions/devctl.fish
-# PowerShell
-devctl completion powershell | Out-String | Invoke-Expression
-```
-
-## Smoke tests (dev-only)
-
-Use the built-in smoke tests to validate protocol behavior and supervision:
-
-```bash
-go run ./cmd/devctl dev smoketest e2e
-go run ./cmd/devctl dev smoketest supervise
-go run ./cmd/devctl dev smoketest logs
-go run ./cmd/devctl dev smoketest failures
 ```
 
 ## Development
 
-- Go 1.25+
-- Build: `go build ./...`
-- Test: `go test ./...`
-- Lint: `golangci-lint run -v` or `make lint`
+```bash
+go build ./...           # Build
+go test ./...            # Test
+golangci-lint run        # Lint
+```
 
 ## License
 

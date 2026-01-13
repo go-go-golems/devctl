@@ -1,7 +1,7 @@
 ---
 Title: Create a devctl TUI
 Ticket: MO-006-DEVCTL-TUI
-Status: active
+Status: complete
 Topics:
     - backend
     - ui-components
@@ -20,10 +20,11 @@ RelatedFiles:
 ExternalSources:
     - local:01-devctl-tui-layout.md
 Summary: Design and task breakdown for building an interactive devctl TUI (dashboard, logs, pipeline/validation views).
-LastUpdated: 2026-01-06T15:24:23.877219622-05:00
+LastUpdated: 2026-01-13T17:06:33.837830738-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
 
 
 

@@ -10,34 +10,39 @@ DocType: reference
 Intent: long-term
 Owners: []
 RelatedFiles:
-    - Path: devctl/README.md
+    - Path: README.md
       Note: Rewritten README describing devctl features and workflows
-    - Path: devctl/docs/screenshots/PLAYBOOK.md
+    - Path: docs/screenshots/PLAYBOOK.md
       Note: Playbook for capturing and rendering TUI screenshots
-    - Path: devctl/docs/screenshots/devctl-tui-dashboard.png
-      Note: TUI dashboard screenshot used in README
-    - Path: devctl/docs/screenshots/devctl-tui-pipeline.png
+    - Path: docs/screenshots/devctl-tui-dashboard.png
+      Note: |-
+        TUI dashboard screenshot used in README
+        Fixed dashboard screenshot via VHS
+    - Path: docs/screenshots/devctl-tui-pipeline.png
       Note: TUI pipeline screenshot used in README
-    - Path: devctl/docs/screenshots/devctl-tui-plugins.png
+    - Path: docs/screenshots/devctl-tui-plugins.png
       Note: TUI plugins screenshot used in README
-    - Path: devctl/pkg/doc/topics/devctl-plugin-authoring.md
+    - Path: pkg/doc/topics/devctl-plugin-authoring.md
       Note: Source for protocol rules and plugin guidance
-    - Path: devctl/pkg/doc/topics/devctl-tui-guide.md
+    - Path: pkg/doc/topics/devctl-tui-guide.md
       Note: TUI behavior and keybindings reference
-    - Path: devctl/pkg/doc/topics/devctl-user-guide.md
+    - Path: pkg/doc/topics/devctl-user-guide.md
       Note: Source for pipeline
-    - Path: devctl/pkg/doc/topics/log-parse-guide.md
+    - Path: pkg/doc/topics/log-parse-guide.md
       Note: log-parse companion tool reference
-    - Path: devctl/ttmp/2026/01/13/MO-018-ADD-DEVCTL-README--add-devctl-readme/scripts/01-capture-tui-screens.sh
+    - Path: ttmp/2026/01/13/MO-018-ADD-DEVCTL-README--add-devctl-readme/scripts/01-capture-tui-screens.sh
       Note: Script to capture TUI ANSI screens via tmux
-    - Path: devctl/ttmp/2026/01/13/MO-018-ADD-DEVCTL-README--add-devctl-readme/scripts/02-ansi-to-png.py
+    - Path: ttmp/2026/01/13/MO-018-ADD-DEVCTL-README--add-devctl-readme/scripts/02-ansi-to-png.py
       Note: Script to render ANSI captures to PNG
+    - Path: vhs/screenshot-tui.tape
+      Note: VHS tape for PNG screenshot capture
 ExternalSources: []
 Summary: ""
 LastUpdated: 2026-01-13T15:38:40-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
 
 
 
@@ -244,3 +249,149 @@ I uploaded the devctl README and screenshot playbook to the reMarkable device as
 - Dry-run: `python3 /home/manuel/.local/bin/remarkable_upload.py --date 2026/01/13 --dry-run /home/manuel/workspaces/2026-01-13/add-devctl-readme/devctl/README.md /home/manuel/workspaces/2026-01-13/add-devctl-readme/devctl/docs/screenshots/PLAYBOOK.md`.
 - Upload README (timed out after upload): `python3 /home/manuel/.local/bin/remarkable_upload.py --date 2026/01/13 /home/manuel/workspaces/2026-01-13/add-devctl-readme/devctl/README.md /home/manuel/workspaces/2026-01-13/add-devctl-readme/devctl/docs/screenshots/PLAYBOOK.md`.
 - Upload PLAYBOOK: `python3 /home/manuel/.local/bin/remarkable_upload.py --date 2026/01/13 /home/manuel/workspaces/2026-01-13/add-devctl-readme/devctl/docs/screenshots/PLAYBOOK.md`.
+
+## Step 6: Fix broken screenshots with VHS Screenshot command
+
+The original ANSI-to-PNG screenshot approach produced images with line offset issues (content was shifted/cropped). I switched to using VHS's built-in Screenshot command for cleaner, properly rendered PNG output.
+
+### What I did
+- Diagnosed the offset issue in `02-ansi-to-png.py`: `font.getbbox("M")` returns a bounding box with non-zero left/top offset, causing cell position miscalculations.
+- Created `vhs/screenshot-tui.tape` that uses VHS's native Screenshot command instead of GIF output.
+- Set proper pixel dimensions (`Set Width 1200`, `Set Height 800`) rather than terminal character dimensions.
+- Ran VHS to regenerate all three screenshots: dashboard, pipeline, plugins.
+- Updated `docs/screenshots/PLAYBOOK.md` to document the VHS-based workflow.
+
+### Why
+- The original ANSI-to-PNG rendering had font bearing offset issues that caused cropped/shifted screenshots.
+- VHS Screenshot command provides native PNG output with proper rendering.
+
+### What worked
+- VHS Screenshot command generates clean, full-size screenshots with proper colors and layout.
+- All three TUI views (Dashboard, Pipeline, Plugins) now display correctly.
+
+### What didn't work
+- Initial VHS run with terminal character dimensions (120x40) caused ffmpeg errors about padding dimensions.
+- Fixed by using pixel dimensions (1200x800) which VHS expects for Width/Height.
+
+### What I learned
+- VHS Width/Height are pixel dimensions, not terminal columns/rows.
+- VHS Screenshot command outputs PNG files directly without needing GIF generation.
+- The `font.getbbox()` returns `(left, top, right, bottom)` where left/top may be non-zero for font bearing.
+
+### What was tricky to build
+- Understanding the difference between VHS pixel dimensions and terminal character dimensions.
+- Diagnosing the original ANSI renderer offset issue required tracing through the PIL font metrics.
+
+### What warrants a second pair of eyes
+- Verify the new screenshots render well on GitHub README (dark theme, proper sizing).
+
+### What should be done in the future
+- N/A
+
+### Code review instructions
+- Start in `vhs/screenshot-tui.tape` to understand the VHS workflow.
+- Check `docs/screenshots/PLAYBOOK.md` for updated documentation.
+- View the new PNG files in `docs/screenshots/`.
+
+### Technical details
+- VHS tape: `vhs/screenshot-tui.tape`
+- Screenshots: `docs/screenshots/devctl-tui-{dashboard,pipeline,plugins}.png`
+- Command: `cd vhs && PATH="/tmp:$PATH" vhs screenshot-tui.tape`
+
+## Step 7: Improve README structure and readability
+
+I rewrote the README to be more visually appealing and easier to navigate, taking inspiration from docmgr's README structure.
+
+### What I did
+- Added hero screenshot at the top for immediate visual context.
+- Restructured Features section with bold headings for scanability.
+- Converted Common Flags to a table format.
+- Added TUI Key Bindings table.
+- Added captions to screenshots with proper HTML centering.
+- Improved section organization: Quick Start → Usage → TUI → Protocol → etc.
+- Added GitHub Releases link for binary downloads.
+- Expanded Shell Completion section with session-only alternatives.
+- Added proper headings and better visual hierarchy throughout.
+
+### Why
+- Match the quality and readability of docmgr's README.
+- Provide better visual hierarchy for scanning.
+- Make installation and quick start more prominent.
+
+### What worked
+- Tables make flags and key bindings much easier to scan.
+- Hero image provides immediate context about what devctl does.
+- Clear section structure helps users find what they need.
+
+### What didn't work
+- N/A
+
+### What I learned
+- HTML centering with `<p align="center">` works well in GitHub README for featured images.
+
+### What was tricky to build
+- Balancing detail with readability - keeping sections concise while informative.
+
+### What warrants a second pair of eyes
+- Verify all command examples are accurate.
+- Check that installation commands work as documented.
+
+### What should be done in the future
+- N/A
+
+### Code review instructions
+- Start in `README.md` and review the new structure.
+- Compare against docmgr's README for style consistency.
+
+### Technical details
+- File: `devctl/README.md`
+
+## Step 8: Rewrite README for newcomer accessibility
+
+The previous README assumed familiarity with devctl concepts. I rewrote it to explain what the tool does, what problem it solves, and what "plugins" mean in this context — all from the perspective of someone discovering the repository.
+
+### What I did
+- Added "The Problem" section explaining the pain of manual dev environment setup.
+- Added "The Solution" section showing how devctl simplifies this.
+- Added "What's a Plugin?" section with ASCII diagram showing how pieces fit together.
+- Rewrote Quick Start as a narrative walkthrough, not just commands.
+- Added extensive comments to the example plugin code explaining each part.
+- Created "What Plugins Can Do" section explaining the pipeline phases with a table.
+- Simplified Features to focus on common use cases.
+- Removed jargon and technical details that aren't needed for getting started.
+
+### Why
+- The user correctly pointed out the README was cryptic to newcomers.
+- "Plugin" is a loaded term that means different things in different contexts.
+- The value proposition wasn't immediately clear.
+
+### What worked
+- The "Problem → Solution" framing immediately shows why devctl exists.
+- The ASCII diagram makes the mental model concrete.
+- Explaining plugin phases in a table with examples makes the pipeline understandable.
+
+### What didn't work
+- N/A
+
+### What I learned
+- README should answer "why should I care?" before "how do I use this?"
+- Code examples need comments for newcomers.
+- ASCII diagrams work well for architecture concepts.
+
+### What was tricky to build
+- Balancing comprehensiveness with accessibility.
+- Explaining the plugin protocol without overwhelming with details.
+
+### What warrants a second pair of eyes
+- Verify the explanation resonates with someone who hasn't used devctl.
+- Check that the example plugin code is correct and runnable.
+
+### What should be done in the future
+- Consider adding a "Real-World Example" section with a more realistic plugin.
+
+### Code review instructions
+- Start at the top of `README.md` and read as if discovering the project.
+- Check if the "What's a Plugin?" section clarifies the concept.
+
+### Technical details
+- File: `README.md`

@@ -8,30 +8,31 @@ Produce consistent, colored PNG screenshots of the devctl TUI for README usage.
 
 ## Prerequisites
 
-- `tmux` (used for deterministic captures)
-- A `devctl` binary in `PATH` (or set `DEVCTL_BIN`)
-- A repo with `.devctl.yaml` configured (or set `DEMO_REPO`)
-- Python deps for rendering: `pyte` and `Pillow`
+- [VHS](https://github.com/charmbracelet/vhs) installed
+- A `devctl` binary in `PATH` (or set `PATH="/tmp:$PATH"` after building)
+- A repo with `.devctl.yaml` configured at `/tmp/devctl-demo-repo`
 
-Install deps:
+Install VHS:
 
 ```bash
-python3 -m pip install --user pyte pillow
+brew install vhs
+# or see https://github.com/charmbracelet/vhs#installation
 ```
 
-## Capture + Render (recommended flow)
+## Capture Screenshots (recommended flow)
 
 Run from the devctl repo root:
 
 ```bash
-# Capture ANSI screens
-DEVCTL_BIN=/tmp/devctl \
-DEMO_REPO=/tmp/devctl-demo-repo \
-./ttmp/2026/01/13/MO-018-ADD-DEVCTL-README--add-devctl-readme/scripts/01-capture-tui-screens.sh
+# Build devctl
+go build -o /tmp/devctl ./cmd/devctl
 
-# Render PNGs from ANSI dumps
-python3 ./ttmp/2026/01/13/MO-018-ADD-DEVCTL-README--add-devctl-readme/scripts/02-ansi-to-png.py \
-  --input-dir docs/screenshots
+# Ensure demo repo exists with a valid .devctl.yaml
+ls /tmp/devctl-demo-repo/.devctl.yaml
+
+# Run VHS to capture screenshots
+cd vhs
+PATH="/tmp:$PATH" vhs screenshot-tui.tape
 ```
 
 Outputs:
@@ -40,37 +41,96 @@ Outputs:
 - `docs/screenshots/devctl-tui-pipeline.png`
 - `docs/screenshots/devctl-tui-plugins.png`
 
-Remove ANSI intermediates when done:
+## VHS tape file
+
+The tape file is at `vhs/screenshot-tui.tape`. It:
+
+1. Starts the TUI with `devctl tui --alt-screen=false`
+2. Presses `u` to start services
+3. Screenshots the dashboard view
+4. Tabs through to Pipeline and Plugins views, taking screenshots
+5. Stops services with `d` and quits
+
+## Setting up a demo repo
+
+If `/tmp/devctl-demo-repo` doesn't exist:
 
 ```bash
-rm -f docs/screenshots/*.ansi
+mkdir -p /tmp/devctl-demo-repo
+cd /tmp/devctl-demo-repo
+
+# Create .devctl.yaml
+cat > .devctl.yaml << 'EOF'
+plugins:
+  - id: demo
+    path: python3
+    args:
+      - ./devctl-plugin.py
+    priority: 10
+EOF
+
+# Create a demo plugin
+cat > devctl-plugin.py << 'EOF'
+#!/usr/bin/env python3
+import json
+import sys
+
+def emit(obj):
+    sys.stdout.write(json.dumps(obj) + "\n")
+    sys.stdout.flush()
+
+emit({
+    "type": "handshake",
+    "protocol_version": "v2",
+    "plugin_name": "demo",
+    "capabilities": {"ops": ["config.mutate", "validate.run", "launch.plan"]},
+})
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    req = json.loads(line)
+    rid = req.get("request_id", "")
+    op = req.get("op", "")
+
+    if op == "config.mutate":
+        emit({"type": "response", "request_id": rid, "ok": True,
+              "output": {"config_patch": {"set": {"services.api.port": 8080}, "unset": []}}})
+    elif op == "validate.run":
+        emit({"type": "response", "request_id": rid, "ok": True,
+              "output": {"valid": True, "errors": [], "warnings": []}})
+    elif op == "launch.plan":
+        emit({"type": "response", "request_id": rid, "ok": True,
+              "output": {"services": [
+                  {"name": "api", "command": ["bash", "-lc", "python3 -m http.server 8080"]},
+                  {"name": "web", "command": ["bash", "-lc", "python3 -m http.server 3000"]}
+              ]}})
+    else:
+        emit({"type": "response", "request_id": rid, "ok": False,
+              "error": {"code": "E_UNSUPPORTED", "message": f"unsupported op: {op}"}})
+EOF
+chmod +x devctl-plugin.py
 ```
 
-## Building a devctl binary (optional)
+## Customizing
 
-If you do not already have a `devctl` binary in `PATH`:
+Edit `vhs/screenshot-tui.tape` to:
 
-```bash
-go build -o /tmp/devctl ./cmd/devctl
-```
+- Change timing with `Sleep` commands
+- Adjust window size with `Set Width` and `Set Height` (pixel dimensions)
+- Change theme with `Set Theme` (try "GitHub Dark", "Tokyo Night", "Dracula")
+- Take additional screenshots at different points
 
-## Using a different demo repo
+## Alternative: tmux + ANSI capture
 
-You can use any repo with a valid `.devctl.yaml` and plugin. Set `DEMO_REPO` to the repo root. The capture script runs:
+For headless/CI environments without VHS, see the legacy scripts:
 
-- `devctl tui --alt-screen=false`
-- `u` to start services
-- `tab` to switch views
-
-If the TUI uses different keybindings, adjust the script in the ticket `scripts/` folder.
+- `ttmp/.../scripts/01-capture-tui-screens.sh` (tmux capture)
+- `ttmp/.../scripts/02-ansi-to-png.py` (ANSI to PNG rendering)
 
 ## Validation
 
-- Open the PNGs to confirm readability and color correctness.
-- Ensure the README references the correct paths.
-- Run `devctl down` for the demo repo if the capture script was interrupted.
-
-## Notes
-
-- The capture script writes ANSI dumps to `docs/screenshots/` and does not overwrite PNGs unless you render again.
-- Keep the screenshot filenames stable so README references do not break.
+- Open the PNGs to confirm readability and color correctness
+- Ensure the README references the correct paths
+- Run `devctl down --repo-root /tmp/devctl-demo-repo` if captures were interrupted

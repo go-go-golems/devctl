@@ -57,3 +57,8 @@ Implement: protocol v2 Moments devctl plugin + moments-config key lookups; depre
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/moments/docs/getting-started.md — Switch recommended dev startup to devctl.
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/moments/plugins/moments-plugin.py — Rewrite to v2 protocol; services moments.backend/moments.web.
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/moments/scripts/startdev.sh — Replace legacy behavior with deprecation wrapper calling devctl up.
+
+## 2026-01-13
+
+Close: tasks complete, implementation validated in diary/source
+

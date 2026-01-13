@@ -1,7 +1,7 @@
 ---
 Title: Scope TUI Context Lifetimes for Background Work
 Ticket: MO-017-TUI-CONTEXT-LIFETIME-SCOPING
-Status: active
+Status: complete
 Topics:
     - devctl
     - tui
@@ -11,10 +11,11 @@ Owners: []
 RelatedFiles: []
 ExternalSources: []
 Summary: ""
-LastUpdated: 2026-01-08T14:48:22.151442518-05:00
+LastUpdated: 2026-01-13T17:05:57.342270513-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
 
 
 # Scope TUI Context Lifetimes for Background Work

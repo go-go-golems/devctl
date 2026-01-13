@@ -250,3 +250,8 @@ Add persistent exit diagnostics: supervise wrapper writes per-service exit JSON 
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/status.go — Include exit info + tail in status output
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/state/exit_info.go — ExitInfo schema and read/write
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/supervise/supervisor.go — Launch via wrapper when WrapperExe set
+
+## 2026-01-13
+
+Close: per request (milestones still open)
+

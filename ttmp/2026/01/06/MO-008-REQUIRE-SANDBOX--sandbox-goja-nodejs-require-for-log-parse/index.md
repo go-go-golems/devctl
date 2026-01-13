@@ -1,7 +1,7 @@
 ---
 Title: Sandbox goja_nodejs require() for log-parse
 Ticket: MO-008-REQUIRE-SANDBOX
-Status: active
+Status: complete
 Topics:
     - backend
 DocType: index
@@ -14,10 +14,11 @@ RelatedFiles:
       Note: Future integration point for sandboxed require() (if we add require support)
 ExternalSources: []
 Summary: ""
-LastUpdated: 2026-01-06T19:00:52-05:00
+LastUpdated: 2026-01-13T17:06:22.617500798-05:00
 WhatFor: ""
 WhenToUse: ""
 ---
+
 
 
 # Sandbox goja_nodejs require() for log-parse

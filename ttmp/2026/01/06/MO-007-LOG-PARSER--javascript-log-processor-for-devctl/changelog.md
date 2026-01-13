@@ -112,3 +112,8 @@ Created comprehensive log-parse developer guide covering module API, helper func
 
 - /home/manuel/workspaces/2026-01-06/log-parser-module/devctl/pkg/doc/topics/log-parse-guide.md — Comprehensive developer guide (14 sections
 
+
+## 2026-01-13
+
+Close: per request (devctl logs integration remaining)
+

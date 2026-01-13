@@ -72,6 +72,9 @@ def render_ansi(
     left, top, right, bottom = font.getbbox("M")
     cell_w = right - left
     cell_h = bottom - top
+    # Offsets to account for font baseline/bearing in getbbox
+    x_offset = left
+    y_offset = top
 
     image = Image.new("RGB", (cols * cell_w, rows * cell_h), "#" + bg_hex)
     draw = ImageDraw.Draw(image)
@@ -91,7 +94,8 @@ def render_ansi(
                 )
             char = ch.data if ch.data else " "
             if char != " ":
-                draw.text((x * cell_w, y * cell_h), char, font=font, fill=fg)
+                # Subtract font bearing to align glyphs correctly in cells
+                draw.text((x * cell_w - x_offset, y * cell_h - y_offset), char, font=font, fill=fg)
 
     image.save(png_path)
 
