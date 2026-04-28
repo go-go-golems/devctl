@@ -49,7 +49,7 @@ func main() {
 		},
 	}
 
-	cobra.CheckErr(logging.AddLoggingLayerToRootCommand(rootCmd, "log-parse"))
+	cobra.CheckErr(logging.AddLoggingSectionToRootCommand(rootCmd, "log-parse"))
 
 	rootCmd.Flags().StringVar(&opts.inputPath, "input", "", "Input file path (default: stdin)")
 	rootCmd.Flags().StringVar(&opts.source, "source", "", "Source label (default: input filename or stdin)")

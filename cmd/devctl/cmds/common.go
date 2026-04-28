@@ -8,8 +8,9 @@ import (
 
 	"github.com/go-go-golems/devctl/pkg/config"
 	"github.com/go-go-golems/devctl/pkg/runtime"
-	glazedlayers "github.com/go-go-golems/glazed/pkg/cmds/layers"
-	"github.com/go-go-golems/glazed/pkg/cmds/parameters"
+	"github.com/go-go-golems/glazed/pkg/cmds/fields"
+	"github.com/go-go-golems/glazed/pkg/cmds/schema"
+	"github.com/go-go-golems/glazed/pkg/cmds/values"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
@@ -17,11 +18,11 @@ import (
 const repoLayerSlug = "repo"
 
 type RepoSettings struct {
-	RepoRoot string `glazed.parameter:"repo-root"`
-	Config   string `glazed.parameter:"config"`
-	Strict   bool   `glazed.parameter:"strict"`
-	DryRun   bool   `glazed.parameter:"dry-run"`
-	Timeout  string `glazed.parameter:"timeout"` // duration string, e.g. "30s"
+	RepoRoot string `glazed:"repo-root"`
+	Config   string `glazed:"config"`
+	Strict   bool   `glazed:"strict"`
+	DryRun   bool   `glazed:"dry-run"`
+	Timeout  string `glazed:"timeout"` // duration string, e.g. "30s"
 }
 
 type RepoContext struct {
@@ -80,13 +81,13 @@ func repoContextFromSettings(settings RepoSettings, cwd string) (RepoContext, er
 	}, nil
 }
 
-func RepoContextFromParsedLayers(parsedLayers *glazedlayers.ParsedLayers) (RepoContext, error) {
+func RepoContextFromParsedLayers(vals *values.Values) (RepoContext, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return RepoContext{}, err
 	}
 	settings := RepoSettings{}
-	if err := parsedLayers.InitializeStruct(repoLayerSlug, &settings); err != nil {
+	if err := vals.DecodeSectionInto(repoLayerSlug, &settings); err != nil {
 		return RepoContext{}, err
 	}
 	return repoContextFromSettings(settings, cwd)
@@ -130,60 +131,61 @@ func RepoContextFromCobra(cmd *cobra.Command) (RepoContext, error) {
 
 var (
 	repoLayerOnce sync.Once
-	repoLayerInst *glazedlayers.ParameterLayerImpl
+	repoLayerInst *schema.SectionImpl
 	repoLayerErr  error
 )
 
-func getRepoLayer() (*glazedlayers.ParameterLayerImpl, error) {
+func getRepoLayer() (*schema.SectionImpl, error) {
 	repoLayerOnce.Do(func() {
-		layer, err := glazedlayers.NewParameterLayer(repoLayerSlug, "Repository")
+		section, err := schema.NewSection(repoLayerSlug, "Repository",
+			schema.WithDescription("Repository context shared by most devctl commands"),
+			schema.WithFields(
+				fields.New(
+					"repo-root",
+					fields.TypeString,
+					fields.WithDefault(""),
+					fields.WithHelp("Repository root (defaults to current directory)"),
+				),
+				fields.New(
+					"config",
+					fields.TypeString,
+					fields.WithDefault(""),
+					fields.WithHelp("Path to config file (defaults to .devctl.yaml under repo-root)"),
+				),
+				fields.New(
+					"strict",
+					fields.TypeBool,
+					fields.WithDefault(false),
+					fields.WithHelp("Treat merge collisions as errors"),
+				),
+				fields.New(
+					"dry-run",
+					fields.TypeBool,
+					fields.WithDefault(false),
+					fields.WithHelp("Do not perform destructive side effects (best-effort)"),
+				),
+				fields.New(
+					"timeout",
+					fields.TypeString,
+					fields.WithDefault("30s"),
+					fields.WithHelp("Default timeout for plugin operations (duration like 30s)"),
+				),
+			),
+		)
 		if err != nil {
 			repoLayerErr = err
 			return
 		}
-		layer.Description = "Repository context shared by most devctl commands"
-		layer.AddFlags(
-			parameters.NewParameterDefinition(
-				"repo-root",
-				parameters.ParameterTypeString,
-				parameters.WithDefault(""),
-				parameters.WithHelp("Repository root (defaults to current directory)"),
-			),
-			parameters.NewParameterDefinition(
-				"config",
-				parameters.ParameterTypeString,
-				parameters.WithDefault(""),
-				parameters.WithHelp("Path to config file (defaults to .devctl.yaml under repo-root)"),
-			),
-			parameters.NewParameterDefinition(
-				"strict",
-				parameters.ParameterTypeBool,
-				parameters.WithDefault(false),
-				parameters.WithHelp("Treat merge collisions as errors"),
-			),
-			parameters.NewParameterDefinition(
-				"dry-run",
-				parameters.ParameterTypeBool,
-				parameters.WithDefault(false),
-				parameters.WithHelp("Do not perform destructive side effects (best-effort)"),
-			),
-			parameters.NewParameterDefinition(
-				"timeout",
-				parameters.ParameterTypeString,
-				parameters.WithDefault("30s"),
-				parameters.WithHelp("Default timeout for plugin operations (duration like 30s)"),
-			),
-		)
 
-		repoLayerInst = layer
+		repoLayerInst = section
 	})
 	return repoLayerInst, repoLayerErr
 }
 
 func AddRepoFlags(cmd *cobra.Command) {
-	layer, err := getRepoLayer()
+	section, err := getRepoLayer()
 	cobra.CheckErr(err)
-	cobra.CheckErr(layer.AddLayerToCobraCommand(cmd))
+	cobra.CheckErr(section.AddSectionToCobraCommand(cmd))
 }
 
 type rootOptions struct {
