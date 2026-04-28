@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -68,14 +69,20 @@ func (f *Factory) Start(ctx context.Context, spec PluginSpec, opts StartOptions)
 	}
 
 	if err := cmd.Start(); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to start plugin %q (%s %s)", spec.ID, spec.Path, strings.Join(spec.Args, " "))
 	}
 
 	reader := bufio.NewReader(stdout)
 	hs, err := readHandshake(ctx, reader, f.opts.HandshakeTimeout)
 	if err != nil {
+		// Try to capture stderr to make the error actionable.
+		stderrTail := drainStderr(stderr, 2*time.Second, 4096)
 		_ = terminateProcessGroup(cmd, f.opts.ShutdownTimeout)
-		return nil, err
+		pluginCmd := fmt.Sprintf("%s %s", spec.Path, strings.Join(spec.Args, " "))
+		if stderrTail != "" {
+			return nil, errors.Errorf("plugin %q (%s) failed handshake: %v\n\nstderr:\n%s", spec.ID, pluginCmd, err, stderrTail)
+		}
+		return nil, errors.Errorf("plugin %q (%s) failed handshake: %v", spec.ID, pluginCmd, err)
 	}
 
 	c := newClient(spec, hs, opts.Meta, cmd, stdin, reader, stderr, f.opts.ShutdownTimeout)
@@ -137,11 +144,39 @@ func readLine(ctx context.Context, r *bufio.Reader) ([]byte, error) {
 	case res := <-ch:
 		if res.err != nil {
 			if errors.Is(res.err, io.EOF) {
-				return nil, errors.Wrap(res.err, "unexpected EOF reading line")
+				return nil, errors.New("plugin process exited before sending handshake (the executable may be missing, the script path may be wrong, or the plugin crashed on startup)")
 			}
 			return nil, res.err
 		}
 		return res.b, nil
+	}
+}
+
+// drainStderr reads up to maxBytes from stderr with a timeout.
+// It is best-effort and returns whatever it could read.
+func drainStderr(stderr io.ReadCloser, timeout time.Duration, maxBytes int) string {
+	type result struct {
+		n   int
+		buf []byte
+	}
+	ch := make(chan result, 1)
+	go func() {
+		buf := make([]byte, maxBytes)
+		n, _ := io.ReadFull(stderr, buf)
+		if n == 0 {
+			n, _ = stderr.Read(buf)
+		}
+		ch <- result{n: n, buf: buf}
+	}()
+
+	select {
+	case <-time.After(timeout):
+		return ""
+	case res := <-ch:
+		if res.n > 0 {
+			return string(res.buf[:res.n])
+		}
+		return ""
 	}
 }
 
