@@ -23,7 +23,7 @@ var rootCmd = &cobra.Command{
 }
 
 func main() {
-	cobra.CheckErr(logging.AddLoggingLayerToRootCommand(rootCmd, "devctl"))
+	cobra.CheckErr(logging.AddLoggingSectionToRootCommand(rootCmd, "devctl"))
 
 	helpSystem := help.NewHelpSystem()
 	cobra.CheckErr(devctldoc.AddDocToHelpSystem(helpSystem))

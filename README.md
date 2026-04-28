@@ -198,7 +198,21 @@ Make it executable:
 chmod +x devctl-plugin.py
 ```
 
-### 4. Use devctl
+### 4. `.devctl.yaml` schema reference
+
+```yaml
+plugins:
+  - id: <string>              # Required. Unique identifier for this plugin.
+    path: <string>            # Required. Executable to run the plugin (e.g. python3, bash, go run).
+    args: [<string>]          # Optional. Arguments passed to path.
+    env: {<string>: <string>} # Optional. Extra env vars for the plugin process.
+    priority: <int>           # Optional. Lower runs first (default: 0).
+
+# Optional strictness mode for multiple plugins:
+# strictness: warn   # or "error"
+```
+
+### 5. Use devctl
 
 ```bash
 # Verify your plugin loads correctly
@@ -272,7 +286,30 @@ config.mutate → build.run → prepare.run → validate.run → launch.plan →
 | `validate.run` | Check prerequisites | Is Docker running? Is the DB up? |
 | `launch.plan` | Define services | API server, frontend, workers |
 
-You only implement the phases you need. Most simple plugins just implement `launch.plan`.
+You only implement the phases you need. Most simple plugins implement `config.mutate`, `validate.run`, and `launch.plan`.
+
+### Lifecycle of `devctl up`
+
+When you run `devctl up`, here's what actually happens:
+
+1. **Load plugins** — start each plugin process, wait for handshake
+2. **config.mutate** — merge config patches from all plugins
+3. **build.run** — run named build steps (skipped with `--skip-build`)
+4. **prepare.run** — run named prepare steps (skipped with `--skip-prepare`)
+5. **validate.run** — check prerequisites; abort if `valid: false`
+6. **launch.plan** — collect service definitions
+7. **Supervise** — start processes, run health checks, write state
+
+**State detection**: If a previous `devctl up` left state behind, `devctl up` will detect it and prompt:
+
+```bash
+$ devctl up
+state exists; restart (down then up)? (y/N):
+```
+
+Use `--force` to skip the prompt and restart automatically.
+
+**Shutdown**: `devctl down` sends SIGTERM to each service process group, waits up to 3s, then sends SIGKILL if needed. State is removed after stop.
 
 ## Installation
 
@@ -330,6 +367,10 @@ go run ./cmd/devctl --help
 | `--config <file>` | Config file (defaults to `.devctl.yaml`) |
 | `--timeout <dur>` | Timeout per operation (default `30s`) |
 | `--dry-run` | Show what would happen without doing it |
+| `--force` | Stop existing state before starting |
+| `--skip-validate` | Skip validate.run |
+| `--skip-build` | Skip build.run |
+| `--skip-prepare` | Skip prepare.run |
 
 ## Plugin Protocol Details
 
@@ -366,15 +407,21 @@ Or see `docs/plugin-authoring.md` for extended examples.
 
 ## State and Logs
 
-devctl stores state in `.devctl/` in your project:
+devctl stores state and logs under `.devctl/` in your repo:
 
 ```
 .devctl/
-  state.json              # Service state
-  logs/
-    api.stdout.log        # stdout for "api" service
-    api.stderr.log        # stderr for "api" service
+├── state.json              # Service PIDs, start times, health config
+└── logs/
+    ├── api-20060102-150405.stdout.log   # Service stdout
+    ├── api-20060102-150405.stderr.log   # Service stderr
+    ├── api-20060102-150405.ready        # Ready file (wrapper mode)
+    └── api-20060102-150405.exit.json    # Exit info (wrapper mode)
 ```
+
+- **Logs**: Each service gets timestamped `stdout` and `stderr` files.
+- **State**: `state.json` tracks what's running. devctl uses it for `status`, `logs`, and `down`.
+- **Reset**: `rm -rf .devctl/` or `devctl down` to clean up.
 
 **Tip:** Add `.devctl/` to `.gitignore`.
 

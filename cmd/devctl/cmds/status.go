@@ -12,8 +12,9 @@ import (
 	"github.com/go-go-golems/devctl/pkg/state"
 	"github.com/go-go-golems/glazed/pkg/cli"
 	glazedcmds "github.com/go-go-golems/glazed/pkg/cmds"
-	"github.com/go-go-golems/glazed/pkg/cmds/layers"
-	"github.com/go-go-golems/glazed/pkg/cmds/parameters"
+	"github.com/go-go-golems/glazed/pkg/cmds/fields"
+	"github.com/go-go-golems/glazed/pkg/cmds/schema"
+	"github.com/go-go-golems/glazed/pkg/cmds/values"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
@@ -25,7 +26,7 @@ type StatusCommand struct {
 var _ glazedcmds.WriterCommand = (*StatusCommand)(nil)
 
 type StatusSettings struct {
-	TailLines int `glazed.parameter:"tail-lines"`
+	TailLines int `glazed:"tail-lines"`
 }
 
 func NewStatusCommand() (*StatusCommand, error) {
@@ -39,24 +40,24 @@ func NewStatusCommand() (*StatusCommand, error) {
 			"status",
 			glazedcmds.WithShort("Show status of supervised services"),
 			glazedcmds.WithFlags(
-				parameters.NewParameterDefinition(
+				fields.New(
 					"tail-lines",
-					parameters.ParameterTypeInteger,
-					parameters.WithDefault(25),
-					parameters.WithHelp("How many stderr lines to include for dead services"),
+					fields.TypeInteger,
+					fields.WithDefault(25),
+					fields.WithHelp("How many stderr lines to include for dead services"),
 				),
 			),
-			glazedcmds.WithLayersList(repoLayer),
+			glazedcmds.WithSections(repoLayer),
 		),
 	}, nil
 }
 
-func (c *StatusCommand) RunIntoWriter(ctx context.Context, parsedLayers *layers.ParsedLayers, w io.Writer) error {
+func (c *StatusCommand) RunIntoWriter(ctx context.Context, vals *values.Values, w io.Writer) error {
 	s := StatusSettings{}
-	if err := parsedLayers.InitializeStruct(layers.DefaultSlug, &s); err != nil {
+	if err := vals.DecodeSectionInto(schema.DefaultSlug, &s); err != nil {
 		return err
 	}
-	rc, err := RepoContextFromParsedLayers(parsedLayers)
+	rc, err := RepoContextFromParsedLayers(vals)
 	if err != nil {
 		return err
 	}

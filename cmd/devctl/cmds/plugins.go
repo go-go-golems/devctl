@@ -12,7 +12,7 @@ import (
 	"github.com/go-go-golems/devctl/pkg/runtime"
 	"github.com/go-go-golems/glazed/pkg/cli"
 	glazedcmds "github.com/go-go-golems/glazed/pkg/cmds"
-	"github.com/go-go-golems/glazed/pkg/cmds/layers"
+	"github.com/go-go-golems/glazed/pkg/cmds/values"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
@@ -43,13 +43,13 @@ func NewPluginsListCommand() (*PluginsListCommand, error) {
 			"list",
 			glazedcmds.WithShort("List configured plugins and their handshake capabilities"),
 			glazedcmds.WithParents("plugins"),
-			glazedcmds.WithLayersList(repoLayer),
+			glazedcmds.WithSections(repoLayer),
 		),
 	}, nil
 }
 
-func (c *PluginsListCommand) RunIntoWriter(ctx context.Context, parsedLayers *layers.ParsedLayers, w io.Writer) error {
-	rc, err := RepoContextFromParsedLayers(parsedLayers)
+func (c *PluginsListCommand) RunIntoWriter(ctx context.Context, vals *values.Values, w io.Writer) error {
+	rc, err := RepoContextFromParsedLayers(vals)
 	if err != nil {
 		return err
 	}
