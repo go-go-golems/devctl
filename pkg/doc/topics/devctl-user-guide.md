@@ -170,11 +170,19 @@ devctl logs --service api --stderr # Show stderr
 devctl logs --service api --follow # Live tail
 ```
 
+**Restarting**: If state already exists from a previous `up`, devctl prompts before restarting. Use `--force` to skip the prompt:
+
+```bash
+devctl up --force   # Stop existing services, then start fresh
+```
+
 ### Stop and cleanup
 
 ```bash
 devctl down   # Stop all services, remove state
 ```
+
+**What `down` does:** sends SIGTERM to each service process group, waits up to 3s, then SIGKILL if needed. Removes `.devctl/state.json`. The `.devctl/logs/` directory is preserved.
 
 ### Common flags you'll use (command-local)
 
@@ -191,6 +199,10 @@ devctl plan --repo-root /path/to/repo --timeout 10s
 | `--config <file>` | Override config file (default: `.devctl.yaml`) |
 | `--timeout <dur>` | Per-operation timeout (default: 30s) |
 | `--dry-run` | Skip side effects; plugins see `ctx.dry_run=true` |
+| `--force` | Stop existing state before starting |
+| `--skip-validate` | Skip validate.run |
+| `--skip-build` | Skip build.run |
+| `--skip-prepare` | Skip prepare.run |
 | `--strict` | Error on service/config collisions instead of "last wins" |
 
 ## The TUI: an always-on dashboard
@@ -230,6 +242,20 @@ devctl tui
 | `Esc` | Back to dashboard |
 
 For the full TUI reference, see `glaze help devctl-tui-guide`.
+
+### Logs on disk
+
+devctl writes service logs to `.devctl/logs/` as timestamped files:
+
+```
+.devctl/logs/
+├── api-20060102-150405.stdout.log
+├── api-20060102-150405.stderr.log
+├── api-20060102-150405.ready
+└── api-20060102-150405.exit.json
+```
+
+`devctl logs --service api` reads the most recent stdout log. `devctl logs --service api --follow` tails it live. Even after `devctl down`, the log files remain for debugging.
 
 ## Writing plugins: from shell script to devctl
 
@@ -281,15 +307,15 @@ devctl writes to `.devctl/` in your repo root:
 
 ```
 .devctl/
-├── state.json              # What's running (PIDs, start times)
+├── state.json              # What's running (PIDs, start times, health config)
 └── logs/
-    ├── api.stdout.log      # Service stdout
-    ├── api.stderr.log      # Service stderr
-    ├── api.ready           # Ready file (wrapper mode)
-    └── api.exit.json       # Exit info (wrapper mode)
+    ├── api-20060102-150405.stdout.log   # Service stdout
+    ├── api-20060102-150405.stderr.log   # Service stderr
+    ├── api-20060102-150405.ready        # Ready file (wrapper mode)
+    └── api-20060102-150405.exit.json    # Exit info (wrapper mode)
 ```
 
-You can safely `rm -rf .devctl/` to reset state. Add `.devctl/` to `.gitignore`.
+Each service run gets a fresh set of timestamped log files. `state.json` is what devctl uses for `status`, `logs`, and `down`. You can safely `rm -rf .devctl/` to reset state. Add `.devctl/` to `.gitignore`.
 
 ## Troubleshooting
 

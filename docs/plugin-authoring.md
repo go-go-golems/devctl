@@ -83,7 +83,24 @@ Run command:
 {"type":"request","op":"command.run","input":{"name":"db-reset","argv":["--force"],"config":{...}}}
 ```
 
+## Service schema
+
+A `launch.plan` service has these fields:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | `string` | yes | Stable identifier for logs/status/down. |
+| `command` | `string[]` | yes | argv array. Use `["bash","-lc","..."]` for shell features. |
+| `cwd` | `string` | optional | Working directory (relative to `repo_root`). |
+| `env` | `map<string,string>` | optional | Extra env vars merged with parent env. |
+| `health.type` | `"tcp" \| "http"` | optional | Readiness probe type. |
+| `health.address` | `string` | for `tcp` | Host:port to dial (e.g. `"127.0.0.1:8080"`). |
+| `health.url` | `string` | for `http` | URL to GET. 2xx–4xx counts as healthy. |
+| `health.timeout_ms` | `number` | optional | Ready timeout (default: 30s). |
+
 ## Examples
 
 - `examples/plugins/python-minimal/plugin.py`
 - `examples/plugins/bash-minimal/plugin.sh`
+- `testdata/plugins/e2e/plugin.py` — full pipeline with multiple services
+- `testdata/plugins/http-service/plugin.py` — HTTP health check example

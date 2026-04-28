@@ -377,6 +377,16 @@ These ops are for deterministic side-effect steps (compilation, generating files
 }
 ```
 
+**Response schema:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `steps` | `StepResult[]` | yes | Named steps that ran. |
+| `steps[].name` | `string` | yes | Step identifier (used for merging across plugins). |
+| `steps[].ok` | `boolean` | yes | Whether the step succeeded. |
+| `steps[].duration_ms` | `number` | optional | How long the step took. |
+| `artifacts` | `map<string,string>` | optional | Named paths to build outputs (e.g. `{"backend-bin": "dist/server"}`). |
+
 **Dry-run behavior:**
 
 - if `ctx.dry_run` is true, do not perform side effects.
@@ -405,13 +415,21 @@ The launch plan is what devctl turns into processes, logs, health checks, and `d
 }
 ```
 
-**Service fields:**
+**Service schema:**
 
-- `name`: required; used as the stable identifier for logs/status.
-- `cwd`: optional; resolved relative to `repo_root` if not absolute.
-- `command`: required; argv array (no shell parsing unless you explicitly run a shell).
-- `env`: optional; merged with the parent environment.
-- `health`: optional; `type` is `"tcp"` or `"http"`; use `timeout_ms` for readiness.
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | `string` | yes | Stable identifier for `logs`, `status`, and `down`. |
+| `command` | `string[]` | yes | argv array. No shell parsing — use `["bash","-lc","..."]` if you need a shell. |
+| `cwd` | `string` | optional | Working directory. Relative paths resolved against `repo_root`. |
+| `env` | `map<string,string>` | optional | Extra env vars merged with the parent environment. |
+| `health` | `HealthCheck` | optional | Readiness check before devctl considers `up` successful. |
+| `health.type` | `"tcp" \| "http"` | yes | TCP probe or HTTP GET probe. |
+| `health.address` | `string` | for `tcp` | Host:port to dial (e.g. `"127.0.0.1:8080"`). |
+| `health.url` | `string` | for `http` | URL to GET. 2xx–4xx counts as healthy. |
+| `health.timeout_ms` | `number` | optional | How long to wait for the service to become ready (default: 30s). |
+
+**Important:** devctl starts services in the order they appear in your `launch.plan`, then runs health checks in parallel. A service without `health` is considered immediately ready.
 
 ### 6.5. `command.run`: plugin-defined CLI commands
 
@@ -450,6 +468,33 @@ Your response should include an exit code:
 ```json
 { "type": "response", "request_id": "x", "ok": true, "output": { "exit_code": 0 } }
 ```
+
+### 6.6. Supervision, logs, and process lifecycle
+
+Once `launch.plan` returns, devctl takes over. Here's what happens to your services:
+
+**Process startup:**
+- devctl creates a new process group (`Setpgid: true`) for each service.
+- `cwd` is resolved relative to `repo_root` if not absolute.
+- `env` is merged with devctl's own environment.
+- Logs are written to timestamped files under `.devctl/logs/`:
+  - `{name}-{timestamp}.stdout.log`
+  - `{name}-{timestamp}.stderr.log`
+
+**Health checks:**
+- After all services start, devctl waits for each `health` check to pass.
+- TCP: dials the address every 200ms until success or timeout.
+- HTTP: GETs the URL every 300ms; accepts 2xx–4xx as healthy.
+- If any health check fails, devctl stops all already-started services and reports the error.
+
+**Shutdown (`devctl down`):**
+1. devctl sends SIGTERM to the process group.
+2. Waits up to 3 seconds for graceful exit.
+3. Sends SIGKILL if still alive.
+4. Removes `.devctl/state.json`.
+
+**State file:**
+`.devctl/state.json` tracks PIDs, start times, log paths, and health config. devctl uses it for `status`, `logs`, and `down`. If state exists, a subsequent `devctl up` will prompt for restart (or use `--force`).
 
 ## 7. Merge behavior, ordering, and strictness
 
@@ -787,7 +832,29 @@ Most plugin failures are protocol failures. This section is a checklist for the 
   - cause: service never bound, bound the wrong address, or HTTP never returns 2xx–4xx
   - fix: validate ports/URLs when producing `launch.plan` and log the readiness target
 
-## 15. Reference: schema cheatsheet
+## 15. Cookbook: real plugin examples
+
+The devctl repo includes a suite of fixture plugins under `testdata/plugins/`. These are the best reference for how specific features work in practice.
+
+| Example | File | What it demonstrates |
+|---------|------|---------------------|
+| **E2E full pipeline** | `testdata/plugins/e2e/plugin.py` | `config.mutate`, `validate.run`, `build.run`, `prepare.run`, and `launch.plan` with multiple services and health checks. |
+| **HTTP service** | `testdata/plugins/http-service/plugin.py` | A single service with an `http` health check on a real Python HTTP server. |
+| **Pipeline basics** | `testdata/plugins/pipeline/plugin.py` | `config.mutate`, `validate.run`, and `launch.plan` in one minimal file. |
+| **Dynamic commands** | `testdata/plugins/command/plugin.py` | How to expose a custom `devctl <cmd>` via `command.run`. |
+| **Streaming logs** | `testdata/plugins/stream/plugin.py` | Emitting `event` frames for log streaming. |
+| **Validation failures** | `testdata/plugins/validate-passfail/plugin.py` | Returning `valid: false` with actionable errors. |
+| **Launch failure** | `testdata/plugins/launch-fail/plugin.py` | How a service that fails to start is reported. |
+| **Noisy plugins** | `testdata/plugins/noisy-handshake/plugin.py` | What *not* to do (printing to stdout contaminates the protocol). |
+
+Use these as starting points when you need to implement a new capability:
+
+```bash
+cp testdata/plugins/e2e/plugin.py ./myrepo-plugin.py
+# Then adapt the service names and commands to your repo.
+```
+
+## 16. Reference: schema cheatsheet
 
 This section summarizes what devctl expects at the JSON boundary. Use it when you’re implementing a plugin in a new language and just need the “shape of things”.
 
