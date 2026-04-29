@@ -9,7 +9,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/dop251/goja v0.0.0-20250630131328-58d95d85e994
-	github.com/go-go-golems/glazed v1.2.3
+	github.com/go-go-golems/glazed v1.2.5
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.2
