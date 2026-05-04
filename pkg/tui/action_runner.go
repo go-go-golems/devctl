@@ -67,15 +67,19 @@ func RegisterUIActionRunner(tuiCtx context.Context, bus *Bus, opts RootOptions) 
 				err = errors.New("missing service for stop action")
 				break
 			}
-			err = errors.New("stop action is not implemented")
+			err = runStopService(ctx, opts, bus.Publisher, runID, req.Service)
 		case ActionUp:
 			err = runUp(ctx, opts, bus.Publisher, runID)
 		case ActionRestart:
-			if err2 := runDown(ctx, opts, bus.Publisher, runID); err2 != nil {
-				err = err2
-				break
+			if req.Service != "" {
+				err = runRestartService(ctx, opts, bus.Publisher, runID, req.Service)
+			} else {
+				if err2 := runDown(ctx, opts, bus.Publisher, runID); err2 != nil {
+					err = err2
+					break
+				}
+				err = runUp(ctx, opts, bus.Publisher, runID)
 			}
-			err = runUp(ctx, opts, bus.Publisher, runID)
 		default:
 			err = errors.Errorf("unknown action: %s", req.Kind)
 		}
@@ -346,6 +350,115 @@ func runDown(ctx context.Context, opts RootOptions, pub message.Publisher, runID
 		At:         time.Now(),
 		Ok:         true,
 		DurationMs: time.Since(rmStart).Milliseconds(),
+	})
+	return nil
+}
+
+func runStopService(ctx context.Context, opts RootOptions, pub message.Publisher, runID string, serviceName string) error {
+	if opts.RepoRoot == "" {
+		return errors.New("missing RepoRoot")
+	}
+	if opts.Timeout <= 0 {
+		opts.Timeout = 30 * time.Second
+	}
+	if opts.DryRun {
+		return nil
+	}
+
+	st, err := state.Load(opts.RepoRoot)
+	if err != nil {
+		return err
+	}
+
+	found := false
+	for _, svc := range st.Services {
+		if svc.Name == serviceName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return errors.Errorf("service %q not found", serviceName)
+	}
+
+	wrapperExe, _ := os.Executable()
+	sup := supervise.New(supervise.Options{
+		RepoRoot:        opts.RepoRoot,
+		ShutdownTimeout: opts.Timeout,
+		WrapperExe:      wrapperExe,
+	})
+
+	stopStart := time.Now()
+	_ = publishPipelinePhaseStarted(pub, PipelinePhaseStarted{
+		RunID: runID, Phase: PipelinePhaseStopSupervise, At: stopStart,
+	})
+
+	if err := sup.StopService(ctx, st, serviceName); err != nil {
+		_ = publishPipelinePhaseFinished(pub, PipelinePhaseFinished{
+			RunID: runID, Phase: PipelinePhaseStopSupervise,
+			At: time.Now(), Ok: false,
+			DurationMs: time.Since(stopStart).Milliseconds(),
+			Error:      err.Error(),
+		})
+		return err
+	}
+
+	_ = publishPipelinePhaseFinished(pub, PipelinePhaseFinished{
+		RunID: runID, Phase: PipelinePhaseStopSupervise,
+		At: time.Now(), Ok: true,
+		DurationMs: time.Since(stopStart).Milliseconds(),
+	})
+	return nil
+}
+
+func runRestartService(ctx context.Context, opts RootOptions, pub message.Publisher, runID string, serviceName string) error {
+	if opts.RepoRoot == "" {
+		return errors.New("missing RepoRoot")
+	}
+	if opts.Timeout <= 0 {
+		opts.Timeout = 30 * time.Second
+	}
+	if opts.DryRun {
+		return nil
+	}
+
+	// Stop phase
+	if err := runStopService(ctx, opts, pub, runID, serviceName); err != nil {
+		return err
+	}
+
+	// Re-load state (stop updated the file)
+	st, err := state.Load(opts.RepoRoot)
+	if err != nil {
+		return err
+	}
+
+	wrapperExe, _ := os.Executable()
+	sup := supervise.New(supervise.Options{
+		RepoRoot:     opts.RepoRoot,
+		ReadyTimeout: opts.Timeout,
+		WrapperExe:   wrapperExe,
+	})
+
+	supStart := time.Now()
+	_ = publishPipelinePhaseStarted(pub, PipelinePhaseStarted{
+		RunID: runID, Phase: PipelinePhaseSupervise, At: supStart,
+	})
+
+	if err := sup.StartService(ctx, st, serviceName); err != nil {
+		_ = publishPipelinePhaseFinished(pub, PipelinePhaseFinished{
+			RunID: runID, Phase: PipelinePhaseSupervise,
+			At: time.Now(), Ok: false,
+			DurationMs: time.Since(supStart).Milliseconds(),
+			Error:      err.Error(),
+		})
+		return err
+	}
+
+	_ = publishPipelinePhaseFinished(pub, PipelinePhaseFinished{
+		RunID: runID, Phase: PipelinePhaseSupervise,
+		At: time.Now(), Ok: true,
+		DurationMs: time.Since(supStart).Milliseconds(),
 	})
 	return nil
 }
