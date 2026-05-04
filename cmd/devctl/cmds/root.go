@@ -19,5 +19,6 @@ func AddCommands(root *cobra.Command) error {
 	root.AddCommand(newWrapServiceCmd())
 	root.AddCommand(newRestartCmd())
 	root.AddCommand(newStopServiceCmd())
+	root.AddCommand(newStartServiceCmd())
 	return nil
 }
