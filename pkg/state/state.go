@@ -40,6 +40,28 @@ type ServiceRecord struct {
 	HealthType    string `json:"health_type,omitempty"`    // "tcp"|"http"
 	HealthAddress string `json:"health_address,omitempty"` // For TCP checks
 	HealthURL     string `json:"health_url,omitempty"`     // For HTTP checks
+
+	// Spec stores the original ServiceSpec for restart without re-running the pipeline.
+	// The Env field here is unsanitized (unlike the top-level Env which redacts secrets).
+	// This allows devctl restart to re-launch the service with the original environment.
+	Spec *ServiceSpecRecord `json:"spec,omitempty"`
+}
+
+// ServiceSpecRecord stores the original service specification for restart.
+type ServiceSpecRecord struct {
+	Name    string             `json:"name"`
+	Cwd     string             `json:"cwd,omitempty"`
+	Command []string           `json:"command"`
+	Env     map[string]string  `json:"env,omitempty"` // unsanitized for restart
+	Health  *HealthCheckRecord `json:"health,omitempty"`
+}
+
+// HealthCheckRecord stores health check configuration for restart.
+type HealthCheckRecord struct {
+	Type      string `json:"type"`              // "tcp"|"http"
+	Address   string `json:"address,omitempty"` // For TCP checks
+	URL       string `json:"url,omitempty"`     // For HTTP checks
+	TimeoutMs int64  `json:"timeout_ms,omitempty"`
 }
 
 func StatePath(repoRoot string) string {

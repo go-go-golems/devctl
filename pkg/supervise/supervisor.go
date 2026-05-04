@@ -155,6 +155,7 @@ func (s *Supervisor) startService(ctx context.Context, svc engine.ServiceSpec) (
 			StdoutLog: stdoutPath,
 			StderrLog: stderrPath,
 			StartedAt: startedAt,
+			Spec:      specRecordFromServiceSpec(svc, cwd),
 		}
 		if svc.Health != nil {
 			rec.HealthType = svc.Health.Type
@@ -214,6 +215,7 @@ func (s *Supervisor) startService(ctx context.Context, svc engine.ServiceSpec) (
 		StderrLog: stderrPath,
 		ExitInfo:  exitInfoPath,
 		StartedAt: time.Now(),
+		Spec:      specRecordFromServiceSpec(svc, cwd),
 	}
 	if svc.Health != nil {
 		rec.HealthType = svc.Health.Type
@@ -365,4 +367,22 @@ func terminatePIDGroup(ctx context.Context, pid int, timeout time.Duration) erro
 		return errors.New("failed to stop service")
 	}
 	return nil
+}
+
+func specRecordFromServiceSpec(svc engine.ServiceSpec, cwd string) *state.ServiceSpecRecord {
+	rec := &state.ServiceSpecRecord{
+		Name:    svc.Name,
+		Cwd:     cwd,
+		Command: svc.Command,
+		Env:     svc.Env,
+	}
+	if svc.Health != nil {
+		rec.Health = &state.HealthCheckRecord{
+			Type:      svc.Health.Type,
+			Address:   svc.Health.Address,
+			URL:       svc.Health.URL,
+			TimeoutMs: svc.Health.TimeoutMs,
+		}
+	}
+	return rec
 }
