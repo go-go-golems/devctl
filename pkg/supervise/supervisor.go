@@ -93,6 +93,93 @@ func (s *Supervisor) Stop(ctx context.Context, st *state.State) error {
 	return lastErr
 }
 
+// StopService stops a single named service, clears its PID in the state,
+// and saves the updated state file. The service record is kept so it can be
+// restarted later.
+func (s *Supervisor) StopService(ctx context.Context, st *state.State, name string) error {
+	if st == nil {
+		return errors.New("state is nil")
+	}
+	var svc *state.ServiceRecord
+	for i := range st.Services {
+		if st.Services[i].Name == name {
+			svc = &st.Services[i]
+			break
+		}
+	}
+	if svc == nil {
+		return errors.Errorf("service %q not found in state", name)
+	}
+
+	if svc.PID > 0 && state.ProcessAlive(svc.PID) {
+		if err := terminatePIDGroup(ctx, svc.PID, s.opts.ShutdownTimeout); err != nil {
+			return errors.Wrapf(err, "failed to stop service %q", name)
+		}
+	}
+
+	svc.PID = 0
+	svc.ExitInfo = ""
+	return state.Save(s.opts.RepoRoot, st)
+}
+
+// StartService starts a single named service from its stored Spec.
+// It creates new log files, starts the process, waits for health checks,
+// and updates the state file.
+func (s *Supervisor) StartService(ctx context.Context, st *state.State, name string) error {
+	if st == nil {
+		return errors.New("state is nil")
+	}
+	var rec *state.ServiceRecord
+	for i := range st.Services {
+		if st.Services[i].Name == name {
+			rec = &st.Services[i]
+			break
+		}
+	}
+	if rec == nil {
+		return errors.Errorf("service %q not found in state", name)
+	}
+	if rec.Spec == nil {
+		return errors.Errorf("service %q has no stored spec (cannot start)", name)
+	}
+
+	spec := specFromRecord(rec.Spec)
+
+	newRec, err := s.startService(ctx, spec)
+	if err != nil {
+		return errors.Wrapf(err, "failed to start service %q", name)
+	}
+
+	if spec.Health != nil {
+		readyCtx, cancel := context.WithTimeout(ctx, s.opts.ReadyTimeout)
+		err := waitReady(readyCtx, spec)
+		cancel()
+		if err != nil {
+			_ = terminatePIDGroup(context.Background(), newRec.PID, s.opts.ShutdownTimeout)
+			return errors.Wrapf(err, "service %q health check failed", name)
+		}
+	}
+
+	rec.PID = newRec.PID
+	rec.StdoutLog = newRec.StdoutLog
+	rec.StderrLog = newRec.StderrLog
+	rec.ExitInfo = ""
+	rec.StartedAt = newRec.StartedAt
+
+	return state.Save(s.opts.RepoRoot, st)
+}
+
+// RestartService stops and then starts a single named service.
+func (s *Supervisor) RestartService(ctx context.Context, st *state.State, name string) error {
+	if err := s.StopService(ctx, st, name); err != nil {
+		return errors.Wrap(err, "stop failed")
+	}
+	if err := s.StartService(ctx, st, name); err != nil {
+		return errors.Wrap(err, "start failed")
+	}
+	return nil
+}
+
 func (s *Supervisor) startService(ctx context.Context, svc engine.ServiceSpec) (state.ServiceRecord, error) {
 	if svc.Name == "" {
 		return state.ServiceRecord{}, errors.New("service name is required")
@@ -385,4 +472,22 @@ func specRecordFromServiceSpec(svc engine.ServiceSpec, cwd string) *state.Servic
 		}
 	}
 	return rec
+}
+
+func specFromRecord(rec *state.ServiceSpecRecord) engine.ServiceSpec {
+	spec := engine.ServiceSpec{
+		Name:    rec.Name,
+		Cwd:     rec.Cwd,
+		Command: rec.Command,
+		Env:     rec.Env,
+	}
+	if rec.Health != nil {
+		spec.Health = &engine.HealthCheck{
+			Type:      rec.Health.Type,
+			Address:   rec.Health.Address,
+			URL:       rec.Health.URL,
+			TimeoutMs: rec.Health.TimeoutMs,
+		}
+	}
+	return spec
 }
