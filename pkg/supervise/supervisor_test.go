@@ -44,12 +44,72 @@ func TestSupervisor_StartStop_Sleep(t *testing.T) {
 	require.False(t, state.ProcessAlive(st.Services[0].PID))
 }
 
+func TestSupervisor_StartServiceAlreadyRunningFails(t *testing.T) {
+	repoRoot, err := os.MkdirTemp("", "devctl-supervise-test-*")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(repoRoot) }()
+
+	s := New(Options{RepoRoot: repoRoot, ReadyTimeout: 1 * time.Second, ShutdownTimeout: 2 * time.Second})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	spec := engine.ServiceSpec{Name: "sleep", Command: []string{"bash", "-lc", "sleep 10"}}
+	st, err := s.Start(ctx, engine.LaunchPlan{Services: []engine.ServiceSpec{spec}})
+	require.NoError(t, err)
+	require.Len(t, st.Services, 1)
+	pid := st.Services[0].PID
+	require.True(t, state.ProcessAlive(pid))
+
+	err = s.StartService(ctx, st, spec)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "already running")
+	require.Equal(t, pid, st.Services[0].PID)
+	require.True(t, state.ProcessAlive(pid))
+
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer stopCancel()
+	require.NoError(t, s.Stop(stopCtx, st))
+}
+
+func TestSupervisor_StartDoesNotPersistRawSpecEnv(t *testing.T) {
+	repoRoot, err := os.MkdirTemp("", "devctl-supervise-test-*")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(repoRoot) }()
+
+	s := New(Options{RepoRoot: repoRoot, ReadyTimeout: 1 * time.Second, ShutdownTimeout: 2 * time.Second})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	st, err := s.Start(ctx, engine.LaunchPlan{
+		Services: []engine.ServiceSpec{
+			{
+				Name:    "sleep",
+				Command: []string{"bash", "-lc", "sleep 10"},
+				Env:     map[string]string{"API_KEY": "secret-value"},
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, st.Services, 1)
+	require.Equal(t, "[REDACTED]", st.Services[0].Env["API_KEY"])
+	require.NotNil(t, st.Services[0].Spec)
+	require.NoError(t, state.Save(repoRoot, st))
+
+	b, err := os.ReadFile(state.StatePath(repoRoot))
+	require.NoError(t, err)
+	require.NotContains(t, string(b), "secret-value")
+
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer stopCancel()
+	require.NoError(t, s.Stop(stopCtx, st))
+}
+
 func TestSupervisor_ReadinessTimeoutStopsServices(t *testing.T) {
 	repoRoot, err := os.MkdirTemp("", "devctl-supervise-test-*")
 	require.NoError(t, err)
 	defer func() { _ = os.RemoveAll(repoRoot) }()
 
-	s := New(Options{RepoRoot: repoRoot, ReadyTimeout: 500 * time.Millisecond, ShutdownTimeout: 2 * time.Second})
+	s := New(Options{RepoRoot: repoRoot, ReadyTimeout: 2 * time.Second, ShutdownTimeout: 2 * time.Second})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -66,8 +126,9 @@ func TestSupervisor_ReadinessTimeoutStopsServices(t *testing.T) {
 		Services: []engine.ServiceSpec{
 			{
 				Name:    "sleep",
-				Command: []string{"bash", "-lc", "echo $$ > " + pidFile + "; sleep 10"},
-				Health:  &engine.HealthCheck{Type: "tcp", Address: "127.0.0.1:" + portStr, TimeoutMs: 500},
+				Command: []string{"bash", "-lc", "echo $$ > \"$DEVCTL_TEST_PID_FILE\"; sleep 10"},
+				Env:     map[string]string{"DEVCTL_TEST_PID_FILE": pidFile},
+				Health:  &engine.HealthCheck{Type: "tcp", Address: "127.0.0.1:" + portStr, TimeoutMs: 2000},
 			},
 		},
 	})

@@ -17,5 +17,8 @@ func AddCommands(root *cobra.Command) error {
 	root.AddCommand(newStreamCmd())
 	root.AddCommand(newTuiCmd())
 	root.AddCommand(newWrapServiceCmd())
+	root.AddCommand(newRestartCmd())
+	root.AddCommand(newStopServiceCmd())
+	root.AddCommand(newStartServiceCmd())
 	return nil
 }

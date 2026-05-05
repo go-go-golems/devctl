@@ -93,6 +93,102 @@ func (s *Supervisor) Stop(ctx context.Context, st *state.State) error {
 	return lastErr
 }
 
+// StopService stops a single named service, clears its PID in the state,
+// and saves the updated state file. The service record is kept so it can be
+// restarted later.
+func (s *Supervisor) StopService(ctx context.Context, st *state.State, name string) error {
+	if st == nil {
+		return errors.New("state is nil")
+	}
+	var svc *state.ServiceRecord
+	for i := range st.Services {
+		if st.Services[i].Name == name {
+			svc = &st.Services[i]
+			break
+		}
+	}
+	if svc == nil {
+		return errors.Errorf("service %q not found in state", name)
+	}
+
+	if svc.PID > 0 && state.ProcessAlive(svc.PID) {
+		if err := terminatePIDGroup(ctx, svc.PID, s.opts.ShutdownTimeout); err != nil {
+			return errors.Wrapf(err, "failed to stop service %q", name)
+		}
+	}
+
+	svc.PID = 0
+	svc.ExitInfo = ""
+	return state.Save(s.opts.RepoRoot, st)
+}
+
+// StartService starts a single named service from a freshly resolved ServiceSpec.
+// It creates new log files, starts the process, waits for health checks,
+// and updates the state file.
+func (s *Supervisor) StartService(ctx context.Context, st *state.State, spec engine.ServiceSpec) error {
+	if st == nil {
+		return errors.New("state is nil")
+	}
+	name := spec.Name
+	if name == "" {
+		return errors.New("service spec missing name")
+	}
+	var rec *state.ServiceRecord
+	for i := range st.Services {
+		if st.Services[i].Name == name {
+			rec = &st.Services[i]
+			break
+		}
+	}
+	if rec == nil {
+		return errors.Errorf("service %q not found in state", name)
+	}
+	if rec.PID > 0 && state.ProcessAlive(rec.PID) {
+		return errors.Errorf("service %q is already running (pid %d)", name, rec.PID)
+	}
+
+	newRec, err := s.startService(ctx, spec)
+	if err != nil {
+		return errors.Wrapf(err, "failed to start service %q", name)
+	}
+
+	if spec.Health != nil {
+		readyCtx, cancel := context.WithTimeout(ctx, s.opts.ReadyTimeout)
+		err := waitReady(readyCtx, spec)
+		cancel()
+		if err != nil {
+			_ = terminatePIDGroup(context.Background(), newRec.PID, s.opts.ShutdownTimeout)
+			return errors.Wrapf(err, "service %q health check failed", name)
+		}
+	}
+
+	rec.PID = newRec.PID
+	rec.Command = newRec.Command
+	rec.Cwd = newRec.Cwd
+	rec.Env = newRec.Env
+	rec.StdoutLog = newRec.StdoutLog
+	rec.StderrLog = newRec.StderrLog
+	rec.ExitInfo = ""
+	rec.StartedAt = newRec.StartedAt
+	rec.HealthType = newRec.HealthType
+	rec.HealthAddress = newRec.HealthAddress
+	rec.HealthURL = newRec.HealthURL
+	rec.Spec = newRec.Spec
+
+	return state.Save(s.opts.RepoRoot, st)
+}
+
+// RestartService stops and then starts a single named service from a freshly resolved ServiceSpec.
+func (s *Supervisor) RestartService(ctx context.Context, st *state.State, spec engine.ServiceSpec) error {
+	if err := s.StopService(ctx, st, spec.Name); err != nil {
+		return errors.Wrap(err, "stop failed")
+	}
+	if err := s.StartService(ctx, st, spec); err != nil {
+		return errors.Wrap(err, "start failed")
+	}
+	return nil
+}
+
 func (s *Supervisor) startService(ctx context.Context, svc engine.ServiceSpec) (state.ServiceRecord, error) {
 	if svc.Name == "" {
 		return state.ServiceRecord{}, errors.New("service name is required")
@@ -155,6 +251,7 @@ func (s *Supervisor) startService(ctx context.Context, svc engine.ServiceSpec) (
 			StdoutLog: stdoutPath,
 			StderrLog: stderrPath,
 			StartedAt: startedAt,
+			Spec:      specRecordFromServiceSpec(svc, cwd),
 		}
 		if svc.Health != nil {
 			rec.HealthType = svc.Health.Type
@@ -214,6 +311,7 @@ func (s *Supervisor) startService(ctx context.Context, svc engine.ServiceSpec) (
 		StderrLog: stderrPath,
 		ExitInfo:  exitInfoPath,
 		StartedAt: time.Now(),
+		Spec:      specRecordFromServiceSpec(svc, cwd),
 	}
 	if svc.Health != nil {
 		rec.HealthType = svc.Health.Type
@@ -365,4 +463,21 @@ func terminatePIDGroup(ctx context.Context, pid int, timeout time.Duration) erro
 		return errors.New("failed to stop service")
 	}
 	return nil
+}
+
+func specRecordFromServiceSpec(svc engine.ServiceSpec, cwd string) *state.ServiceSpecRecord {
+	rec := &state.ServiceSpecRecord{
+		Name:    svc.Name,
+		Cwd:     cwd,
+		Command: svc.Command,
+	}
+	if svc.Health != nil {
+		rec.Health = &state.HealthCheckRecord{
+			Type:      svc.Health.Type,
+			Address:   svc.Health.Address,
+			URL:       svc.Health.URL,
+			TimeoutMs: svc.Health.TimeoutMs,
+		}
+	}
+	return rec
 }

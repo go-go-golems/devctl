@@ -40,6 +40,27 @@ type ServiceRecord struct {
 	HealthType    string `json:"health_type,omitempty"`    // "tcp"|"http"
 	HealthAddress string `json:"health_address,omitempty"` // For TCP checks
 	HealthURL     string `json:"health_url,omitempty"`     // For HTTP checks
+
+	// Spec stores non-secret service metadata for inspection and backward-compatible state files.
+	// Service start/restart re-runs planning to recover the effective ServiceSpec instead of
+	// persisting raw environment variables in state.json.
+	Spec *ServiceSpecRecord `json:"spec,omitempty"`
+}
+
+// ServiceSpecRecord stores non-secret service specification metadata.
+type ServiceSpecRecord struct {
+	Name    string             `json:"name"`
+	Cwd     string             `json:"cwd,omitempty"`
+	Command []string           `json:"command"`
+	Health  *HealthCheckRecord `json:"health,omitempty"`
+}
+
+// HealthCheckRecord stores health check configuration for restart.
+type HealthCheckRecord struct {
+	Type      string `json:"type"`              // "tcp"|"http"
+	Address   string `json:"address,omitempty"` // For TCP checks
+	URL       string `json:"url,omitempty"`     // For HTTP checks
+	TimeoutMs int64  `json:"timeout_ms,omitempty"`
 }
 
 func StatePath(repoRoot string) string {
