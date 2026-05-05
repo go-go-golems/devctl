@@ -2,10 +2,10 @@
 
 ## TODO
 
-- [ ] Phase 1: Config model, local override stacking, and profile resolution
-  - [ ] Add `profile`, `profiles`, and optional `.devctl.override.yaml` loading to `pkg/config`
-  - [ ] Define explicit `default` profile semantics: only active when selected, not implicit
-  - [ ] Add config tests for backward compatibility, merge rules, and profile validation
+- [x] Phase 1: Config model, local override stacking, and profile resolution
+  - [x] Add `profile`, `profiles`, and optional `.devctl.override.yaml` loading to `pkg/config`
+  - [x] Define explicit `default` profile semantics: only active when selected, not implicit
+  - [x] Add config tests for backward compatibility, merge rules, and profile validation
 - [ ] Phase 2: Repository profile filtering
   - [ ] Add profile/override options to `repository.Load`
   - [ ] Filter discovered plugin specs by active profile

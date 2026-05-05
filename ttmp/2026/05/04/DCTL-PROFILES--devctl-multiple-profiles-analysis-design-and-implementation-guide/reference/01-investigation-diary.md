@@ -137,3 +137,40 @@ The implementation phase starts from the v2 design: profiles live in `.devctl.ya
 
 Implement and commit one coherent phase at a time. The first commit should cover the config model and local override stacking because later repository, CLI, and state changes depend on that foundation.
 
+
+## Step 5: Phase 1 Implemented — Config Model and Override Stacking
+
+Implemented the config-layer foundation for profiles. This phase does not yet filter plugins in repository loading or expose a CLI flag. It only teaches `pkg/config` how to parse profile fields, merge a local override file, resolve the active profile name, and validate profile plugin references.
+
+### What changed
+
+- Added `ProfileBlock` and `Profile` to `pkg/config/config.go`.
+- Added `DefaultOverrideFilename` and `DefaultOverridePath()` for `.devctl.override.yaml`.
+- Added `LoadStacked(basePath, overridePath)` to load `.devctl.yaml` and then optionally merge `.devctl.override.yaml`.
+- Added `Merge()` and clone helpers so the merged config is a new value rather than a mutation of the base config.
+- Added `ResolveProfile()`, `GetProfile()`, and `ValidateProfile()`.
+- Added config tests covering missing configs, missing overrides, local profile additions, existing profile adjustments, plugin-by-ID patches, explicit `default` profile selection, and validation errors.
+
+### Design details captured in code
+
+The `default` profile is not magic. If a config defines `profiles.default` but neither `profile.active: default` nor `--profile default` is supplied, `ResolveProfile("")` returns the empty string. Later phases will interpret the empty string as "load all top-level plugins," preserving backward compatibility.
+
+The local override merge follows the design doc:
+
+- non-empty scalar values override base values,
+- maps merge with override keys winning,
+- profile records merge field-by-field,
+- profile `plugins` lists replace when provided,
+- top-level plugins merge by `id`,
+- plugin env maps merge.
+
+### Validation
+
+Ran:
+
+```bash
+go test ./pkg/config -count=1
+```
+
+Result: passed.
+
