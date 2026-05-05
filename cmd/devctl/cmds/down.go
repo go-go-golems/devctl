@@ -30,6 +30,10 @@ func newDownCmd() *cobra.Command {
 			if err := state.Remove(opts.RepoRoot); err != nil {
 				return err
 			}
+			if st.Profile != "" {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "ok (profile %s)\n", st.Profile)
+				return nil
+			}
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "ok")
 			return nil
 		},

@@ -20,7 +20,7 @@ import (
 )
 
 func AddDynamicPluginCommands(root *cobra.Command, args []string) error {
-	repoRoot, cfgPath, positionals, err := parseRepoArgs(args)
+	repoRoot, cfgPath, profileName, positionals, err := parseRepoArgs(args)
 	if err != nil {
 		return err
 	}
@@ -34,7 +34,7 @@ func AddDynamicPluginCommands(root *cobra.Command, args []string) error {
 		return nil
 	}
 
-	repo, err := repository.Load(repository.Options{RepoRoot: repoRoot, ConfigPath: cfgPath, Cwd: repoRoot, DryRun: false})
+	repo, err := repository.Load(repository.Options{RepoRoot: repoRoot, ConfigPath: cfgPath, ProfileName: profileName, Cwd: repoRoot, DryRun: false})
 	if err != nil {
 		return err
 	}
@@ -90,7 +90,7 @@ func AddDynamicPluginCommands(root *cobra.Command, args []string) error {
 					return err
 				}
 
-				cfg, err := config.LoadOptional(opts.Config)
+				cfg, err := config.LoadStacked(opts.Config, config.DefaultOverridePath(opts.RepoRoot))
 				if err != nil {
 					return err
 				}
@@ -139,13 +139,14 @@ func AddDynamicPluginCommands(root *cobra.Command, args []string) error {
 	return nil
 }
 
-func parseRepoArgs(args []string) (string, string, []string, error) {
+func parseRepoArgs(args []string) (string, string, string, []string, error) {
 	fs := pflag.NewFlagSet("devctl-bootstrap", pflag.ContinueOnError)
 	fs.ParseErrorsAllowlist.UnknownFlags = true
 	fs.SetInterspersed(true)
 	fs.SetOutput(io.Discard)
 	fs.String("repo-root", "", "")
 	fs.String("config", "", "")
+	fs.String("profile", "", "")
 	_ = fs.Parse(args[1:])
 
 	repoRoot := ""
@@ -156,12 +157,12 @@ func parseRepoArgs(args []string) (string, string, []string, error) {
 	if repoRoot == "" {
 		repoRoot, err = os.Getwd()
 		if err != nil {
-			return "", "", nil, err
+			return "", "", "", nil, err
 		}
 	}
 	repoRoot, err = filepath.Abs(repoRoot)
 	if err != nil {
-		return "", "", nil, err
+		return "", "", "", nil, err
 	}
 
 	cfgPath, _ = fs.GetString("config")
@@ -170,7 +171,8 @@ func parseRepoArgs(args []string) (string, string, []string, error) {
 	} else if !filepath.IsAbs(cfgPath) {
 		cfgPath = filepath.Join(repoRoot, cfgPath)
 	}
-	return repoRoot, cfgPath, fs.Args(), nil
+	profileName, _ := fs.GetString("profile")
+	return repoRoot, cfgPath, profileName, fs.Args(), nil
 }
 
 func rootHasCommand(root *cobra.Command, name string) bool {

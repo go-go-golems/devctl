@@ -75,6 +75,52 @@ func TestDynamicCommands_SkipsBuiltIns(t *testing.T) {
 	require.False(t, found)
 }
 
+func TestDynamicCommands_RespectsProfileFiltering(t *testing.T) {
+	repoRoot, err := os.MkdirTemp("", "devctl-dyncmd-profile-test-*")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(repoRoot) }()
+
+	devctlRoot := findDevctlRootForTest(t)
+	plugin := filepath.Join(devctlRoot, "testdata", "plugins", "command", "plugin.py")
+
+	cfg := []byte("profiles:\n  commands:\n    plugins: [cmd]\n  empty:\n    plugins: []\nplugins:\n  - id: cmd\n    path: python3\n    args:\n      - \"" + plugin + "\"\n    priority: 10\n")
+	cfgPath := filepath.Join(repoRoot, ".devctl.yaml")
+	require.NoError(t, os.WriteFile(cfgPath, cfg, 0o644))
+
+	root := &cobra.Command{Use: "devctl"}
+	err = AddDynamicPluginCommands(root, []string{
+		"devctl",
+		"--repo-root", repoRoot,
+		"--config", cfgPath,
+		"--profile", "empty",
+		"echo",
+	})
+	require.NoError(t, err)
+
+	found := false
+	for _, c := range root.Commands() {
+		if c.Name() == "echo" {
+			found = true
+			break
+		}
+	}
+	require.False(t, found)
+
+	root = &cobra.Command{Use: "devctl"}
+	err = AddDynamicPluginCommands(root, []string{
+		"devctl",
+		"--repo-root", repoRoot,
+		"--config", cfgPath,
+		"--profile", "commands",
+		"echo",
+	})
+	require.NoError(t, err)
+
+	echoCmd, _, err := root.Find([]string{"echo"})
+	require.NoError(t, err)
+	require.NotNil(t, echoCmd)
+}
+
 func TestDynamicCommands_SkipsWrapService(t *testing.T) {
 	repoRoot, err := os.MkdirTemp("", "devctl-wrap-skip-test-*")
 	require.NoError(t, err)

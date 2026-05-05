@@ -33,6 +33,7 @@ type pluginIntrospection struct {
 
 type StateWatcher struct {
 	RepoRoot string
+	Profile  string
 	Interval time.Duration
 	Pub      message.Publisher
 
@@ -118,7 +119,7 @@ func (w *StateWatcher) runIntrospection(ctx context.Context) {
 		return
 	}
 
-	repo, err := repository.Load(repository.Options{RepoRoot: w.RepoRoot, ConfigPath: "", Cwd: w.RepoRoot})
+	repo, err := repository.Load(repository.Options{RepoRoot: w.RepoRoot, ConfigPath: "", ProfileName: w.Profile, Cwd: w.RepoRoot})
 	if err != nil {
 		return
 	}
@@ -247,7 +248,7 @@ func (w *StateWatcher) emitSnapshot(ctx context.Context) error {
 // readPlugins reads plugin info from the devctl config file.
 func (w *StateWatcher) readPlugins() []PluginSummary {
 	cfgPath := config.DefaultPath(w.RepoRoot)
-	cfg, err := config.LoadOptional(cfgPath)
+	cfg, err := config.LoadStacked(cfgPath, config.DefaultOverridePath(w.RepoRoot))
 	if err != nil || cfg == nil {
 		return nil
 	}

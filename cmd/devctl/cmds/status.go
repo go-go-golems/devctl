@@ -75,6 +75,7 @@ func (c *StatusCommand) RunIntoWriter(ctx context.Context, vals *values.Values, 
 		if errors.Is(err, os.ErrNotExist) || errors.Is(err, fs.ErrNotExist) {
 			b, err := json.MarshalIndent(map[string]any{
 				"exists":   false,
+				"profile":  "",
 				"services": []svc{},
 			}, "", "  ")
 			if err != nil {
@@ -135,6 +136,7 @@ func (c *StatusCommand) RunIntoWriter(ctx context.Context, vals *values.Values, 
 
 	b, err := json.MarshalIndent(map[string]any{
 		"exists":   true,
+		"profile":  st.Profile,
 		"services": services,
 	}, "", "  ")
 	if err != nil {

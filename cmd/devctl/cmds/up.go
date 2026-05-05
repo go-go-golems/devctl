@@ -81,7 +81,7 @@ func newUpCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			repo, err := repository.Load(repository.Options{RepoRoot: opts.RepoRoot, ConfigPath: opts.Config, Cwd: meta.Cwd, DryRun: opts.DryRun})
+			repo, err := repository.Load(repository.Options{RepoRoot: opts.RepoRoot, ConfigPath: opts.Config, ProfileName: opts.Profile, Cwd: meta.Cwd, DryRun: opts.DryRun})
 			if err != nil {
 				return err
 			}
@@ -190,6 +190,7 @@ func newUpCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			st.Profile = repo.ProfileName
 			if err := state.Save(opts.RepoRoot, st); err != nil {
 				_ = sup.Stop(context.Background(), st)
 				return err

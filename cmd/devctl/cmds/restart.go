@@ -51,12 +51,13 @@ in state.json. This does not run build, prepare, or validate phases.`,
 			defer cancel()
 
 			spec, err := servicecontrol.ResolveServiceSpec(ctx, servicecontrol.ResolveOptions{
-				RepoRoot:   opts.RepoRoot,
-				ConfigPath: opts.Config,
-				Cwd:        opts.RepoRoot,
-				DryRun:     opts.DryRun,
-				Strict:     opts.Strict,
-				Timeout:    opts.Timeout,
+				RepoRoot:    opts.RepoRoot,
+				ConfigPath:  opts.Config,
+				ProfileName: opts.Profile,
+				Cwd:         opts.RepoRoot,
+				DryRun:      opts.DryRun,
+				Strict:      opts.Strict,
+				Timeout:     opts.Timeout,
 			}, serviceName)
 			if err != nil {
 				return err

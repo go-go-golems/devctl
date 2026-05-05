@@ -35,6 +35,22 @@ topics:
       description: WebSocket lifecycle & events
     - slug: tui
       description: Terminal user interface (TUI) components and styling
+    - slug: architecture
+      description: System architecture and design patterns
+    - slug: devctl
+      description: devctl dev environment orchestrator
+    - slug: pinocchio
+      description: Pinocchio LLM application runner
+    - slug: plugins
+      description: Plugin systems and extensibility
+    - slug: profiles
+      description: Profile/mode switching systems
+    - slug: services
+      description: Service lifecycle management
+    - slug: supervisor
+      description: Process supervision
+    - slug: restart
+      description: Service restart and individual control
 docTypes:
     - slug: index
       description: Ticket index document

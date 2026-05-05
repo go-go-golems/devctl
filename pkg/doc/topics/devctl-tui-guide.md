@@ -1,6 +1,6 @@
 ---
 Title: devctl TUI Guide
-Slug: devctl-tui-guide
+Slug: tui-guide
 Short: "A practical guide to devctl's terminal UI: views, keybindings, workflows, and capture/debug tips."
 Topics:
   - devctl
@@ -28,15 +28,16 @@ Here's the most common TUI workflow—starting your environment, finding a probl
 3. See a service fail?        → Press `j/k` to select it, `l` to see logs
 4. Fix the issue              → In your editor
 5. Press `Esc` to return      → Back to Dashboard
-6. Press `r` to restart       → Confirms, runs down + up
-7. Press `q` to quit          → When done for the day
+6. Press `r` on Dashboard     → Confirms, runs down + up
+7. Or press `r` in Service    → Restarts only that service
+8. Press `q` to quit          → When done for the day
 ```
 
 The TUI remembers state between restarts—if you quit and come back, it'll show what's currently running.
 
 ## 1. Starting the TUI
 
-The TUI is just another devctl command. It reads the same `.devctl.yaml`, uses the same repo-root resolution rules, and will surface the same plugin/plan errors you’d see in the CLI.
+The TUI is just another devctl command. It reads the same `.devctl.yaml`, applies `.devctl.override.yaml` when present, uses the same repo-root resolution rules, and will surface the same plugin/plan errors you’d see in the CLI.
 
 ```bash
 devctl tui
@@ -44,12 +45,13 @@ devctl tui
 
 Useful flags:
 
+- `--profile backend`: run the TUI with a selected profile.
 - `--alt-screen` (default `true`): use the terminal alternate screen buffer.
 - `--refresh 1s`: state polling interval.
 - `--debug-logs`: allow logs to stdout/stderr while the TUI runs (may corrupt the UI).
 
 ```bash
-devctl tui --alt-screen=false --refresh 1s
+devctl tui --profile backend --alt-screen=false --refresh 1s
 ```
 
 ## 2. Global navigation and help
@@ -91,16 +93,23 @@ Service keys:
 - `f`: toggle follow mode (auto-refresh the viewport)
 - `/`: set a filter string (press `enter` to apply)
 - `ctrl+l`: clear the filter
+- `s`: stop the selected service
+- `r`: restart the selected service
 - `d`: detach back to the Dashboard
 - `esc`: also returns to the Dashboard
 
-If you only need a quick tail outside the TUI, remember the equivalent CLI commands:
+If you only need a quick tail or a service lifecycle action outside the TUI, remember the equivalent CLI commands:
 
 ```bash
 devctl logs --service <name>
 devctl logs --service <name> --stderr
 devctl logs --service <name> --follow
+devctl stop-service <name>
+devctl restart <name>
+devctl start <name>
 ```
+
+Service-level restart re-runs `config.mutate` and `launch.plan` to recover the selected service specification, but it does not run build, prepare, or validate phases.
 
 ## 5. Events view: a live event log with filters
 
@@ -179,12 +188,18 @@ devctl tui --debug-logs
 If you’re new to devctl overall, start with the user guide:
 
 ```text
-glaze help devctl-user-guide
+devctl help user-guide
+```
+
+If you want profile-specific TUI runs, read:
+
+```text
+devctl help profiles-guide
 ```
 
 If you want to extend devctl with real repo logic, move on to scripting and plugin authoring:
 
 ```text
-glaze help devctl-scripting-guide
-glaze help devctl-plugin-authoring
+devctl help scripting-guide
+devctl help plugin-authoring
 ```

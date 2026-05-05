@@ -1,0 +1,9 @@
+profile:
+  active: local
+profiles:
+  local:
+    display_name: Local Override
+    description: Profile supplied by the local override fixture
+    plugins: [pipeline]
+    env:
+      PROFILE_FIXTURE: local

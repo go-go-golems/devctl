@@ -48,6 +48,7 @@ func newTuiCmd() *cobra.Command {
 			tui.RegisterUIActionRunner(ctx, bus, tui.RootOptions{
 				RepoRoot: opts.RepoRoot,
 				Config:   opts.Config,
+				Profile:  opts.Profile,
 				Strict:   opts.Strict,
 				DryRun:   opts.DryRun,
 				Timeout:  opts.Timeout,
@@ -55,6 +56,7 @@ func newTuiCmd() *cobra.Command {
 			tui.RegisterUIStreamRunner(ctx, bus, tui.RootOptions{
 				RepoRoot: opts.RepoRoot,
 				Config:   opts.Config,
+				Profile:  opts.Profile,
 				Strict:   opts.Strict,
 				DryRun:   opts.DryRun,
 				Timeout:  opts.Timeout,
@@ -62,6 +64,7 @@ func newTuiCmd() *cobra.Command {
 
 			watcher := &tui.StateWatcher{
 				RepoRoot: opts.RepoRoot,
+				Profile:  opts.Profile,
 				Interval: refresh,
 				Pub:      bus.Publisher,
 			}

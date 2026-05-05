@@ -1,6 +1,6 @@
 ---
 Title: devctl Scripting Guide (Writing Practical Plugins)
-Slug: devctl-scripting-guide
+Slug: scripting-guide
 Short: "How to write real devctl plugins in Python or shell: patterns, pitfalls, testing loops, and dynamic commands."
 Topics:
   - devctl
@@ -19,7 +19,7 @@ SectionType: GeneralTopic
 
 This guide is the "how do I actually ship this?" companion to the protocol reference. It focuses on practical patterns: how to structure a plugin, how to debug it when it breaks, and how to turn repo knowledge into a predictable `devctl up/status/logs/down` loop.
 
-**Prerequisites**: This guide assumes you've read the user guide (`glaze help devctl-user-guide`) and understand the basic devctl workflow.
+**Prerequisites**: This guide assumes you've read the user guide (`devctl help user-guide`) and understand the basic devctl workflow.
 
 If you're starting from a big `startdev.sh`, the most important mindset shift is: your plugin computes *facts* (config, validation, and a plan), and devctl owns the lifecycle (starting processes, tracking state, capturing logs).
 
@@ -152,7 +152,7 @@ Common ops:
 If you want the full schema for each op’s input/output, use the protocol guide:
 
 ```text
-glaze help devctl-plugin-authoring
+devctl help plugin-authoring
 ```
 
 ## 5. Dynamic commands: turning scripts into `devctl <cmd>`
@@ -255,6 +255,34 @@ When debugging protocol issues, run with a higher log level:
 devctl --log-level debug plugins list
 ```
 
+### Testing profile-specific behavior
+
+If your repository uses profiles, test each mode explicitly. Profiles select plugins by ID, so this catches misspellings and missing local overrides before someone tries to run the full environment.
+
+```bash
+devctl profiles list
+devctl profiles active
+
+devctl plugins list --profile backend
+devctl plan --profile backend
+devctl up --profile backend --dry-run
+```
+
+For local experiments, put personal profile choices in `.devctl.override.yaml`:
+
+```yaml
+profile:
+  active: local-debug
+
+profiles:
+  local-debug:
+    plugins: [api]
+    env:
+      LOG_LEVEL: trace
+```
+
+For the complete profile model, see `devctl help profiles-guide`.
+
 ## 8. Common pitfalls (and how to avoid them)
 
 The failure modes are predictable. If you build guardrails into your plugin from day one, you’ll avoid most of them.
@@ -270,11 +298,11 @@ The failure modes are predictable. If you build guardrails into your plugin from
 If you want the complete protocol details (schemas, more examples, and deeper guidance on merging/strictness), use the authoring guide:
 
 ```text
-glaze help devctl-plugin-authoring
+devctl help plugin-authoring
 ```
 
 If you want to understand devctl as a user first (before writing plugins), start with:
 
 ```text
-glaze help devctl-user-guide
+devctl help user-guide
 ```

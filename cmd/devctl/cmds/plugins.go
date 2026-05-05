@@ -55,10 +55,11 @@ func (c *PluginsListCommand) RunIntoWriter(ctx context.Context, vals *values.Val
 	}
 
 	repo, err := repository.Load(repository.Options{
-		RepoRoot:   rc.RepoRoot,
-		ConfigPath: rc.ConfigPath,
-		Cwd:        rc.Cwd,
-		DryRun:     rc.DryRun,
+		RepoRoot:    rc.RepoRoot,
+		ConfigPath:  rc.ConfigPath,
+		ProfileName: rc.Profile,
+		Cwd:         rc.Cwd,
+		DryRun:      rc.DryRun,
 	})
 	if err != nil {
 		return err
