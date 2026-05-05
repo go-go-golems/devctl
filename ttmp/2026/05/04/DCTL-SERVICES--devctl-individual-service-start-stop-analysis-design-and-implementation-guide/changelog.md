@@ -37,3 +37,12 @@ Added devctl start command (228fbf0). Tested all commands (restart, stop-service
 
 - /home/manuel/workspaces/2026-05-04/devctl-multiple-profiles/devctl/cmd/devctl/cmds/start_service.go — New start command
 
+
+## 2026-05-05
+
+Fixed CI failure in TestSupervisor_ReadinessTimeoutStopsServices (commit 10a61c1). Increased readiness timeout and passed pid-file path through env to avoid CI race where readiness timeout killed the child before pid.txt was written.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-05-04/devctl-multiple-profiles/devctl/pkg/supervise/supervisor_test.go — Made readiness timeout leak test robust on CI
+

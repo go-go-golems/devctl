@@ -199,3 +199,49 @@ Tested all three commands (restart, stop-service, start) in tmux against a real 
 - Test commit: `228fbf0`
 - New file: `cmd/devctl/cmds/start_service.go`
 - To reproduce: build devctl, create `/tmp/devctl-test` with the multi-service plugin, run up/restart/stop-service/start/down cycle
+
+---
+
+## Step 5: CI supervisor readiness test fix
+
+Investigated a GitHub Actions failure in `TestSupervisor_ReadinessTimeoutStopsServices`. The failure was not from the new service-control implementation directly; it was a timing assumption in an existing supervisor test. The test expected the child shell to create `pid.txt` before the readiness timeout stopped the service, but CI showed the service could be terminated before that file existed.
+
+### Prompt Context
+
+**User prompt (verbatim):** "https://github.com/go-go-golems/devctl/actions/runs/25379092873/job/74422125824?pr=6 ... FAIL TestSupervisor_ReadinessTimeoutStopsServices ... open /tmp/devctl-supervise-test-490747441/pid.txt: no such file or directory"
+
+**Assistant interpretation:** Fix the failing CI test while preserving the intent: readiness timeout must stop started services and not leak them.
+
+**Inferred user intent:** Get the PR green.
+
+### What I did
+
+- Updated `pkg/supervise/supervisor_test.go`.
+- Increased the test `ReadyTimeout` from 500ms to 2s, matching a more realistic CI scheduling window.
+- Passed the pid-file path through `DEVCTL_TEST_PID_FILE` and quoted it in the shell command instead of interpolating a raw path.
+- Ran the targeted test: `go test ./pkg/supervise -count=1 -run TestSupervisor_ReadinessTimeoutStopsServices -v`.
+- Ran the full suite: `go test ./... -count=1`.
+- Committed as `10a61c1` — `test(devctl): make readiness timeout supervisor test robust`.
+
+### What worked
+
+- The targeted test now passes consistently locally.
+- The full test suite passes.
+- Lefthook pre-commit ran `golangci-lint run -v` and `go test ./...`; both passed.
+
+### What didn't work
+
+- N/A.
+
+### What was tricky to build
+
+- The core problem is a race in the test, not production behavior. `cmd.Start()` only guarantees the process was created, not that the shell has already executed `echo $$ > pid.txt`. A very short readiness timeout can kill the process before the file exists on a loaded runner.
+
+### What should be done in the future
+
+- If this test flakes again, consider avoiding child-created pid files entirely and changing the supervisor API/test seam to expose partial state on startup failure.
+
+### Code review instructions
+
+- Review `pkg/supervise/supervisor_test.go` around `TestSupervisor_ReadinessTimeoutStopsServices`.
+- Validate with: `go test ./pkg/supervise -count=1 -run TestSupervisor_ReadinessTimeoutStopsServices -v` and `go test ./... -count=1`.
