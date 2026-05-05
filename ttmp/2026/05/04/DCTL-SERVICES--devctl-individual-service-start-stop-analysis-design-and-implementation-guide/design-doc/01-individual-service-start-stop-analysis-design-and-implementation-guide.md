@@ -68,15 +68,16 @@ This is a significant UX problem for daily development. When a service crashes o
 
 **Why is this hard?** The pipeline that produces services involves multiple plugins collaborating through a shared config. Plugin A mutates the config, plugin B sees the mutated config and declares services based on it. If you want to "restart" a service, you can't just re-run one plugin — its output depended on what other plugins did before it. This is the **config mutation correlation problem**, and it's the central challenge this document analyzes.
 
-**The proposed solution** sidesteps the correlation problem by storing the original `ServiceSpec` in the state file and implementing a simple **kill-and-respawn** strategy: to restart a service, stop its process and start a new one from the stored spec. This doesn't re-run the pipeline — it just re-executes the same command that was originally computed. This is sufficient for the common cases (crashed service, manual restart) and avoids the complexity of partial pipeline re-execution.
+**Implementation update (2026-05-05):** the final implementation uses a safer **re-plan-and-respawn** strategy. devctl does **not** persist raw service environment variables in `state.json`. Instead, `devctl start <service>` and `devctl restart <service>` re-run the two planning phases (`config.mutate` and `launch.plan`) across the configured plugins, select the named service from the fresh launch plan, and then start that service. This preserves the plugin config-mutation correlation while avoiding plaintext secret persistence. It does not run `build.run`, `prepare.run`, or `validate.run`.
 
 **Key design decisions:**
 
-- Store `ServiceSpec` (command, env, cwd, health check) alongside `ServiceRecord` in the state file.
-- Add `StopService()`, `StartService()`, and `RestartService()` to the supervisor.
-- Add `devctl restart <service>` and `devctl stop <service>` CLI commands.
-- Implement the TUI's existing `ActionStop` handler (currently a stub).
-- Restart does NOT re-run the pipeline — it uses the stored spec. If you need to recompute the service spec (e.g., after a code change), run `devctl down && devctl up`.
+- Keep only non-secret service metadata in `state.json`; do not store raw `ServiceSpec.Env`.
+- Re-run `config.mutate + launch.plan` when starting or restarting an individual service.
+- Add `StopService()`, `StartService(spec)`, and `RestartService(spec)` to the supervisor.
+- Add `devctl start <service>`, `devctl restart <service>`, and `devctl stop-service <service>` CLI commands.
+- Implement the TUI's existing `ActionStop` handler and per-service `ActionRestart` path.
+- Block `devctl start <service>` when that service is already running, to avoid duplicate unmanaged processes.
 
 ---
 
@@ -395,67 +396,52 @@ Currently there's no dependency graph between services — they're started in pa
 
 | Gap | Current Code | What's Needed |
 |-----|-------------|---------------|
-| No `ServiceSpec` in state | `ServiceRecord` stores `Command`, `Cwd`, `Env` (sanitized) | Store full `ServiceSpec` (with unsanitized env) for restart |
 | No single-service stop | `Supervisor.Stop()` kills all | `Supervisor.StopService(name)` |
-| No single-service start | `Supervisor.Start()` starts all | `Supervisor.StartService(spec)` |
-| No restart operation | TUI restart = down+up all | `Supervisor.RestartService(name)` |
-| No CLI commands | Only `up`, `down` | `devctl restart <name>`, `devctl stop <name>` |
+| No single-service start | `Supervisor.Start()` starts all | Re-run planning to resolve `ServiceSpec`, then `Supervisor.StartService(spec)` |
+| No restart operation | TUI restart = down+up all | Re-run planning to resolve `ServiceSpec`, then `Supervisor.RestartService(spec)` |
+| No CLI commands | Only `up`, `down` | `devctl start <name>`, `devctl restart <name>`, `devctl stop-service <name>` |
 | ActionStop not implemented | Returns error in `action_runner.go` | Implement using supervisor single-service ops |
-| State has no partial update | `Save()` rewrites entire file | `UpdateService()` for partial updates |
-| No provenance in ServiceSpec | `ServiceSpec` has no `PluginID` | Add `PluginID` field (for future use, not needed for simple restart) |
+| State has no partial update | `Save()` rewrites entire file | Update one service record then save state |
+| Secret env recovery | Raw env should not be persisted | Re-run `config.mutate + launch.plan` to recover effective env in memory |
 
 ---
 
 ## 6. Proposed Architecture
 
-### Approach: Simple Restart with Stored Specs
+### Approach: Re-plan and Respawn
 
-Rather than trying to re-run the pipeline for a single service (which hits Problems 1 and 2), we take a simpler approach:
+The implemented approach is:
 
-1. **Store the original `ServiceSpec`** alongside each `ServiceRecord` in the state file.
-2. **Implement kill-and-respawn**: to restart a service, stop its process and start a new one from the stored spec.
-3. **Do NOT re-run the pipeline.** The stored spec is the source of truth for what to restart.
+1. **Stop only the target process** using `StopService`.
+2. **Re-run planning** (`config.mutate + launch.plan`) across all configured plugins.
+3. **Select the named service** from the fresh launch plan.
+4. **Start only that service** from the resolved in-memory `ServiceSpec`.
 
-This approach explicitly accepts that the restarted service uses the same command/env/cwd that was computed during the original `devctl up`. If the user has changed code or configuration since then, they need `devctl down && devctl up` for a fresh computation.
+This preserves cross-plugin config mutation correlation because the full planning pipeline is re-run. It also avoids persisting plaintext secrets because raw service env only exists in memory during planning and process launch.
 
-**Why this is the right tradeoff:**
+**Important boundary:** `devctl start` and `devctl restart` do not run `build.run`, `prepare.run`, or `validate.run`. Plugins should treat `config.mutate` and `launch.plan` as idempotent planning phases.
 
-- **Simple.** No provenance tracking, no partial pipeline re-execution, no config mutation replay.
-- **Fast.** Kill a process, start a new one — takes ~1 second.
-- **Safe.** No risk of config correlation bugs.
-- **Sufficient.** 90% of restarts are for crashed services or manual restarts where the spec hasn't changed.
-- **Honest.** Makes clear that "restart" means "same command, new process" — not "re-evaluate everything."
+### Service Metadata Storage in State
 
-### ServiceSpec Storage in State
-
-The `ServiceRecord` gains a `Spec` field that stores the original `ServiceSpec`:
+The `ServiceRecord` keeps non-secret metadata for inspection/backward compatibility. Raw env is intentionally not stored:
 
 ```go
 type ServiceRecord struct {
     // ... existing fields ...
     
-    // NEW: The original ServiceSpec from launch.plan.
-    // Used for restart without re-running the pipeline.
+    // Non-secret metadata only; start/restart re-run planning for effective env.
     Spec *ServiceSpecRecord `json:"spec,omitempty"`
 }
 
 type ServiceSpecRecord struct {
-    Name    string            `json:"name"`
-    Cwd     string            `json:"cwd,omitempty"`
-    Command []string          `json:"command"`
-    Env     map[string]string `json:"env,omitempty"`       // NOTE: unsanitized for restart
+    Name    string             `json:"name"`
+    Cwd     string             `json:"cwd,omitempty"`
+    Command []string           `json:"command"`
     Health  *HealthCheckRecord `json:"health,omitempty"`
-}
-
-type HealthCheckRecord struct {
-    Type      string `json:"type"`
-    Address   string `json:"address,omitempty"`
-    URL       string `json:"url,omitempty"`
-    TimeoutMs int64  `json:"timeout_ms,omitempty"`
 }
 ```
 
-**Critical difference from existing fields:** The `Spec.Env` field stores the **original, unsanitized** environment variables. The existing `ServiceRecord.Env` field stores sanitized values (secrets redacted). We need both: the sanitized version for display, the original for restart.
+`ServiceRecord.Env` remains sanitized for display. `ServiceSpecRecord` has no `Env` field.
 
 ### Supervisor Single-Service Operations
 
@@ -466,12 +452,12 @@ The `Supervisor` gains three new methods:
 // Returns an error if the service is not found in the state.
 func (s *Supervisor) StopService(ctx context.Context, st *state.State, name string) error
 
-// StartService starts a single service from its stored spec.
+// StartService starts a single service from a freshly resolved ServiceSpec.
 // Updates the state with the new PID and log paths.
-func (s *Supervisor) StartService(ctx context.Context, st *state.State, name string) error
+func (s *Supervisor) StartService(ctx context.Context, st *state.State, spec engine.ServiceSpec) error
 
-// RestartService stops and then starts a single service.
-func (s *Supervisor) RestartService(ctx context.Context, st *state.State, name string) error
+// RestartService stops and then starts a single service from a freshly resolved ServiceSpec.
+func (s *Supervisor) RestartService(ctx context.Context, st *state.State, spec engine.ServiceSpec) error
 ```
 
 Each method:
@@ -488,29 +474,28 @@ For `StartService`, it also waits for health checks if the spec defines them (sa
 
 ```bash
 $ devctl restart api-server
-# Stops api-server process, starts new one from stored spec
-# Waits for health check if configured
-# Updates state.json with new PID
-
-$ devctl restart api-server --no-health-check
-# Skips health check wait
+# Stops api-server process
+# Re-runs config.mutate + launch.plan to recover api-server's effective ServiceSpec
+# Starts only api-server and waits for health check if configured
+# Updates state.json with the new PID
 ```
 
-**`devctl stop <service-name>`**
+**`devctl stop-service <service-name>`**
 
 ```bash
-$ devctl stop postgres
+$ devctl stop-service postgres
 # Stops postgres process
 # Updates state.json (marks service as stopped, clears PID)
 # Does NOT remove the service record (so it can be restarted later)
 ```
 
-**Future command: `devctl start <service-name>`**
+**`devctl start <service-name>`**
 
 ```bash
 $ devctl start postgres
-# Starts postgres from its stored spec
-# Only works if the service was previously stopped (not if state.json doesn't exist)
+# Re-runs config.mutate + launch.plan to recover postgres's effective ServiceSpec
+# Starts only postgres
+# Fails if postgres is already running
 ```
 
 ### TUI Action Runner Implementation
@@ -606,83 +591,61 @@ func (s *Supervisor) StopService(ctx context.Context, st *state.State, name stri
     return state.Save(s.opts.RepoRoot, st)
 }
 
-// StartService starts a single service from its stored spec.
-// It creates new log files, starts the process, waits for health checks,
-// and updates the state file with the new PID.
-func (s *Supervisor) StartService(ctx context.Context, st *state.State, name string) error {
-    var rec *state.ServiceRecord
-    for i := range st.Services {
-        if st.Services[i].Name == name {
-            rec = &st.Services[i]
-            break
-        }
-    }
+// StartService starts a single service from a freshly resolved ServiceSpec.
+// It refuses to start if the current tracked PID is still alive, to avoid
+// duplicate unmanaged processes.
+func (s *Supervisor) StartService(ctx context.Context, st *state.State, spec engine.ServiceSpec) error {
+    name := spec.Name
+    rec := findServiceRecord(st, name)
     if rec == nil {
         return fmt.Errorf("service %q not found in state", name)
     }
-    if rec.Spec == nil {
-        return fmt.Errorf("service %q has no stored spec (cannot restart)", name)
+    if rec.PID > 0 && state.ProcessAlive(rec.PID) {
+        return fmt.Errorf("service %q is already running (pid %d)", name, rec.PID)
     }
-    
-    // Convert stored spec back to engine.ServiceSpec.
-    spec := specFromRecord(rec.Spec)
-    
-    // Start the service (reuses existing startService logic).
+
     newRec, err := s.startService(ctx, spec)
     if err != nil {
         return fmt.Errorf("failed to start service %q: %w", name, err)
     }
-    
+
     // Wait for health check if configured.
     if spec.Health != nil {
         readyCtx, cancel := context.WithTimeout(ctx, s.opts.ReadyTimeout)
         err := waitReady(readyCtx, spec)
         cancel()
         if err != nil {
-            // Roll back: stop the newly started service.
             _ = terminatePIDGroup(context.Background(), newRec.PID, s.opts.ShutdownTimeout)
             return fmt.Errorf("service %q health check failed: %w", name, err)
         }
     }
-    
-    // Update the state record with new process info.
+
+    // Update the state record with new process info and non-secret metadata.
     rec.PID = newRec.PID
+    rec.Command = newRec.Command
+    rec.Cwd = newRec.Cwd
+    rec.Env = newRec.Env
     rec.StdoutLog = newRec.StdoutLog
     rec.StderrLog = newRec.StderrLog
     rec.ExitInfo = ""
     rec.StartedAt = newRec.StartedAt
-    
+    rec.HealthType = newRec.HealthType
+    rec.HealthAddress = newRec.HealthAddress
+    rec.HealthURL = newRec.HealthURL
+    rec.Spec = newRec.Spec
+
     return state.Save(s.opts.RepoRoot, st)
 }
 
-// RestartService stops and then starts a single service.
-func (s *Supervisor) RestartService(ctx context.Context, st *state.State, name string) error {
-    if err := s.StopService(ctx, st, name); err != nil {
+// RestartService stops and then starts a single service from a freshly resolved ServiceSpec.
+func (s *Supervisor) RestartService(ctx context.Context, st *state.State, spec engine.ServiceSpec) error {
+    if err := s.StopService(ctx, st, spec.Name); err != nil {
         return fmt.Errorf("stop failed: %w", err)
     }
-    if err := s.StartService(ctx, st, name); err != nil {
+    if err := s.StartService(ctx, st, spec); err != nil {
         return fmt.Errorf("start failed: %w", err)
     }
     return nil
-}
-
-// specFromRecord converts a stored ServiceSpecRecord back to an engine.ServiceSpec.
-func specFromRecord(rec *state.ServiceSpecRecord) engine.ServiceSpec {
-    spec := engine.ServiceSpec{
-        Name:    rec.Name,
-        Cwd:     rec.Cwd,
-        Command: rec.Command,
-        Env:     rec.Env,
-    }
-    if rec.Health != nil {
-        spec.Health = &engine.HealthCheck{
-            Type:      rec.Health.Type,
-            Address:   rec.Health.Address,
-            URL:       rec.Health.URL,
-            TimeoutMs: rec.Health.TimeoutMs,
-        }
-    }
-    return spec
 }
 ```
 
@@ -717,7 +680,6 @@ type ServiceSpecRecord struct {
     Name    string             `json:"name"`
     Cwd     string             `json:"cwd,omitempty"`
     Command []string           `json:"command"`
-    Env     map[string]string  `json:"env,omitempty"`    // unsanitized for restart
     Health  *HealthCheckRecord `json:"health,omitempty"`
 }
 
@@ -729,20 +691,22 @@ type HealthCheckRecord struct {
 }
 ```
 
-In `up.go`, when building the ServiceRecord, also store the Spec:
+When building the ServiceRecord, store only non-secret metadata:
 
 ```go
 rec := state.ServiceRecord{
     // ... existing fields ...
+    Env: state.SanitizeEnv(svc.Env),
     Spec: &state.ServiceSpecRecord{
         Name:    svc.Name,
         Cwd:     cwd,
         Command: svc.Command,
-        Env:     svc.Env,    // unsanitized!
         Health:  healthCheckToRecord(svc.Health),
     },
 }
 ```
+
+The effective raw env is recovered later by re-running planning.
 
 ### CLI Command: devctl restart
 
@@ -780,6 +744,14 @@ func newRestartCmd() *cobra.Command {
                 return fmt.Errorf("service %q not found in state", serviceName)
             }
             
+            ctx, cancel := context.WithTimeout(cmd.Context(), opts.Timeout)
+            defer cancel()
+
+            spec, err := servicecontrol.ResolveServiceSpec(ctx, opts, serviceName)
+            if err != nil {
+                return err
+            }
+            
             wrapperExe, _ := os.Executable()
             sup := supervise.New(supervise.Options{
                 RepoRoot:        opts.RepoRoot,
@@ -788,10 +760,7 @@ func newRestartCmd() *cobra.Command {
                 WrapperExe:      wrapperExe,
             })
             
-            ctx, cancel := context.WithTimeout(cmd.Context(), opts.Timeout)
-            defer cancel()
-            
-            if err := sup.RestartService(ctx, st, serviceName); err != nil {
+            if err := sup.RestartService(ctx, st, spec); err != nil {
                 return err
             }
             
@@ -1269,13 +1238,13 @@ Use test apps from `testapps/`:
 
 ### Risks
 
-1. **Secret handling in stored specs.** The `ServiceSpec.Env` field will store unsanitized environment variables (including secrets like API keys) in `.devctl/state.json`. This file is in `.gitignore` (under `.devctl/`), but it's still on disk.
+1. **Planning side effects during start/restart.** The implemented approach re-runs `config.mutate + launch.plan` for `devctl start` and `devctl restart`. Plugins should treat these phases as planning phases and avoid destructive side effects there. Side-effectful work belongs in `build.run`, `prepare.run`, service commands, or explicit plugin commands.
 
-   **Mitigation:** This is the same risk as the current `ServiceRecord.Env` field which stores sanitized values. The new `Spec.Env` stores original values. We should document that `.devctl/state.json` should never be committed and consider file permissions (0600).
+   **Mitigation:** Document the behavior clearly in CLI help and this design doc. This tradeoff avoids persisting raw env secrets and preserves cross-plugin config mutation correlation.
 
-2. **Stale specs.** If the user changes code or configuration after `devctl up`, restarting a service uses the old spec. The restarted service may behave differently from what a fresh `devctl up` would produce.
+2. **Fresh specs may differ from initial `up`.** Because start/restart now re-run planning, a service can restart with a new command/env if `.devctl.yaml`, plugin code, or environment variables changed since the original `up`.
 
-   **Mitigation:** This is by design and documented clearly. `devctl restart` is a kill-and-respawn, not a re-evaluation. For a fresh evaluation, use `devctl down && devctl up`.
+   **Mitigation:** This is usually desirable for developer workflows. If exact reproducibility is needed, that would require a future sealed-plan artifact with a separate secret-handling design.
 
 3. **Race conditions with state file.** The TUI polls `state.json` for status updates. If a restart is in progress, the TUI might read a partially-written state file.
 
@@ -1293,7 +1262,7 @@ Re-run `config.mutate → launch.plan` for the service's originating plugin, the
 
 - **Pros:** Always gets the freshest service spec.
 - **Cons:** Requires provenance tracking (which plugin produced which service). Can't correctly re-run one plugin in isolation due to config mutation correlation. Very complex.
-- **Decision:** Rejected for v1. Kill-and-respawn from stored spec is sufficient.
+- **Decision:** Partially adopted. The implementation re-runs the full planning phases (`config.mutate + launch.plan`) across all configured plugins, then selects the named service. It does not attempt to re-run only the originating plugin.
 
 **Alternative 2: Service dependency graph.**
 
@@ -1321,13 +1290,9 @@ Skip storing specs — just allow killing individual processes from the TUI. No 
 
    **Recommendation:** No. `devctl down` removes everything, same as today.
 
-3. **Should we add a `devctl start <service>` command?** To start a previously stopped service.
+3. **Should planning phases be allowed to mutate external state?** Individual start/restart now re-run `config.mutate + launch.plan`, so plugins with side effects in those phases will repeat those effects.
 
-   **Recommendation:** Yes, but as Phase 3 (after restart and stop are working). It's a simple wrapper around `supervisor.StartService()`.
-
-4. **How to handle the env sanitization issue?** The current code sanitizes env in `ServiceRecord.Env` (for display). The new `Spec.Env` stores raw values. Should we encrypt them?
-
-   **Recommendation:** No encryption for v1. Just store them in the state file with appropriate file permissions. The `.devctl/` directory should already be in `.gitignore`.
+   **Recommendation:** Treat planning phases as pure/idempotent. If plugins need side effects, use `build.run`, `prepare.run`, service commands, or explicit commands.
 
 ---
 
@@ -1339,8 +1304,9 @@ All file paths relative to workspace root `/home/manuel/workspaces/2026-05-04/de
 
 | File | Purpose | Changes |
 |------|---------|---------|
-| `devctl/pkg/supervise/supervisor.go` | Service lifecycle | Add `StopService()`, `StartService()`, `RestartService()`; store Spec in records |
-| `devctl/pkg/state/state.go` | State persistence | Add `ServiceSpecRecord`, `HealthCheckRecord`; add `Spec` field to `ServiceRecord` |
+| `devctl/pkg/supervise/supervisor.go` | Service lifecycle | Add `StopService()`, `StartService(spec)`, `RestartService(spec)`; block duplicate starts |
+| `devctl/pkg/servicecontrol/resolve.go` | Service planning | Re-run `config.mutate + launch.plan` and select a named service |
+| `devctl/pkg/state/state.go` | State persistence | Add non-secret `ServiceSpecRecord`, `HealthCheckRecord`; add `Spec` field to `ServiceRecord` |
 | `devctl/cmd/devctl/cmds/up.go` | Up command | Pass ServiceSpec for storage in state |
 | `devctl/cmd/devctl/cmds/root.go` | Root command | Register `restart` and `stop` subcommands |
 | `devctl/pkg/tui/action_runner.go` | TUI action handler | Implement `ActionStop` and per-service `ActionRestart` |

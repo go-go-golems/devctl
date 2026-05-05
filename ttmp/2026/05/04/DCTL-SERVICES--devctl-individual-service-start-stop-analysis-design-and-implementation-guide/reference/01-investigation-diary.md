@@ -140,7 +140,7 @@ Implemented all five phases of the design. Each phase was committed separately.
 
 ### What warrants a second pair of eyes
 
-- The env sanitization issue: `Spec.Env` stores unsanitized values in state.json. The file permissions should be checked.
+- Original implementation concern: `Spec.Env` stored unsanitized values in state.json. This was later fixed in Step 6 by removing env from persisted `ServiceSpecRecord` and re-running `config.mutate + launch.plan` for start/restart.
 - The `StartService` reuses `startService()` which creates the wrapper process. Verify this works correctly in both wrapper and non-wrapper modes.
 
 ### What should be done in the future
@@ -178,7 +178,7 @@ Tested all three commands (restart, stop-service, start) in tmux against a real 
    - `devctl up` → 2 services started
    - `devctl restart counter` → counter got new PID, ticker untouched
    - `devctl stop-service ticker` → ticker stopped (pid=0), counter still running
-   - `devctl start ticker` → ticker restarted from stored spec
+   - `devctl start ticker` → ticker restarted from its service metadata (later changed in Step 6 to re-plan before start)
    - `devctl down` → all cleaned up
 5. Implemented `devctl start <service>` command (new file `start_service.go`).
 
@@ -245,3 +245,55 @@ Investigated a GitHub Actions failure in `TestSupervisor_ReadinessTimeoutStopsSe
 
 - Review `pkg/supervise/supervisor_test.go` around `TestSupervisor_ReadinessTimeoutStopsServices`.
 - Validate with: `go test ./pkg/supervise -count=1 -run TestSupervisor_ReadinessTimeoutStopsServices -v` and `go test ./... -count=1`.
+
+---
+
+## Step 6: Address PR review comments
+
+GitHub PR #6 review identified two P1 concerns: `StartService` allowed duplicate starts when the service was already running, and the persisted `ServiceSpecRecord` originally stored raw environment variables in `state.json`.
+
+### Prompt Context
+
+**User prompt (verbatim):** "https://github.com/go-go-golems/devctl/pull/6 Look at the code review comments. The first is easy to address. For the env computation is that something we can handle by rerunning the planning phase or so?"
+
+**Assistant interpretation:** Fetch and address the PR review comments. Fix duplicate starts, and redesign env recovery to avoid storing raw env by re-running planning.
+
+**Inferred user intent:** Make PR #6 safe to merge by addressing security and process-management review feedback.
+
+### What I did
+
+- Added `pkg/servicecontrol/resolve.go` with `ResolveServiceSpec()`, which re-runs `config.mutate + launch.plan` across all configured plugins and selects the named service.
+- Changed `state.ServiceSpecRecord` to remove `Env`; state now stores only non-secret metadata.
+- Changed `Supervisor.StartService` and `RestartService` to accept a freshly resolved `engine.ServiceSpec` instead of reconstructing a service from persisted state.
+- Added an already-running guard in `StartService` to prevent duplicate unmanaged processes.
+- Updated `devctl start` and `devctl restart` to call `servicecontrol.ResolveServiceSpec()` before starting.
+- Updated TUI per-service restart to do the same.
+- Added tests for duplicate start rejection and non-persistence of raw env secrets.
+- Updated the design doc to state clearly that start/restart run the first two planning phases (`config.mutate + launch.plan`) and do not run build/prepare/validate.
+
+### What worked
+
+- `go test ./... -count=1` passes after the redesign.
+- The review comment about raw env persistence is resolved by removing raw env from persisted state entirely.
+- The duplicate-start review comment is resolved by an explicit `state.ProcessAlive(rec.PID)` guard.
+
+### What didn't work
+
+- N/A.
+
+### What was tricky to build
+
+- Moving spec recovery out of the supervisor required a new small package to avoid import cycles. The supervisor remains process-focused, while `servicecontrol` owns plugin/pipeline planning.
+
+### What warrants a second pair of eyes
+
+- Plugins must treat `config.mutate` and `launch.plan` as idempotent planning phases, because `devctl start/restart` now re-runs them.
+
+### What should be done in the future
+
+- Consider adding help/docs for plugin authors: `config.mutate` and `launch.plan` should be pure/idempotent.
+
+### Code review instructions
+
+- Review `pkg/servicecontrol/resolve.go`, `pkg/supervise/supervisor.go`, `cmd/devctl/cmds/start_service.go`, `cmd/devctl/cmds/restart.go`, and `pkg/tui/action_runner.go`.
+- Validate with: `go test ./... -count=1`.

@@ -46,3 +46,14 @@ Fixed CI failure in TestSupervisor_ReadinessTimeoutStopsServices (commit 10a61c1
 
 - /home/manuel/workspaces/2026-05-04/devctl-multiple-profiles/devctl/pkg/supervise/supervisor_test.go — Made readiness timeout leak test robust on CI
 
+
+## 2026-05-05
+
+Addressed PR #6 review comments (commit ae537e9): blocked duplicate starts, removed raw env from persisted ServiceSpecRecord, added servicecontrol.ResolveServiceSpec to re-run config.mutate + launch.plan for start/restart, updated CLI/TUI flows and tests. Documented that start/restart run the first two planning phases.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-05-04/devctl-multiple-profiles/devctl/pkg/servicecontrol/resolve.go — Re-runs planning phases and selects target ServiceSpec
+- /home/manuel/workspaces/2026-05-04/devctl-multiple-profiles/devctl/pkg/state/state.go — ServiceSpecRecord no longer persists raw env
+- /home/manuel/workspaces/2026-05-04/devctl-multiple-profiles/devctl/pkg/supervise/supervisor.go — StartService now accepts fresh spec and blocks duplicate starts
+
