@@ -122,3 +122,18 @@ Wrote the full 12-section design document covering executive summary, problem st
 
 - Bundle upload command: `remarquee upload bundle <design-doc> <diary> --name "DCTL-PROFILES: devctl Multiple Profiles Design" --remote-dir /ai/2026/05/04/DCTL-PROFILES --toc-depth 2`
 - docmgr doctor: all checks pass after adding vocabulary entries for architecture, devctl, pinocchio, plugins, profiles.
+
+## Step 4: Implementation Started — Task Breakdown
+
+The implementation phase starts from the v2 design: profiles live in `.devctl.yaml`, a local `.devctl.override.yaml` can add or adjust profiles, `--profile` is the highest-precedence explicit selection, and a profile named `default` is not implicit.
+
+### Prompt Context
+
+**User prompt (verbatim):** "Ok, now add tasks, and implement task by task, commit at appropriat eintervals, and keeping a detailed diary"
+
+**Assistant interpretation:** Turn the design into an implementation checklist, then implement it in phases with commits after coherent working increments.
+
+### Current working rule
+
+Implement and commit one coherent phase at a time. The first commit should cover the config model and local override stacking because later repository, CLI, and state changes depend on that foundation.
+
