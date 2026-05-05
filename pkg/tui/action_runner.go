@@ -12,6 +12,7 @@ import (
 	"github.com/go-go-golems/devctl/pkg/patch"
 	"github.com/go-go-golems/devctl/pkg/repository"
 	"github.com/go-go-golems/devctl/pkg/runtime"
+	"github.com/go-go-golems/devctl/pkg/servicecontrol"
 	"github.com/go-go-golems/devctl/pkg/state"
 	"github.com/go-go-golems/devctl/pkg/supervise"
 	"github.com/pkg/errors"
@@ -433,6 +434,18 @@ func runRestartService(ctx context.Context, opts RootOptions, pub message.Publis
 		return err
 	}
 
+	spec, err := servicecontrol.ResolveServiceSpec(ctx, servicecontrol.ResolveOptions{
+		RepoRoot:   opts.RepoRoot,
+		ConfigPath: opts.Config,
+		Cwd:        opts.RepoRoot,
+		DryRun:     opts.DryRun,
+		Strict:     opts.Strict,
+		Timeout:    opts.Timeout,
+	}, serviceName)
+	if err != nil {
+		return err
+	}
+
 	wrapperExe, _ := os.Executable()
 	sup := supervise.New(supervise.Options{
 		RepoRoot:     opts.RepoRoot,
@@ -445,7 +458,7 @@ func runRestartService(ctx context.Context, opts RootOptions, pub message.Publis
 		RunID: runID, Phase: PipelinePhaseSupervise, At: supStart,
 	})
 
-	if err := sup.StartService(ctx, st, serviceName); err != nil {
+	if err := sup.StartService(ctx, st, spec); err != nil {
 		_ = publishPipelinePhaseFinished(pub, PipelinePhaseFinished{
 			RunID: runID, Phase: PipelinePhaseSupervise,
 			At: time.Now(), Ok: false,

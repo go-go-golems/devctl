@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/go-go-golems/devctl/pkg/servicecontrol"
 	"github.com/go-go-golems/devctl/pkg/state"
 	"github.com/go-go-golems/devctl/pkg/supervise"
 	"github.com/pkg/errors"
@@ -19,9 +20,9 @@ func newStartServiceCmd() *cobra.Command {
 		Long: `Start a single previously stopped supervised service.
 
 This only works for services that exist in the state file but have been
-stopped (pid=0). The service is started from its stored ServiceSpec
-(command, env, cwd, health check) that was recorded during the last
-"devctl up". This does NOT re-run the plugin pipeline.`,
+stopped (pid=0) or have crashed. devctl re-runs the planning phases
+(config.mutate + launch.plan) to recover the effective ServiceSpec without
+persisting raw environment variables in state.json.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			serviceName := args[0]
@@ -46,6 +47,21 @@ stopped (pid=0). The service is started from its stored ServiceSpec
 				return errors.Errorf("service %q not found in state", serviceName)
 			}
 
+			ctx, cancel := context.WithTimeout(cmd.Context(), opts.Timeout)
+			defer cancel()
+
+			spec, err := servicecontrol.ResolveServiceSpec(ctx, servicecontrol.ResolveOptions{
+				RepoRoot:   opts.RepoRoot,
+				ConfigPath: opts.Config,
+				Cwd:        opts.RepoRoot,
+				DryRun:     opts.DryRun,
+				Strict:     opts.Strict,
+				Timeout:    opts.Timeout,
+			}, serviceName)
+			if err != nil {
+				return err
+			}
+
 			wrapperExe, _ := os.Executable()
 			sup := supervise.New(supervise.Options{
 				RepoRoot:     opts.RepoRoot,
@@ -53,10 +69,7 @@ stopped (pid=0). The service is started from its stored ServiceSpec
 				WrapperExe:   wrapperExe,
 			})
 
-			ctx, cancel := context.WithTimeout(cmd.Context(), opts.Timeout)
-			defer cancel()
-
-			if err := sup.StartService(ctx, st, serviceName); err != nil {
+			if err := sup.StartService(ctx, st, spec); err != nil {
 				return err
 			}
 

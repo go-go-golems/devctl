@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/go-go-golems/devctl/pkg/servicecontrol"
 	"github.com/go-go-golems/devctl/pkg/state"
 	"github.com/go-go-golems/devctl/pkg/supervise"
 	"github.com/pkg/errors"
@@ -18,12 +19,10 @@ func newRestartCmd() *cobra.Command {
 		Short: "Restart a single supervised service",
 		Long: `Restart a single supervised service without affecting other services.
 
-The service is stopped (SIGTERM to its process group) and then restarted
-from its original ServiceSpec (command, env, cwd, health check) that was
-stored during the last "devctl up". This does NOT re-run the plugin pipeline,
-so any config changes since the last "up" will not be reflected.
-
-For a full re-evaluation, use "devctl down && devctl up".`,
+The service is stopped (SIGTERM to its process group) and then restarted.
+Before starting, devctl re-runs the planning phases (config.mutate + launch.plan)
+to recover the effective ServiceSpec without persisting raw environment variables
+in state.json. This does not run build, prepare, or validate phases.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			serviceName := args[0]
@@ -48,6 +47,21 @@ For a full re-evaluation, use "devctl down && devctl up".`,
 				return errors.Errorf("service %q not found in state", serviceName)
 			}
 
+			ctx, cancel := context.WithTimeout(cmd.Context(), opts.Timeout)
+			defer cancel()
+
+			spec, err := servicecontrol.ResolveServiceSpec(ctx, servicecontrol.ResolveOptions{
+				RepoRoot:   opts.RepoRoot,
+				ConfigPath: opts.Config,
+				Cwd:        opts.RepoRoot,
+				DryRun:     opts.DryRun,
+				Strict:     opts.Strict,
+				Timeout:    opts.Timeout,
+			}, serviceName)
+			if err != nil {
+				return err
+			}
+
 			wrapperExe, _ := os.Executable()
 			sup := supervise.New(supervise.Options{
 				RepoRoot:        opts.RepoRoot,
@@ -56,10 +70,7 @@ For a full re-evaluation, use "devctl down && devctl up".`,
 				WrapperExe:      wrapperExe,
 			})
 
-			ctx, cancel := context.WithTimeout(cmd.Context(), opts.Timeout)
-			defer cancel()
-
-			if err := sup.RestartService(ctx, st, serviceName); err != nil {
+			if err := sup.RestartService(ctx, st, spec); err != nil {
 				return err
 			}
 

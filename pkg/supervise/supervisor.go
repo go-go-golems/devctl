@@ -122,12 +122,16 @@ func (s *Supervisor) StopService(ctx context.Context, st *state.State, name stri
 	return state.Save(s.opts.RepoRoot, st)
 }
 
-// StartService starts a single named service from its stored Spec.
+// StartService starts a single named service from a freshly resolved ServiceSpec.
 // It creates new log files, starts the process, waits for health checks,
 // and updates the state file.
-func (s *Supervisor) StartService(ctx context.Context, st *state.State, name string) error {
+func (s *Supervisor) StartService(ctx context.Context, st *state.State, spec engine.ServiceSpec) error {
 	if st == nil {
 		return errors.New("state is nil")
+	}
+	name := spec.Name
+	if name == "" {
+		return errors.New("service spec missing name")
 	}
 	var rec *state.ServiceRecord
 	for i := range st.Services {
@@ -139,11 +143,9 @@ func (s *Supervisor) StartService(ctx context.Context, st *state.State, name str
 	if rec == nil {
 		return errors.Errorf("service %q not found in state", name)
 	}
-	if rec.Spec == nil {
-		return errors.Errorf("service %q has no stored spec (cannot start)", name)
+	if rec.PID > 0 && state.ProcessAlive(rec.PID) {
+		return errors.Errorf("service %q is already running (pid %d)", name, rec.PID)
 	}
-
-	spec := specFromRecord(rec.Spec)
 
 	newRec, err := s.startService(ctx, spec)
 	if err != nil {
@@ -161,20 +163,27 @@ func (s *Supervisor) StartService(ctx context.Context, st *state.State, name str
 	}
 
 	rec.PID = newRec.PID
+	rec.Command = newRec.Command
+	rec.Cwd = newRec.Cwd
+	rec.Env = newRec.Env
 	rec.StdoutLog = newRec.StdoutLog
 	rec.StderrLog = newRec.StderrLog
 	rec.ExitInfo = ""
 	rec.StartedAt = newRec.StartedAt
+	rec.HealthType = newRec.HealthType
+	rec.HealthAddress = newRec.HealthAddress
+	rec.HealthURL = newRec.HealthURL
+	rec.Spec = newRec.Spec
 
 	return state.Save(s.opts.RepoRoot, st)
 }
 
-// RestartService stops and then starts a single named service.
-func (s *Supervisor) RestartService(ctx context.Context, st *state.State, name string) error {
-	if err := s.StopService(ctx, st, name); err != nil {
+// RestartService stops and then starts a single named service from a freshly resolved ServiceSpec.
+func (s *Supervisor) RestartService(ctx context.Context, st *state.State, spec engine.ServiceSpec) error {
+	if err := s.StopService(ctx, st, spec.Name); err != nil {
 		return errors.Wrap(err, "stop failed")
 	}
-	if err := s.StartService(ctx, st, name); err != nil {
+	if err := s.StartService(ctx, st, spec); err != nil {
 		return errors.Wrap(err, "start failed")
 	}
 	return nil
@@ -461,7 +470,6 @@ func specRecordFromServiceSpec(svc engine.ServiceSpec, cwd string) *state.Servic
 		Name:    svc.Name,
 		Cwd:     cwd,
 		Command: svc.Command,
-		Env:     svc.Env,
 	}
 	if svc.Health != nil {
 		rec.Health = &state.HealthCheckRecord{
@@ -472,22 +480,4 @@ func specRecordFromServiceSpec(svc engine.ServiceSpec, cwd string) *state.Servic
 		}
 	}
 	return rec
-}
-
-func specFromRecord(rec *state.ServiceSpecRecord) engine.ServiceSpec {
-	spec := engine.ServiceSpec{
-		Name:    rec.Name,
-		Cwd:     rec.Cwd,
-		Command: rec.Command,
-		Env:     rec.Env,
-	}
-	if rec.Health != nil {
-		spec.Health = &engine.HealthCheck{
-			Type:      rec.Health.Type,
-			Address:   rec.Health.Address,
-			URL:       rec.Health.URL,
-			TimeoutMs: rec.Health.TimeoutMs,
-		}
-	}
-	return spec
 }

@@ -41,18 +41,17 @@ type ServiceRecord struct {
 	HealthAddress string `json:"health_address,omitempty"` // For TCP checks
 	HealthURL     string `json:"health_url,omitempty"`     // For HTTP checks
 
-	// Spec stores the original ServiceSpec for restart without re-running the pipeline.
-	// The Env field here is unsanitized (unlike the top-level Env which redacts secrets).
-	// This allows devctl restart to re-launch the service with the original environment.
+	// Spec stores non-secret service metadata for inspection and backward-compatible state files.
+	// Service start/restart re-runs planning to recover the effective ServiceSpec instead of
+	// persisting raw environment variables in state.json.
 	Spec *ServiceSpecRecord `json:"spec,omitempty"`
 }
 
-// ServiceSpecRecord stores the original service specification for restart.
+// ServiceSpecRecord stores non-secret service specification metadata.
 type ServiceSpecRecord struct {
 	Name    string             `json:"name"`
 	Cwd     string             `json:"cwd,omitempty"`
 	Command []string           `json:"command"`
-	Env     map[string]string  `json:"env,omitempty"` // unsanitized for restart
 	Health  *HealthCheckRecord `json:"health,omitempty"`
 }
 

@@ -22,7 +22,6 @@ func TestServiceSpecRecordRoundTrip(t *testing.T) {
 			Name:    "api-server",
 			Cwd:     "/path/to/repo",
 			Command: []string{"go", "run", "./cmd/api"},
-			Env:     map[string]string{"LOG_LEVEL": "debug", "PORT": "8080"},
 			Health: &HealthCheckRecord{
 				Type: "http",
 				URL:  "http://localhost:8080/health",
@@ -51,12 +50,6 @@ func TestServiceSpecRecordRoundTrip(t *testing.T) {
 	}
 	if len(rec2.Spec.Command) != 3 || rec2.Spec.Command[0] != "go" {
 		t.Errorf("Spec.Command = %v, want [go run ./cmd/api]", rec2.Spec.Command)
-	}
-	if rec2.Spec.Env["LOG_LEVEL"] != "debug" {
-		t.Errorf("Spec.Env[LOG_LEVEL] = %q, want %q", rec2.Spec.Env["LOG_LEVEL"], "debug")
-	}
-	if rec2.Spec.Env["PORT"] != "8080" {
-		t.Errorf("Spec.Env[PORT] = %q, want %q", rec2.Spec.Env["PORT"], "8080")
 	}
 	if rec2.Spec.Health == nil {
 		t.Fatal("Spec.Health is nil")
@@ -128,7 +121,6 @@ func TestSaveLoadWithSpec(t *testing.T) {
 				Spec: &ServiceSpecRecord{
 					Name:    "web",
 					Command: []string{"npm", "run", "dev"},
-					Env:     map[string]string{"PORT": "3000"},
 				},
 			},
 		},
@@ -150,7 +142,7 @@ func TestSaveLoadWithSpec(t *testing.T) {
 	if svc.Spec == nil {
 		t.Fatal("Spec is nil after save/load")
 	}
-	if svc.Spec.Env["PORT"] != "3000" {
-		t.Errorf("Spec.Env[PORT] = %q, want %q", svc.Spec.Env["PORT"], "3000")
+	if len(svc.Spec.Command) != 3 || svc.Spec.Command[0] != "npm" {
+		t.Errorf("Spec.Command = %v, want [npm run dev]", svc.Spec.Command)
 	}
 }
