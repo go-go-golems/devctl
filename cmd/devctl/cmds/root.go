@@ -9,6 +9,7 @@ func AddCommands(root *cobra.Command) error {
 	root.AddCommand(dev.NewCmd())
 	root.AddCommand(newPlanCmd())
 	root.AddCommand(newPluginsCmd())
+	root.AddCommand(newProfilesCmd())
 
 	root.AddCommand(newUpCmd())
 	root.AddCommand(newDownCmd())

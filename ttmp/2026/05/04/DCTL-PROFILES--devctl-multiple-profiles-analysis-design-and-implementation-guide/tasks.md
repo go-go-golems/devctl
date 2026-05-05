@@ -11,10 +11,10 @@
   - [x] Filter discovered plugin specs by active profile
   - [x] Merge profile env into selected plugin specs
   - [x] Add repository tests for base config, override-defined profiles, and ordering
-- [ ] Phase 3: CLI flag and command plumbing
-  - [ ] Add shared `--profile` flag to repo commands
-  - [ ] Thread profile selection through `RepoContext`, CLI commands, dynamic command loading, and servicecontrol re-planning
-  - [ ] Add `devctl profiles list` and `devctl profiles active`
+- [x] Phase 3: CLI flag and command plumbing
+  - [x] Add shared `--profile` flag to repo commands
+  - [x] Thread profile selection through `RepoContext`, CLI commands, dynamic command loading, and servicecontrol re-planning
+  - [x] Add `devctl profiles list` and `devctl profiles active`
 - [ ] Phase 4: State file profile recording
   - [ ] Add `profile` field to state
   - [ ] Record active profile on `up`

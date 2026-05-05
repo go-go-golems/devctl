@@ -20,6 +20,7 @@ const repoLayerSlug = "repo"
 type RepoSettings struct {
 	RepoRoot string `glazed:"repo-root"`
 	Config   string `glazed:"config"`
+	Profile  string `glazed:"profile"`
 	Strict   bool   `glazed:"strict"`
 	DryRun   bool   `glazed:"dry-run"`
 	Timeout  string `glazed:"timeout"` // duration string, e.g. "30s"
@@ -29,6 +30,7 @@ type RepoContext struct {
 	RepoRoot   string
 	ConfigPath string
 	Cwd        string
+	Profile    string
 	Strict     bool
 	DryRun     bool
 	Timeout    time.Duration
@@ -75,6 +77,7 @@ func repoContextFromSettings(settings RepoSettings, cwd string) (RepoContext, er
 		RepoRoot:   repoRoot,
 		ConfigPath: cfgPath,
 		Cwd:        cwd,
+		Profile:    settings.Profile,
 		Strict:     settings.Strict,
 		DryRun:     settings.DryRun,
 		Timeout:    timeout,
@@ -111,6 +114,10 @@ func RepoContextFromCobra(cmd *cobra.Command) (RepoContext, error) {
 	if err != nil {
 		return RepoContext{}, err
 	}
+	profile, err := cmd.Flags().GetString("profile")
+	if err != nil {
+		return RepoContext{}, err
+	}
 	dryRun, err := cmd.Flags().GetBool("dry-run")
 	if err != nil {
 		return RepoContext{}, err
@@ -123,6 +130,7 @@ func RepoContextFromCobra(cmd *cobra.Command) (RepoContext, error) {
 	return repoContextFromSettings(RepoSettings{
 		RepoRoot: repoRoot,
 		Config:   cfgPath,
+		Profile:  profile,
 		Strict:   strict,
 		DryRun:   dryRun,
 		Timeout:  timeoutStr,
@@ -151,6 +159,12 @@ func getRepoLayer() (*schema.SectionImpl, error) {
 					fields.TypeString,
 					fields.WithDefault(""),
 					fields.WithHelp("Path to config file (defaults to .devctl.yaml under repo-root)"),
+				),
+				fields.New(
+					"profile",
+					fields.TypeString,
+					fields.WithDefault(""),
+					fields.WithHelp("Active profile name (overrides profile.active in config)"),
 				),
 				fields.New(
 					"strict",
@@ -191,6 +205,7 @@ func AddRepoFlags(cmd *cobra.Command) {
 type rootOptions struct {
 	RepoRoot string
 	Config   string
+	Profile  string
 	Strict   bool
 	DryRun   bool
 	Timeout  time.Duration
@@ -204,6 +219,7 @@ func getRootOptions(cmd *cobra.Command) (rootOptions, error) {
 	return rootOptions{
 		RepoRoot: rc.RepoRoot,
 		Config:   rc.ConfigPath,
+		Profile:  rc.Profile,
 		Strict:   rc.Strict,
 		DryRun:   rc.DryRun,
 		Timeout:  rc.Timeout,

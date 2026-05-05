@@ -208,3 +208,34 @@ go test ./pkg/repository ./pkg/config -count=1
 
 Result: passed.
 
+
+## Step 7: Phase 3 Implemented — CLI Profile Plumbing
+
+Threaded profile selection through the shared CLI context and all repository-loading command paths.
+
+### What changed
+
+- Added shared `--profile` to the repo flag section in `cmd/devctl/cmds/common.go`.
+- Added `Profile` to `RepoSettings`, `RepoContext`, `rootOptions`, and TUI `RootOptions`.
+- Passed `ProfileName` into `repository.Load()` from `up`, `plan`, `stream`, `plugins list`, dynamic command discovery, and TUI runners.
+- Passed `ProfileName` into `servicecontrol.ResolveServiceSpec()` so `start` and `restart` re-plan using the same selected profile.
+- Added `devctl profiles list` and `devctl profiles active`.
+- Updated dynamic command bootstrap parsing to understand `--profile`, so dynamic commands are discovered from the selected profile's plugins.
+- Updated dynamic command strictness loading to use the stacked config instead of only `.devctl.yaml`.
+
+### Behavior notes
+
+`devctl profiles active` prints `(none)` when no profile is selected. This is intentional: `(none)` means backward-compatible all-top-level-plugins mode, not the `default` profile.
+
+Dynamic command discovery now obeys `--profile`. If a plugin is excluded by the active profile, its dynamic commands are not registered for that invocation.
+
+### Validation
+
+Ran:
+
+```bash
+go test ./... -count=1
+```
+
+Result: passed.
+

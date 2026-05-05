@@ -95,7 +95,7 @@ func (m *streamManager) handleStart(req StreamStartRequest) error {
 		}
 	}()
 
-	repo, err := repository.Load(repository.Options{RepoRoot: m.opts.RepoRoot, ConfigPath: m.opts.Config, Cwd: m.opts.RepoRoot, DryRun: m.opts.DryRun})
+	repo, err := repository.Load(repository.Options{RepoRoot: m.opts.RepoRoot, ConfigPath: m.opts.Config, ProfileName: m.opts.Profile, Cwd: m.opts.RepoRoot, DryRun: m.opts.DryRun})
 	if err != nil {
 		_ = m.publishStreamEnded(StreamEnded{
 			StreamKey: streamKey(req.PluginID, req.Op, req.Input),

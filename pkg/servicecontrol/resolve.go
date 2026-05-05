@@ -12,12 +12,13 @@ import (
 )
 
 type ResolveOptions struct {
-	RepoRoot   string
-	ConfigPath string
-	Cwd        string
-	DryRun     bool
-	Strict     bool
-	Timeout    time.Duration
+	RepoRoot    string
+	ConfigPath  string
+	ProfileName string
+	Cwd         string
+	DryRun      bool
+	Strict      bool
+	Timeout     time.Duration
 }
 
 // ResolveServiceSpec recomputes the effective launch plan and returns the named service.
@@ -37,10 +38,11 @@ func ResolveServiceSpec(ctx context.Context, opts ResolveOptions, serviceName st
 	}
 
 	repo, err := repository.Load(repository.Options{
-		RepoRoot:   opts.RepoRoot,
-		ConfigPath: opts.ConfigPath,
-		Cwd:        cwd,
-		DryRun:     opts.DryRun,
+		RepoRoot:    opts.RepoRoot,
+		ConfigPath:  opts.ConfigPath,
+		ProfileName: opts.ProfileName,
+		Cwd:         cwd,
+		DryRun:      opts.DryRun,
 	})
 	if err != nil {
 		return engine.ServiceSpec{}, err
