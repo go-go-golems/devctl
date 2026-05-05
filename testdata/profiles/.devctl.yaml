@@ -1,0 +1,15 @@
+profiles:
+  default:
+    display_name: Default
+    description: Explicit default profile used only when selected
+    plugins: [pipeline]
+  pipeline-only:
+    display_name: Pipeline Only
+    description: Runs the pipeline fixture plugin
+    plugins: [pipeline]
+plugins:
+  - id: pipeline
+    path: python3
+    args:
+      - ../plugins/pipeline/plugin.py
+    priority: 10

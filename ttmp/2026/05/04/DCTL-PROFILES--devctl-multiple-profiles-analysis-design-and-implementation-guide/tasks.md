@@ -19,11 +19,11 @@
   - [x] Add `profile` field to state
   - [x] Record active profile on `up`
   - [x] Show profile in `status`/`down` where appropriate
-- [ ] Phase 5: Integration tests and smoke validation
-  - [ ] Add multi-profile test fixtures
-  - [ ] Test no-profile backward compatibility with top-level plugins
-  - [ ] Test explicit `default` profile behavior
-  - [ ] Test `.devctl.override.yaml` profile additions and adjustments
+- [x] Phase 5: Integration tests and smoke validation
+  - [x] Add multi-profile test fixtures
+  - [x] Test no-profile backward compatibility with top-level plugins
+  - [x] Test explicit `default` profile behavior
+  - [x] Test `.devctl.override.yaml` profile additions and adjustments
 - [ ] Phase 6: Documentation finalization
   - [ ] Update DCTL-PROFILES design, diary, and changelog with implementation results
   - [ ] Run `docmgr doctor`

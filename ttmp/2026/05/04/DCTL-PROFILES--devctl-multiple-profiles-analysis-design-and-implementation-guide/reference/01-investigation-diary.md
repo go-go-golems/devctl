@@ -266,3 +266,39 @@ go test ./pkg/state ./cmd/devctl/cmds -count=1
 
 Result: passed.
 
+
+## Step 9: Phase 5 Implemented — Profile Tests and Smoke Validation
+
+Added command-level tests and fixture files, then ran a real dry-run smoke test against a temporary repository.
+
+### What changed
+
+- Added tests for `devctl profiles active` covering the explicit `default` profile and the no-profile `(none)` case.
+- Added tests for `devctl profiles list` showing profiles from `.devctl.override.yaml` and marking the active profile.
+- Added a dynamic-command discovery test proving `--profile` filters which plugins contribute dynamic commands.
+- Added `testdata/profiles/.devctl.yaml` and `.devctl.override.yaml` fixtures.
+
+### Smoke test
+
+Created a temporary repo with a shared `.devctl.yaml`, a local `.devctl.override.yaml`, and the existing `testdata/plugins/pipeline/plugin.py` fixture. Validated:
+
+- `devctl profiles active` resolves the override active profile (`local`).
+- `devctl profiles active --profile default` resolves the explicit `default` profile.
+- `devctl profiles list` shows the override profile and marks it active.
+- `devctl up --dry-run` uses the override active profile and produces the expected `demo` service.
+- `devctl up --profile default --dry-run` explicitly selects `profiles.default` and produces the expected `demo` service.
+
+### One thing that failed first
+
+I first tried a smoke test with an explicitly empty profile and `devctl up --profile empty --dry-run`. That failed with `no plugins configured (add .devctl.yaml)`. This is current command behavior: `up` requires at least one plugin. I adjusted the smoke test to cover explicit `default` instead of treating an empty profile as a valid environment.
+
+### Validation
+
+Ran:
+
+```bash
+go test ./cmd/devctl/cmds ./pkg/repository ./pkg/config -count=1
+```
+
+and the manual dry-run smoke commands described above. Results: passed.
+
