@@ -174,3 +174,37 @@ go test ./pkg/config -count=1
 
 Result: passed.
 
+
+## Step 6: Phase 2 Implemented — Repository Profile Filtering
+
+Implemented repository-level profile filtering. This is the first point where profiles affect runtime behavior: `repository.Load()` now loads the stacked config, resolves the active profile name, filters discovered plugin specs, and merges profile env into selected specs.
+
+### What changed
+
+- Added `ProfileName` and `OverridePath` to `repository.Options`.
+- Added `ProfileName`, `Profile`, and `OverrideAbs` to `repository.Repository`.
+- Changed `repository.Load()` to call `config.LoadStacked()` instead of `config.LoadOptional()`.
+- Added filtering after discovery, before `SpecByID` is built and before plugin clients are started.
+- Added a clear error for profiles that reference unknown discovered plugin IDs.
+- Added tests for no-profile backward compatibility, explicit `default`, profile env merging, override-defined local profiles, plugin patching, and unknown plugin errors.
+
+### Why filtering lives here
+
+The pipeline should not know about profiles. It already operates on a list of plugin clients. The repository loader is the correct boundary because it is responsible for turning config and discovery into the concrete plugin specs that later phases start.
+
+### Notable behavior
+
+A profile named `default` remains explicit. A config with `profiles.default` but no active profile still loads all top-level plugins. Passing `ProfileName: "default"` filters to that profile.
+
+Profile-level env currently overlays plugin env for selected plugins. This matches the v2 design: profile env is a mode-level adjustment and wins over the plugin's base env for that mode.
+
+### Validation
+
+Ran:
+
+```bash
+go test ./pkg/repository ./pkg/config -count=1
+```
+
+Result: passed.
+

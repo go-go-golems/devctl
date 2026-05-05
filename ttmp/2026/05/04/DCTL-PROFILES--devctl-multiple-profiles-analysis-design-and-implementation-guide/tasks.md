@@ -6,11 +6,11 @@
   - [x] Add `profile`, `profiles`, and optional `.devctl.override.yaml` loading to `pkg/config`
   - [x] Define explicit `default` profile semantics: only active when selected, not implicit
   - [x] Add config tests for backward compatibility, merge rules, and profile validation
-- [ ] Phase 2: Repository profile filtering
-  - [ ] Add profile/override options to `repository.Load`
-  - [ ] Filter discovered plugin specs by active profile
-  - [ ] Merge profile env into selected plugin specs
-  - [ ] Add repository tests for base config, override-defined profiles, and ordering
+- [x] Phase 2: Repository profile filtering
+  - [x] Add profile/override options to `repository.Load`
+  - [x] Filter discovered plugin specs by active profile
+  - [x] Merge profile env into selected plugin specs
+  - [x] Add repository tests for base config, override-defined profiles, and ordering
 - [ ] Phase 3: CLI flag and command plumbing
   - [ ] Add shared `--profile` flag to repo commands
   - [ ] Thread profile selection through `RepoContext`, CLI commands, dynamic command loading, and servicecontrol re-planning
