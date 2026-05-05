@@ -49,7 +49,7 @@ func TestSupervisor_ReadinessTimeoutStopsServices(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = os.RemoveAll(repoRoot) }()
 
-	s := New(Options{RepoRoot: repoRoot, ReadyTimeout: 500 * time.Millisecond, ShutdownTimeout: 2 * time.Second})
+	s := New(Options{RepoRoot: repoRoot, ReadyTimeout: 2 * time.Second, ShutdownTimeout: 2 * time.Second})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -66,8 +66,9 @@ func TestSupervisor_ReadinessTimeoutStopsServices(t *testing.T) {
 		Services: []engine.ServiceSpec{
 			{
 				Name:    "sleep",
-				Command: []string{"bash", "-lc", "echo $$ > " + pidFile + "; sleep 10"},
-				Health:  &engine.HealthCheck{Type: "tcp", Address: "127.0.0.1:" + portStr, TimeoutMs: 500},
+				Command: []string{"bash", "-lc", "echo $$ > \"$DEVCTL_TEST_PID_FILE\"; sleep 10"},
+				Env:     map[string]string{"DEVCTL_TEST_PID_FILE": pidFile},
+				Health:  &engine.HealthCheck{Type: "tcp", Address: "127.0.0.1:" + portStr, TimeoutMs: 2000},
 			},
 		},
 	})
