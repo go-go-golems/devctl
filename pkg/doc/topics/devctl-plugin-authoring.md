@@ -1,6 +1,6 @@
 ---
 Title: devctl Plugin Authoring Guide (NDJSON Stdio Protocol v2)
-Slug: devctl-plugin-authoring
+Slug: plugin-authoring
 Short: A practical playbook for writing, testing, and shipping devctl plugins.
 Topics:
   - devctl
@@ -26,8 +26,8 @@ This guide is a playbook, not just a spec. It explains the protocol, shows the m
 This document goes deep on the plugin protocol and the patterns that matter once you have multiple plugins, strictness rules, and real users. If you’re new to devctl overall, it’s usually faster to start with the user guide and the scripting guide first, then come back here for the complete protocol and schema details.
 
 ```text
-glaze help devctl-user-guide
-glaze help devctl-scripting-guide
+devctl help user-guide
+devctl help scripting-guide
 ```
 
 ## 1. What a devctl plugin is
@@ -717,6 +717,51 @@ devctl status
 devctl logs --service <name> --follow
 devctl down
 ```
+
+### Profiles depend on stable plugin IDs
+
+Profiles select plugins by `id`, so treat plugin IDs as stable public names. If you rename a plugin ID, every profile that references it must be updated.
+
+```yaml
+profiles:
+  backend:
+    plugins: [api, database]
+
+plugins:
+  - id: api
+    path: python3
+    args: [./plugins/api.py]
+  - id: database
+    path: python3
+    args: [./plugins/database.py]
+```
+
+Profile-level env is overlaid onto the selected plugin processes. This makes profile env useful for mode-level behavior such as `LOG_LEVEL`, feature flags, or local trace settings.
+
+```yaml
+profiles:
+  backend:
+    plugins: [api]
+    env:
+      LOG_LEVEL: debug
+
+plugins:
+  - id: api
+    path: python3
+    args: [./plugins/api.py]
+    env:
+      LOG_LEVEL: info
+```
+
+When `backend` is active, the `api` plugin receives `LOG_LEVEL=debug`.
+
+### Planning phases must be safe to re-run
+
+`devctl start <service>` and `devctl restart <service>` re-run `config.mutate` and `launch.plan` to recover the current service specification without persisting raw service environments in `.devctl/state.json`. They do not run `build.run`, `prepare.run`, or `validate.run`.
+
+For plugin authors, this creates a clear rule: keep `config.mutate` and `launch.plan` idempotent planning phases. They should compute config and service specs. They should not create external resources, mutate databases, start background processes, or perform setup that belongs in `prepare.run`.
+
+For profile details, see `devctl help profiles-guide`.
 
 ## 11. Designing stable config schemas (keys and conventions)
 

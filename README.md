@@ -201,6 +201,19 @@ chmod +x devctl-plugin.py
 ### 4. `.devctl.yaml` schema reference
 
 ```yaml
+# Optional profile selection. Can be overridden with --profile.
+profile:
+  active: development
+
+# Optional named profiles. A profile selects plugin IDs from top-level plugins.
+profiles:
+  development:
+    display_name: Development
+    description: Hot reload and local debug settings
+    plugins: [myproject]
+    env:
+      LOG_LEVEL: debug
+
 plugins:
   - id: <string>              # Required. Unique identifier for this plugin.
     path: <string>            # Required. Executable to run the plugin (e.g. python3, bash, go run).
@@ -211,6 +224,10 @@ plugins:
 # Optional strictness mode for multiple plugins:
 # strictness: warn   # or "error"
 ```
+
+A local `.devctl.override.yaml`, if present, is merged over `.devctl.yaml`. Use it for personal profiles or local profile adjustments that should not change the shared project config.
+
+A profile named `default` is allowed but not implicit. It is used only when selected with `profile.active: default` or `--profile default`. If no profile is selected, devctl loads all top-level plugins for backward compatibility.
 
 ### 5. Use devctl
 
@@ -244,9 +261,14 @@ That's it! Your development environment is now codified and repeatable.
 |---------|--------------|
 | `devctl plugins list` | Show loaded plugins |
 | `devctl plan` | Preview what would run (dry-run) |
-| `devctl up` | Start all services |
+| `devctl up` | Start all selected services |
 | `devctl status` | Show running services |
 | `devctl logs --service NAME` | View service logs |
+| `devctl restart NAME` | Restart one supervised service |
+| `devctl stop-service NAME` | Stop one supervised service |
+| `devctl start NAME` | Start one stopped/crashed tracked service |
+| `devctl profiles list` | List available profiles |
+| `devctl profiles active` | Show the resolved active profile |
 | `devctl down` | Stop all services |
 
 ### Interactive TUI
@@ -262,6 +284,8 @@ devctl tui
 | `u` | Start environment |
 | `d` | Stop environment |
 | `l` | View logs for selected service |
+| `s` | Stop selected service in the service view |
+| `r` | Restart environment on the dashboard, or selected service in the service view |
 | `Tab` | Switch views (Dashboard, Events, Pipeline, Plugins) |
 | `?` | Help |
 | `q` | Quit |
@@ -365,6 +389,7 @@ go run ./cmd/devctl --help
 |------|-------------|
 | `--repo-root <path>` | Project root (defaults to current directory) |
 | `--config <file>` | Config file (defaults to `.devctl.yaml`) |
+| `--profile <name>` | Select active profile (overrides `profile.active`) |
 | `--timeout <dur>` | Timeout per operation (default `30s`) |
 | `--dry-run` | Show what would happen without doing it |
 | `--force` | Stop existing state before starting |
@@ -398,9 +423,10 @@ Plugins communicate via **NDJSON** (newline-delimited JSON) over stdio.
 ### Learn More
 
 ```bash
-devctl help devctl-plugin-authoring  # Plugin development guide
-devctl help devctl-user-guide        # Full user guide
-devctl help devctl-tui-guide         # TUI reference
+devctl help plugin-authoring  # Plugin development guide
+devctl help profiles-guide    # Profiles and local overrides
+devctl help user-guide        # Full user guide
+devctl help tui-guide         # TUI reference
 ```
 
 Or see `docs/plugin-authoring.md` for extended examples.

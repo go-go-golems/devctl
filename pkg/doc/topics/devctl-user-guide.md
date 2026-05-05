@@ -1,6 +1,6 @@
 ---
 Title: devctl User Guide (CLI + TUI + Plugins)
-Slug: devctl-user-guide
+Slug: user-guide
 Short: "A practical, end-to-end guide to using devctl: from your first .devctl.yaml to the TUI and real plugins."
 Topics:
   - devctl
@@ -176,6 +176,20 @@ devctl logs --service api --follow # Live tail
 devctl up --force   # Stop existing services, then start fresh
 ```
 
+### Control one service at a time
+
+Once an environment is running, you can stop, start, or restart one tracked service without tearing down the whole environment:
+
+```bash
+devctl restart api        # Stop api, re-plan, then start api again
+devctl stop-service web   # Stop only web and keep the rest running
+devctl start web          # Start a stopped or crashed tracked service
+```
+
+`start` and `restart` re-run the planning phases `config.mutate` and `launch.plan` so devctl can recover the current service specification without storing raw service environments in `.devctl/state.json`. They do not run `build.run`, `prepare.run`, or `validate.run`.
+
+`start` refuses to duplicate a service whose tracked PID is still alive. Use `restart` when you intentionally want to replace a running process.
+
 ### Stop and cleanup
 
 ```bash
@@ -183,6 +197,62 @@ devctl down   # Stop all services, remove state
 ```
 
 **What `down` does:** sends SIGTERM to each service process group, waits up to 3s, then SIGKILL if needed. Removes `.devctl/state.json`. The `.devctl/logs/` directory is preserved.
+
+## Profiles and local overrides
+
+Profiles select which plugins participate in a devctl run. They are useful when a repository has more than one valid local mode: frontend-only, backend-only, full-stack, or local debugging.
+
+```yaml
+profile:
+  active: development
+
+profiles:
+  development:
+    display_name: Development
+    plugins: [api, web]
+    env:
+      LOG_LEVEL: debug
+
+  backend:
+    display_name: Backend Only
+    plugins: [api, database]
+
+plugins:
+  - id: api
+    path: python3
+    args: [./plugins/api.py]
+  - id: web
+    path: python3
+    args: [./plugins/web.py]
+  - id: database
+    path: python3
+    args: [./plugins/database.py]
+```
+
+Select a profile explicitly with `--profile`:
+
+```bash
+devctl up --profile backend
+devctl plan --profile development
+devctl plugins list --profile backend
+```
+
+Use `.devctl.override.yaml` for personal profile choices that should not change the shared project config:
+
+```yaml
+profile:
+  active: local-debug
+
+profiles:
+  local-debug:
+    plugins: [api, database]
+    env:
+      LOG_LEVEL: trace
+```
+
+If no profile is selected, devctl loads all top-level plugins. A profile named `default` is allowed, but it is not implicit; select it with `profile.active: default` or `--profile default`.
+
+For the full profile reference, see `devctl help profiles-guide`.
 
 ### Common flags you'll use (command-local)
 
@@ -197,6 +267,7 @@ devctl plan --repo-root /path/to/repo --timeout 10s
 |------|---------|
 | `--repo-root <path>` | Override the repo root (default: cwd) |
 | `--config <file>` | Override config file (default: `.devctl.yaml`) |
+| `--profile <name>` | Select an active profile (overrides `profile.active`) |
 | `--timeout <dur>` | Per-operation timeout (default: 30s) |
 | `--dry-run` | Skip side effects; plugins see `ctx.dry_run=true` |
 | `--force` | Stop existing state before starting |
@@ -229,7 +300,7 @@ devctl tui
 | `l` or `Enter` | Open service logs |
 | `u` | Start (or restart if already running) |
 | `d` | Stop (with confirmation) |
-| `r` | Restart (with confirmation) |
+| `r` | Restart the whole environment (with confirmation) |
 | `x` | Kill selected service (with confirmation) |
 
 ### Service view (logs)
@@ -239,9 +310,11 @@ devctl tui
 | `Tab` | Toggle stdout/stderr |
 | `f` | Toggle follow mode |
 | `/` | Filter logs |
+| `s` | Stop selected service |
+| `r` | Restart selected service |
 | `Esc` | Back to dashboard |
 
-For the full TUI reference, see `glaze help devctl-tui-guide`.
+For the full TUI reference, see `devctl help tui-guide`.
 
 ### Logs on disk
 
@@ -299,7 +372,7 @@ Here's what a plugin for a "backend + frontend + database" repo might look like:
 ]
 ```
 
-For complete plugin authoring guidance, see `glaze help devctl-plugin-authoring`.
+For complete plugin authoring guidance, see `devctl help plugin-authoring`.
 
 ## Where devctl stores things
 
@@ -371,6 +444,7 @@ devctl plan --timeout 5s           # Does planning work?
 
 | Want to... | Read |
 |------------|------|
-| Write your first plugin | `glaze help devctl-scripting-guide` |
-| Understand the full protocol | `glaze help devctl-plugin-authoring` |
-| Learn all TUI features | `glaze help devctl-tui-guide` |
+| Use profiles and local overrides | `devctl help profiles-guide` |
+| Write your first plugin | `devctl help scripting-guide` |
+| Understand the full protocol | `devctl help plugin-authoring` |
+| Learn all TUI features | `devctl help tui-guide` |

@@ -2,6 +2,7 @@
 
 For the full playbook (protocol, patterns, examples, diagrams), see:
 
+- `devctl help plugin-authoring`
 - `pkg/doc/topics/devctl-plugin-authoring.md`
 
 ## Rules (non-negotiable)

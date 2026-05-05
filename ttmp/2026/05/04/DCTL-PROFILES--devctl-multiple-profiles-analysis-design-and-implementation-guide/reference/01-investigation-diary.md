@@ -325,3 +325,34 @@ Result: passed.
 
 Next validation is `docmgr doctor`.
 
+
+## Step 11: User-Facing Documentation Updated
+
+Reviewed the current documentation surface after implementing profiles and local overrides. devctl already has embedded Glazed help docs under `pkg/doc/topics`, loaded through `pkg/doc/doc.go` and wired into `cmd/devctl/main.go` with `help_cmd.SetupCobraRootCommand`.
+
+### What was stale
+
+- `README.md` did not mention `--profile`, `profiles`, `.devctl.override.yaml`, `devctl profiles`, or individual service lifecycle commands.
+- `devctl-user-guide` did not explain profiles or service-level start/stop/restart.
+- `devctl-plugin-authoring` did not explain stable plugin IDs for profiles or idempotent planning phases for service restart.
+- `devctl-scripting-guide` did not include profile testing loops.
+- `devctl-tui-guide` did not distinguish whole-environment restart from per-service stop/restart.
+
+### What changed
+
+- Removed redundant `devctl-` prefixes from help slugs: `user-guide`, `plugin-authoring`, `scripting-guide`, `tui-guide`.
+- Added a new Glazed help topic with slug `profiles-guide`.
+- Updated README command tables, schema reference, common flags, TUI keys, and help references.
+- Updated embedded user/plugin/scripting/TUI guides with profile and service lifecycle guidance.
+
+### Validation
+
+Ran:
+
+```bash
+go test ./... -count=1
+go run ./cmd/devctl help profiles-guide
+```
+
+Both succeeded. The help command rendered the new topic under the short slug.
+

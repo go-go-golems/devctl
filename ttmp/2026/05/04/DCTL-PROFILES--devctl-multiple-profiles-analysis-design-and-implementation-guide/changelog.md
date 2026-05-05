@@ -44,3 +44,14 @@ Implemented devctl profile v1 task-by-task: config profile model and .devctl.ove
 - /home/manuel/workspaces/2026-05-04/devctl-multiple-profiles/devctl/pkg/repository/repository.go — Filters discovered plugin specs by resolved profile
 - /home/manuel/workspaces/2026-05-04/devctl-multiple-profiles/devctl/pkg/state/state.go — Records active profile in state
 
+
+## 2026-05-05
+
+Updated user-facing documentation for profiles and service lifecycle controls. Added embedded Glazed help topic profiles-guide, removed redundant devctl- prefixes from help slugs, updated README command/schema/flag coverage, and cross-linked user/plugin/scripting/TUI guides.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-05-04/devctl-multiple-profiles/devctl/README.md — Documents profiles
+- /home/manuel/workspaces/2026-05-04/devctl-multiple-profiles/devctl/pkg/doc/topics/devctl-profiles-guide.md — New Glazed help topic for profiles and local overrides
+- /home/manuel/workspaces/2026-05-04/devctl-multiple-profiles/devctl/pkg/doc/topics/devctl-user-guide.md — Adds profile and service lifecycle user guidance
+
