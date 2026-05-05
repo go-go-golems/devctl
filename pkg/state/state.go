@@ -21,6 +21,7 @@ const (
 
 type State struct {
 	RepoRoot  string          `json:"repo_root"`
+	Profile   string          `json:"profile,omitempty"`
 	CreatedAt time.Time       `json:"created_at"`
 	Services  []ServiceRecord `json:"services"`
 }

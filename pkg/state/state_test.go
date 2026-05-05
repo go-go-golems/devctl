@@ -111,6 +111,7 @@ func TestSaveLoadWithSpec(t *testing.T) {
 
 	st := &State{
 		RepoRoot:  dir,
+		Profile:   "development",
 		CreatedAt: time.Now(),
 		Services: []ServiceRecord{
 			{
@@ -135,6 +136,9 @@ func TestSaveLoadWithSpec(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
+	if loaded.Profile != "development" {
+		t.Fatalf("Profile = %q, want development", loaded.Profile)
+	}
 	if len(loaded.Services) != 1 {
 		t.Fatalf("len(Services) = %d, want 1", len(loaded.Services))
 	}

@@ -239,3 +239,30 @@ go test ./... -count=1
 
 Result: passed.
 
+
+## Step 8: Phase 4 Implemented — Profile Recording in State
+
+Recorded the resolved profile in `.devctl/state.json` and surfaced it through status/down output.
+
+### What changed
+
+- Added `Profile string` to `state.State` with `json:"profile,omitempty"` for backward-compatible state files.
+- Set `st.Profile = repo.ProfileName` after `Supervisor.Start()` in `devctl up`, before saving state.
+- Included `profile` in `devctl status` JSON output.
+- Made `devctl down` include the profile in its final confirmation when the state was profile-backed.
+- Extended the state save/load test to verify profile round-tripping.
+
+### Compatibility
+
+Old state files do not have a `profile` field. JSON unmarshalling leaves the field as `""`, which is the same value used for no-profile/all-top-level-plugins mode.
+
+### Validation
+
+Ran:
+
+```bash
+go test ./pkg/state ./cmd/devctl/cmds -count=1
+```
+
+Result: passed.
+

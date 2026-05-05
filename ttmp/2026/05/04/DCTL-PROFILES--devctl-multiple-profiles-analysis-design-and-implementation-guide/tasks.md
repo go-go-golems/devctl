@@ -15,10 +15,10 @@
   - [x] Add shared `--profile` flag to repo commands
   - [x] Thread profile selection through `RepoContext`, CLI commands, dynamic command loading, and servicecontrol re-planning
   - [x] Add `devctl profiles list` and `devctl profiles active`
-- [ ] Phase 4: State file profile recording
-  - [ ] Add `profile` field to state
-  - [ ] Record active profile on `up`
-  - [ ] Show profile in `status`/`down` where appropriate
+- [x] Phase 4: State file profile recording
+  - [x] Add `profile` field to state
+  - [x] Record active profile on `up`
+  - [x] Show profile in `status`/`down` where appropriate
 - [ ] Phase 5: Integration tests and smoke validation
   - [ ] Add multi-profile test fixtures
   - [ ] Test no-profile backward compatibility with top-level plugins
