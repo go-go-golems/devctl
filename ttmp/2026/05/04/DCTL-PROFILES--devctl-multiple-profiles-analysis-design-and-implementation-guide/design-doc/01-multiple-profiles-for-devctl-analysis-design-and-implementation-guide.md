@@ -74,6 +74,8 @@ This document proposes adding **profiles** to devctl. A profile is a named confi
 
 The design draws heavily from pinocchio's profile system — a mature implementation with stack composition, layered config merging, and per-request profile selection. We extract the relevant patterns (named profiles, filtering, active selection, and local override stacking) while keeping devctl's profile model simpler: no stack inheritance, no SQLite-backed stores, no external registries, no per-request switching.
 
+**Implementation status (2026-05-05):** The v1 profile system described here has been implemented through config loading, repository filtering, CLI plumbing, state recording, profile commands, and tests. The implementation intentionally keeps the scope to inline profiles plus the optional local `.devctl.override.yaml` stack.
+
 **Key design decisions:**
 
 - Profiles are defined inline in `.devctl.yaml` under a `profiles:` block.

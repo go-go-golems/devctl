@@ -24,9 +24,9 @@
   - [x] Test no-profile backward compatibility with top-level plugins
   - [x] Test explicit `default` profile behavior
   - [x] Test `.devctl.override.yaml` profile additions and adjustments
-- [ ] Phase 6: Documentation finalization
-  - [ ] Update DCTL-PROFILES design, diary, and changelog with implementation results
-  - [ ] Run `docmgr doctor`
+- [x] Phase 6: Documentation finalization
+  - [x] Update DCTL-PROFILES design, diary, and changelog with implementation results
+  - [x] Run `docmgr doctor`
   - [ ] Upload final version to reMarkable if requested
 
 ## DONE
