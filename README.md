@@ -235,8 +235,11 @@ A profile named `default` is allowed but not implicit. It is used only when sele
 # Verify your plugin loads correctly
 devctl plugins list
 
-# See what would run (without actually starting)
+# See what would run (without actually starting services)
 devctl plan
+
+# Run one phase directly when you need to iterate or use a longer timeout
+devctl build --timeout 10m
 
 # Start your environment
 devctl up
@@ -260,7 +263,10 @@ That's it! Your development environment is now codified and repeatable.
 | Command | What it does |
 |---------|--------------|
 | `devctl plugins list` | Show loaded plugins |
-| `devctl plan` | Preview what would run (dry-run) |
+| `devctl plan` | Preview merged config and launch plan without starting services |
+| `devctl build` | Run `config.mutate + build.run` and print build steps/artifacts |
+| `devctl prepare` | Run `config.mutate + prepare.run` and print prepare steps/artifacts |
+| `devctl validate` | Run `config.mutate + validate.run`; exits non-zero when invalid |
 | `devctl up` | Start all selected services |
 | `devctl status` | Show running services |
 | `devctl logs --service NAME` | View service logs |
@@ -333,6 +339,24 @@ state exists; restart (down then up)? (y/N):
 
 Use `--force` to skip the prompt and restart automatically.
 
+### Running individual phases
+
+You can run the expensive or diagnostic pipeline phases without starting services:
+
+```bash
+# Build everything declared by build.run. Increase the per-operation timeout for slow builds.
+devctl build --timeout 10m
+
+# Ask plugins to run only named build or prepare steps. Plugins decide how to honor names.
+devctl build --step backend --step frontend --timeout 10m
+devctl prepare --step pnpm-install --timeout 5m
+
+# Check prerequisites and get the same validation JSON that up would use.
+devctl validate
+```
+
+Each standalone phase command first runs `config.mutate`, then runs the named phase and prints a JSON object containing the mutated `config` plus the phase result (`build`, `prepare`, or `validate`). For live progress, plugins should write human-readable progress to **stderr**. Plugin stdout must remain protocol NDJSON only.
+
 **Shutdown**: `devctl down` sends SIGTERM to each service process group, waits up to 3s, then sends SIGKILL if needed. State is removed after stop.
 
 ## Installation
@@ -396,6 +420,7 @@ go run ./cmd/devctl --help
 | `--skip-validate` | Skip validate.run |
 | `--skip-build` | Skip build.run |
 | `--skip-prepare` | Skip prepare.run |
+| `--step <name>` | Select a named build/prepare step on `devctl build` or `devctl prepare` (repeatable) |
 
 ## Plugin Protocol Details
 

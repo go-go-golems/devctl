@@ -392,6 +392,40 @@ These ops are for deterministic side-effect steps (compilation, generating files
 - if `ctx.dry_run` is true, do not perform side effects.
 - still report which commands you would have run (to stderr) and return `ok=true` if the plan is valid.
 
+**Standalone phase commands:**
+
+Developers can run these phases directly with `devctl build` and `devctl prepare`. devctl first runs `config.mutate`, then sends the same `build.run` or `prepare.run` request used by `devctl up`. If the user passes `--step name`, devctl sends those names in `input.steps`; your plugin should treat an empty list as “run the default/all relevant steps” and a non-empty list as a request to run only those named steps when possible.
+
+```bash
+devctl build --timeout 10m
+devctl build --step backend --step frontend
+devctl prepare --step pnpm-install
+```
+
+**Progress and logs for long-running steps:**
+
+Keep stdout reserved for protocol frames. If a build, install, migration, or code-generation command takes a while, stream human-readable progress to stderr. devctl reads plugin stderr while the request is running, so operators can watch progress without corrupting the NDJSON protocol on stdout.
+
+A safe Python pattern is to pipe subprocess output to stderr while emitting exactly one JSON response on stdout:
+
+```python
+def run_streaming(argv, cwd):
+    proc = subprocess.Popen(
+        argv,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    for line in proc.stdout:
+        sys.stderr.write(line)
+        sys.stderr.flush()
+    return proc.wait()
+```
+
+Avoid `print()` for progress unless it writes to stderr. Any non-JSON text on stdout is protocol contamination and will fail the plugin.
+
 ### 6.4. `launch.plan`: describe services devctl should supervise
 
 The launch plan is what devctl turns into processes, logs, health checks, and `devctl status/logs/down`. In practice, this is where plugins earn their keep: once the plan is correct, devctl can manage the whole environment consistently.

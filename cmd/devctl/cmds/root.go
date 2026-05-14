@@ -8,6 +8,9 @@ import (
 func AddCommands(root *cobra.Command) error {
 	root.AddCommand(dev.NewCmd())
 	root.AddCommand(newPlanCmd())
+	root.AddCommand(newBuildCmd())
+	root.AddCommand(newPrepareCmd())
+	root.AddCommand(newValidateCmd())
 	root.AddCommand(newPluginsCmd())
 	root.AddCommand(newProfilesCmd())
 

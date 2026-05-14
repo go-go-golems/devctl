@@ -51,6 +51,12 @@ topics:
       description: Process supervision
     - slug: restart
       description: Service restart and individual control
+    - slug: build
+      description: 'Topic for DEVCTL-PHASE-VERBS ticket: build'
+    - slug: cli
+      description: 'Topic for DEVCTL-PHASE-VERBS ticket: cli'
+    - slug: workflow
+      description: 'Topic for DEVCTL-PHASE-VERBS ticket: workflow'
 docTypes:
     - slug: index
       description: Ticket index document

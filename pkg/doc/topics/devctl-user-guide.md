@@ -139,7 +139,9 @@ Make it executable: `chmod +x devctl-plugin.py`
 
 ```bash
 devctl plugins list   # Verify plugin loads correctly
-devctl plan           # See what would run (no side effects)
+devctl plan           # See what would run (no services started)
+devctl build          # Optional: run build.run without starting services
+devctl validate       # Optional: check prerequisites without starting services
 devctl up             # Start everything
 devctl status         # What's running?
 devctl logs --service api --follow   # Tail logs
@@ -150,7 +152,7 @@ That's it. You now have a dev environment that anyone can start with `devctl up`
 
 ## The CLI: your daily workflow
 
-devctl commands are designed for a simple, repeatable workflow: **plan → up → observe → down**.
+devctl commands are designed for a simple, repeatable workflow: **plan → up → observe → down**. When you need finer control, you can also run individual phases such as **build**, **prepare**, and **validate** before `up`.
 
 ### Inspect before running
 
@@ -158,6 +160,19 @@ devctl commands are designed for a simple, repeatable workflow: **plan → up �
 devctl plugins list   # What plugins are configured?
 devctl plan           # What config and services would be created?
 ```
+
+### Run one pipeline phase
+
+Use standalone phase commands when a step is expensive, flaky, or useful in CI. Each command runs `config.mutate` first, then the requested phase, and prints JSON containing the mutated config and phase result.
+
+```bash
+devctl build --timeout 10m                    # Run build.run only
+devctl build --step backend --timeout 10m     # Ask for selected build steps
+devctl prepare --step pnpm-install            # Run prepare.run only
+devctl validate                               # Run validate.run only; non-zero if invalid
+```
+
+For long-running builds, increase `--timeout`. Plugins should stream human-readable progress to stderr; protocol stdout must stay NDJSON-only.
 
 ### Start and observe
 
@@ -261,6 +276,7 @@ devctl has a small set of “repo context” flags that apply to most verbs. The
 ```bash
 devctl status --repo-root /path/to/repo
 devctl plan --repo-root /path/to/repo --timeout 10s
+devctl build --repo-root /path/to/repo --timeout 10m
 ```
 
 | Flag | Purpose |
@@ -274,6 +290,7 @@ devctl plan --repo-root /path/to/repo --timeout 10s
 | `--skip-validate` | Skip validate.run |
 | `--skip-build` | Skip build.run |
 | `--skip-prepare` | Skip prepare.run |
+| `--step <name>` | Select a named build/prepare step for `devctl build` or `devctl prepare` |
 | `--strict` | Error on service/config collisions instead of "last wins" |
 
 ## The TUI: an always-on dashboard
