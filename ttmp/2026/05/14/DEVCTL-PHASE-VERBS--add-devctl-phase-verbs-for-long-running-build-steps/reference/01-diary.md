@@ -13,10 +13,20 @@ Owners: []
 RelatedFiles:
     - Path: ../../../../../../../../../2026-05-13/coinvault-loop-analysis/pinocchio/cmd/web-chat/plugins/webchat.py
       Note: Motivating plugin and long-running build behavior
+    - Path: README.md
+      Note: User-facing documentation for phase commands (commit c3606e7)
+    - Path: cmd/devctl/cmds/phase.go
+      Note: Implemented standalone build/prepare/validate phase commands (commit 9f82a09)
+    - Path: cmd/devctl/cmds/phase_test.go
+      Note: Command-level coverage for phase verbs
     - Path: cmd/devctl/cmds/plan.go
       Note: Existing partial phase command used as design template
     - Path: cmd/devctl/cmds/up.go
       Note: Full up pipeline and existing build/prepare flags shape the phase verb design
+    - Path: pkg/doc/topics/devctl-plugin-authoring.md
+      Note: Plugin stderr progress guidance for long-running phases (commit c3606e7)
+    - Path: pkg/doc/topics/devctl-user-guide.md
+      Note: Built-in user guide phase command documentation (commit c3606e7)
     - Path: pkg/engine/pipeline.go
       Note: Engine phase API and merge semantics for build/prepare/validate/launch-plan
     - Path: pkg/runtime/client.go
@@ -28,6 +38,11 @@ LastUpdated: 2026-05-14T14:30:00-04:00
 WhatFor: Use to understand how the DEVCTL-PHASE-VERBS design was produced and what evidence shaped it.
 WhenToUse: When continuing implementation or reviewing the design rationale.
 ---
+
+
+
+
+
 
 
 
@@ -416,3 +431,115 @@ I also updated the built-in user guide and plugin authoring guide. The user guid
 
 ### Technical details
 - The plugin authoring guide now includes a Python `subprocess.Popen(... stdout=PIPE, stderr=STDOUT ...)` pattern that forwards lines to `sys.stderr` and returns one protocol response on stdout.
+
+## Step 6: Ran full validation and updated ticket relationships
+
+I ran the full Go test suite after the code and documentation commits. The suite passed, so the core implementation and docs are ready for ticket validation and final reMarkable upload.
+
+I also related the implementation and documentation files back to the ticket and updated the ticket changelog with the implementation commit hashes. This makes the ticket useful as a historical record, not only as a design document.
+
+### Prompt Context
+
+**User prompt (verbatim):** (same as Step 3)
+
+**Assistant interpretation:** Finish implementation validation and keep the ticket bookkeeping current.
+
+**Inferred user intent:** The user wants evidence that the feature works and a clean trail from ticket to commits.
+
+**Commit (code):** pending — ticket closeout commit.
+
+### What I did
+- Ran `go test ./... -count=1`.
+- Related the new implementation and documentation files to the design doc and diary with `docmgr doc relate`.
+- Added changelog entries for:
+  - `9f82a09` — `feat: add devctl phase commands`
+  - `c3606e7` — `docs: document devctl phase commands`
+- Appended an implementation outcome section to the design document.
+- Checked off the full test and bookkeeping tasks in `tasks.md`.
+
+### Why
+- Full-suite validation catches integration failures that focused command tests may miss.
+- Ticket relationships and changelog entries make the work easy to audit later.
+
+### What worked
+- `go test ./... -count=1` passed.
+- `docmgr doc relate` successfully added relationships for new source and documentation files.
+
+### What didn't work
+- N/A.
+
+### What I learned
+- The phase command changes do not require changes outside `cmd/devctl/cmds` for core behavior.
+- Documentation changes are independent of command tests, so they were kept in a separate commit.
+
+### What was tricky to build
+- Keeping docs and ticket state synchronized across multiple commits requires deliberately updating `tasks.md`, changelog, and diary after each milestone.
+
+### What warrants a second pair of eyes
+- The new helper in `phase.go` duplicates some behavior from `plan.go`; a future cleanup could make `plan` use the same helper.
+
+### What should be done in the future
+- Validate manually against the Pinocchio repo once the updated devctl binary is installed or run from source.
+- Optionally patch Pinocchio’s plugin to stream subprocess output and relax its internal timeouts.
+
+### Code review instructions
+- Use the commit list in the implementation outcome section to review code and docs separately.
+- Re-run `go test ./... -count=1` before merging if any follow-up changes are made.
+
+### Technical details
+- Full test command output reported all packages passing, including `cmd/devctl/cmds`, `pkg/engine`, `pkg/runtime`, `pkg/supervise`, and related packages.
+
+## Step 7: Validated docmgr state and uploaded the final implementation bundle
+
+I ran the docmgr doctor check after updating the ticket with implementation relationships and closeout notes. The ticket passed validation, then I uploaded a final implementation bundle to reMarkable and verified it in the remote folder.
+
+This finalizes the ticket deliverable: it now contains the original design, implementation outcome, diary, tasks, changelog, validation evidence, and links to the relevant code/docs.
+
+### Prompt Context
+
+**User prompt (verbatim):** (same as Step 3)
+
+**Assistant interpretation:** Finish the closeout phase after implementation and documentation are complete.
+
+**Inferred user intent:** The user wants the completed work packaged and delivered in the same docmgr/reMarkable workflow as the initial design.
+
+**Commit (code):** pending — ticket closeout commit.
+
+### What I did
+- Ran `docmgr doctor --ticket DEVCTL-PHASE-VERBS --stale-after 30`.
+- Ran `remarquee upload bundle --dry-run ... --name "DEVCTL-PHASE-VERBS implementation bundle" --remote-dir "/ai/2026/05/14/DEVCTL-PHASE-VERBS" --toc-depth 2`.
+- Ran the real `remarquee upload bundle ...` command.
+- Verified with `remarquee cloud ls /ai/2026/05/14/DEVCTL-PHASE-VERBS --long --non-interactive`.
+- Marked the closeout upload/reporting tasks complete.
+
+### Why
+- The user explicitly asked to keep a diary and upload the ticket to reMarkable.
+- The final bundle is separate from the initial design bundle so the reMarkable folder preserves both the pre-implementation design snapshot and the implementation-complete package.
+
+### What worked
+- `docmgr doctor` passed.
+- The final bundle uploaded successfully.
+- Remote listing showed both `DEVCTL-PHASE-VERBS_design_bundle` and `DEVCTL-PHASE-VERBS_implementation_bundle`.
+
+### What didn't work
+- N/A.
+
+### What I learned
+- The ticket/reMarkable workflow works well for both design-only and implementation-complete deliverables.
+
+### What was tricky to build
+- The final doc state changed after the doctor run because the upload task was checked off afterward, so the final commit should include the updated task/diary state and a final doctor re-run.
+
+### What warrants a second pair of eyes
+- The code is ready for review; no known failing tests remain.
+
+### What should be done in the future
+- Run the new `devctl build --timeout 10m` workflow manually against Pinocchio once desired.
+- Patch Pinocchio’s plugin if detailed subprocess progress is still needed.
+
+### Code review instructions
+- Review commits in order: planning docs, phase command implementation, user docs, ticket closeout.
+- Verify remote upload if needed with `remarquee cloud ls /ai/2026/05/14/DEVCTL-PHASE-VERBS --long --non-interactive`.
+
+### Technical details
+- Final reMarkable path: `/ai/2026/05/14/DEVCTL-PHASE-VERBS/DEVCTL-PHASE-VERBS_implementation_bundle`.

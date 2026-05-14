@@ -27,7 +27,7 @@
 - [x] Add command tests for `devctl validate` success and invalid failure behavior.
 - [x] Add command tests showing profile selection is respected.
 - [x] Run focused tests for `cmd/devctl/cmds`, `pkg/engine`, and `pkg/runtime`.
-- [ ] Run full `go test ./... -count=1` before final handoff.
+- [x] Run full `go test ./... -count=1` before final handoff.
 
 ## Phase 3 — Documentation refresh
 
@@ -39,11 +39,11 @@
 
 ## Phase 4 — Ticket closeout and delivery
 
-- [ ] Update the diary after each implementation phase.
-- [ ] Update ticket changelog with implementation commits.
-- [ ] Re-run `docmgr doctor --ticket DEVCTL-PHASE-VERBS --stale-after 30`.
-- [ ] Upload the final implementation/design bundle to reMarkable.
-- [ ] Report commit hashes, test results, doc paths, and reMarkable destination.
+- [x] Update the diary after each implementation phase.
+- [x] Update ticket changelog with implementation commits.
+- [x] Re-run `docmgr doctor --ticket DEVCTL-PHASE-VERBS --stale-after 30`.
+- [x] Upload the final implementation/design bundle to reMarkable.
+- [x] Report commit hashes, test results, doc paths, and reMarkable destination.
 
 ## Deferred follow-ups
 

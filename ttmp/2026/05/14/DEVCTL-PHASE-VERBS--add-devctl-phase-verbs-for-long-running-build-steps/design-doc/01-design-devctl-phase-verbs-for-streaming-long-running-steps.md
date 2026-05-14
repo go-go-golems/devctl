@@ -14,10 +14,20 @@ RelatedFiles:
     - Path: ../../../../../../../../../2026-05-13/coinvault-loop-analysis/pinocchio/.devctl.yaml
     - Path: ../../../../../../../../../2026-05-13/coinvault-loop-analysis/pinocchio/cmd/web-chat/plugins/webchat.py
       Note: Motivating plugin and long-running build behavior
+    - Path: README.md
+      Note: User-facing documentation for phase commands (commit c3606e7)
+    - Path: cmd/devctl/cmds/phase.go
+      Note: Implemented standalone build/prepare/validate phase commands (commit 9f82a09)
+    - Path: cmd/devctl/cmds/phase_test.go
+      Note: Command-level coverage for phase verbs
     - Path: cmd/devctl/cmds/plan.go
       Note: Existing partial phase command used as design template
     - Path: cmd/devctl/cmds/up.go
       Note: Full up pipeline and existing build/prepare flags shape the phase verb design
+    - Path: pkg/doc/topics/devctl-plugin-authoring.md
+      Note: Plugin stderr progress guidance for long-running phases (commit c3606e7)
+    - Path: pkg/doc/topics/devctl-user-guide.md
+      Note: Built-in user guide phase command documentation (commit c3606e7)
     - Path: pkg/engine/pipeline.go
       Note: Engine phase API and merge semantics for build/prepare/validate/launch-plan
     - Path: pkg/protocol/types.go
@@ -29,6 +39,11 @@ LastUpdated: 2026-05-14T14:30:00-04:00
 WhatFor: Use when implementing devctl build/prepare/validate/phase commands and shared pipeline command helpers.
 WhenToUse: Before changing devctl CLI phase orchestration or plugin progress streaming semantics.
 ---
+
+
+
+
+
 
 
 
@@ -685,3 +700,35 @@ Rejected for the first patch. The runtime already has stream support, but phase 
 - `/home/manuel/workspaces/2026-05-13/coinvault-loop-analysis/pinocchio/.devctl.yaml:1-27` — concrete target repo plugin config.
 - `/home/manuel/workspaces/2026-05-13/coinvault-loop-analysis/pinocchio/cmd/web-chat/plugins/webchat.py:102-123` — Pinocchio plugin capabilities and dynamic build commands.
 - `/home/manuel/workspaces/2026-05-13/coinvault-loop-analysis/pinocchio/cmd/web-chat/plugins/webchat.py:220-268` — Pinocchio `build.run` implementation and current internal timeout/captured output behavior.
+
+## Implementation outcome (2026-05-14)
+
+The first implementation pass shipped the recommended static phase verbs:
+
+- `devctl build` runs `config.mutate + build.run` and prints `{config, build}` as indented JSON.
+- `devctl prepare` runs `config.mutate + prepare.run` and prints `{config, prepare}` as indented JSON.
+- `devctl validate` runs `config.mutate + validate.run`, prints `{config, validate}`, and exits non-zero with `validation failed` when the merged validation result is invalid.
+
+Implementation files:
+
+- `/home/manuel/workspaces/2026-05-14/devctl-build/devctl/cmd/devctl/cmds/phase.go` — shared phase runner and new command implementations.
+- `/home/manuel/workspaces/2026-05-14/devctl-build/devctl/cmd/devctl/cmds/root.go` — command registration next to `plan`.
+- `/home/manuel/workspaces/2026-05-14/devctl-build/devctl/cmd/devctl/cmds/phase_test.go` — command-level tests for step selection, validation failure, JSON output, and profile filtering.
+- `/home/manuel/workspaces/2026-05-14/devctl-build/devctl/README.md` — README command table and standalone phase examples.
+- `/home/manuel/workspaces/2026-05-14/devctl-build/devctl/pkg/doc/topics/devctl-user-guide.md` — built-in user guide updates.
+- `/home/manuel/workspaces/2026-05-14/devctl-build/devctl/pkg/doc/topics/devctl-plugin-authoring.md` — plugin guidance for `input.steps` and stderr progress.
+
+Commits:
+
+- `9f82a091800971c4ecaa8209c1ace0a5b544f704` — `feat: add devctl phase commands`
+- `c3606e7f5faed52d7a4be630f60cbb796b79be9d` — `docs: document devctl phase commands`
+
+Validation:
+
+```bash
+go test ./cmd/devctl/cmds -count=1
+go test ./pkg/engine ./pkg/runtime -count=1
+go test ./... -count=1
+```
+
+All listed validation commands passed.

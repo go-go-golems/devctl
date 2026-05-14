@@ -17,3 +17,21 @@ Completed research/design package for devctl phase verbs and Pinocchio build use
 
 - /home/manuel/workspaces/2026-05-14/devctl-build/devctl/ttmp/2026/05/14/DEVCTL-PHASE-VERBS--add-devctl-phase-verbs-for-long-running-build-steps/design-doc/01-design-devctl-phase-verbs-for-streaming-long-running-steps.md — Primary design deliverable
 
+
+## 2026-05-14
+
+Implemented standalone devctl build/prepare/validate commands and tests (commit 9f82a09).
+
+### Related Files
+
+- /home/manuel/workspaces/2026-05-14/devctl-build/devctl/cmd/devctl/cmds/phase.go — New phase commands
+
+
+## 2026-05-14
+
+Updated README and built-in help docs for phase commands and stderr progress guidance (commit c3606e7).
+
+### Related Files
+
+- /home/manuel/workspaces/2026-05-14/devctl-build/devctl/README.md — Phase command documentation
+
