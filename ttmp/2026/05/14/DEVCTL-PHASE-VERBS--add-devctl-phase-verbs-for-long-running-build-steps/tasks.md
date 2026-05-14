@@ -31,11 +31,11 @@
 
 ## Phase 3 — Documentation refresh
 
-- [ ] Update `README.md` command examples and CLI command table with `build`, `prepare`, and `validate`.
-- [ ] Update `README.md` lifecycle/flag docs to explain standalone phase verbs and long-running build timeouts.
-- [ ] Update `pkg/doc/topics/devctl-user-guide.md` with standalone phase command usage.
-- [ ] Update `pkg/doc/topics/devctl-plugin-authoring.md` with guidance for streaming long-running build/prepare subprocess output to stderr.
-- [ ] Ensure docs clearly state that protocol stdout must remain NDJSON-only and progress belongs on stderr unless using explicit stream ops.
+- [x] Update `README.md` command examples and CLI command table with `build`, `prepare`, and `validate`.
+- [x] Update `README.md` lifecycle/flag docs to explain standalone phase verbs and long-running build timeouts.
+- [x] Update `pkg/doc/topics/devctl-user-guide.md` with standalone phase command usage.
+- [x] Update `pkg/doc/topics/devctl-plugin-authoring.md` with guidance for streaming long-running build/prepare subprocess output to stderr.
+- [x] Ensure docs clearly state that protocol stdout must remain NDJSON-only and progress belongs on stderr unless using explicit stream ops.
 
 ## Phase 4 — Ticket closeout and delivery
 

@@ -355,3 +355,64 @@ I also added command-level tests with a small Python plugin fixture. The tests v
 - `devctl build --step backend --step frontend` emits `{ "config": ..., "build": ... }`.
 - `devctl prepare --step pnpm-install` emits `{ "config": ..., "prepare": ... }`.
 - `devctl validate` emits `{ "config": ..., "validate": ... }` and returns `validation failed` if the merged validation result has `valid:false`.
+
+## Step 5: Updated README and help documentation for standalone phase verbs
+
+I updated user-facing documentation so the new commands are discoverable and the expected logging behavior is clear. The README now lists `devctl build`, `devctl prepare`, and `devctl validate` in the command table and includes examples for long-running builds with larger timeouts.
+
+I also updated the built-in user guide and plugin authoring guide. The user guide explains when to run one phase directly, while the plugin authoring guide explains how plugins should honor `input.steps` and stream long-running subprocess output to stderr without contaminating protocol stdout.
+
+### Prompt Context
+
+**User prompt (verbatim):** (same as Step 3)
+
+**Assistant interpretation:** Complete the documentation phase after implementing the commands.
+
+**Inferred user intent:** The user wants the feature to be usable and understandable from the README and devctl help docs, not just from code.
+
+**Commit (code):** pending — documentation update commit.
+
+### What I did
+- Updated `README.md`:
+  - Quick-start command examples.
+  - CLI command table.
+  - Standalone phase command section.
+  - Common flags with `--step` for build/prepare.
+- Updated `pkg/doc/topics/devctl-user-guide.md`:
+  - Daily workflow text.
+  - Standalone phase command examples.
+  - Common flag examples and `--step` row.
+- Updated `pkg/doc/topics/devctl-plugin-authoring.md`:
+  - Standalone build/prepare phase command notes.
+  - `input.steps` guidance.
+  - stderr streaming pattern for long-running subprocesses.
+- Checked off Phase 3 documentation tasks in `tasks.md`.
+
+### Why
+- `devctl build` solves a workflow problem, so the README needs to show the workflow directly.
+- Progress visibility depends on plugin behavior; plugin authors need explicit stderr guidance.
+
+### What worked
+- The docs already had sections for CLI commands, lifecycle, flags, and build/prepare schema, so the updates fit naturally.
+
+### What didn't work
+- N/A.
+
+### What I learned
+- The clearest documentation framing is: standalone phase commands run `config.mutate` first, then one downstream phase, and print JSON.
+
+### What was tricky to build
+- The docs need to be precise about what devctl can and cannot stream. devctl reads plugin stderr, but it cannot automatically stream subprocess output if the plugin captures it internally.
+
+### What warrants a second pair of eyes
+- Whether the README should mention `devctl build` in the initial quick-start flow or keep it as an advanced command. I added it as an optional/direct phase example.
+
+### What should be done in the future
+- If structured `build.stream` is implemented later, add a separate docs section rather than changing the stderr guidance.
+
+### Code review instructions
+- Review README first for the user-facing workflow.
+- Review `pkg/doc/topics/devctl-plugin-authoring.md` for correctness of protocol stdout/stderr guidance.
+
+### Technical details
+- The plugin authoring guide now includes a Python `subprocess.Popen(... stdout=PIPE, stderr=STDOUT ...)` pattern that forwards lines to `sys.stderr` and returns one protocol response on stdout.
