@@ -286,3 +286,72 @@ Then iplement them one by one, keeping a diary as you work, and committing at ap
 
 ### Technical details
 - The task file now includes a dedicated “Phase 3 — Documentation refresh” section covering `README.md`, `devctl-user-guide`, and `devctl-plugin-authoring`.
+
+## Step 4: Implemented and tested the core phase commands
+
+I added the first implementation of static phase verbs: `devctl build`, `devctl prepare`, and `devctl validate`. Each command shares the same repository loading, profile selection, plugin startup, strictness, dry-run, timeout, and `config.mutate` setup path before invoking its specific downstream engine phase.
+
+I also added command-level tests with a small Python plugin fixture. The tests verify that build and prepare pass selected step names through to the plugin, validate prints JSON and returns a non-zero error when invalid, and profile selection filters plugins before phase execution.
+
+### Prompt Context
+
+**User prompt (verbatim):** (same as Step 3)
+
+**Assistant interpretation:** Implement the phased plan one step at a time, starting with the core commands and tests.
+
+**Inferred user intent:** The user wants working CLI verbs, not only a design ticket.
+
+**Commit (code):** pending — core implementation commit.
+
+### What I did
+- Added `cmd/devctl/cmds/phase.go` with:
+  - `withPhaseRunner`
+  - `printIndentedJSON`
+  - `newBuildCmd`
+  - `newPrepareCmd`
+  - `newValidateCmd`
+- Updated `cmd/devctl/cmds/root.go` to register the new commands next to `plan`.
+- Added `cmd/devctl/cmds/phase_test.go` with command-level tests.
+- Ran:
+  - `gofmt -w cmd/devctl/cmds/phase.go cmd/devctl/cmds/phase_test.go`
+  - `go test ./cmd/devctl/cmds -count=1`
+  - `go test ./pkg/engine ./pkg/runtime -count=1`
+- Checked off Phase 1 and focused Phase 2 tasks in `tasks.md`.
+
+### Why
+- `up.go` already had the desired behavior buried inside the full lifecycle; exposing direct phase verbs lets operators run expensive build/prepare/validate phases independently.
+- Sharing setup through `withPhaseRunner` keeps the new commands consistent with `plan` and `up` for repo flags, profile filtering, strictness, dry-run, and timeout behavior.
+
+### What worked
+- The existing `engine.Pipeline` methods were sufficient; no engine or protocol changes were required.
+- The Python fixture made it easy to verify command behavior at the Cobra layer without adding persistent testdata.
+- Focused command, engine, and runtime tests passed.
+
+### What didn't work
+- N/A in this implementation step.
+
+### What I learned
+- The static phase verbs can be small because devctl already had most phase semantics in `pkg/engine`.
+- `validate` should print its JSON result before returning `validation failed`, matching the operator need to see details even when the command exits non-zero.
+
+### What was tricky to build
+- The helper needs to close plugin clients even when a phase fails. It mirrors the existing `up`/`plan` cleanup pattern by deferring `repository.CloseClients` under a timeout.
+- Tests need to exercise profile filtering through real repository loading rather than fake engine calls; otherwise they would not prove that `--profile` works on the new commands.
+
+### What warrants a second pair of eyes
+- Whether `printIndentedJSON` should replace duplicate JSON printing in `plan.go` and `up.go` in a later cleanup.
+- Whether `devctl build` should include the mutated `config` in output. It currently does, matching `devctl plan`.
+
+### What should be done in the future
+- Update README and help docs for the new commands.
+- Run the full repository test suite before final closeout.
+
+### Code review instructions
+- Start with `cmd/devctl/cmds/phase.go` and confirm `withPhaseRunner` matches the setup sequence in `plan.go`/`up.go`.
+- Review `cmd/devctl/cmds/phase_test.go` to confirm each user-facing behavior is covered.
+- Validate with `go test ./cmd/devctl/cmds ./pkg/engine ./pkg/runtime -count=1`.
+
+### Technical details
+- `devctl build --step backend --step frontend` emits `{ "config": ..., "build": ... }`.
+- `devctl prepare --step pnpm-install` emits `{ "config": ..., "prepare": ... }`.
+- `devctl validate` emits `{ "config": ..., "validate": ... }` and returns `validation failed` if the merged validation result has `valid:false`.

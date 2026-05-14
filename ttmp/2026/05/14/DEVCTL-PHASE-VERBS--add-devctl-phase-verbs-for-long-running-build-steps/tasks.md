@@ -13,20 +13,20 @@
 
 ## Phase 1 — Core phase command implementation
 
-- [ ] Add a shared repo/pipeline setup helper for command implementations that need `config.mutate` plus one downstream phase.
-- [ ] Add static `devctl build` command that runs `config.mutate + build.run`.
-- [ ] Add static `devctl prepare` command that runs `config.mutate + prepare.run`.
-- [ ] Add static `devctl validate` command that runs `config.mutate + validate.run` and exits non-zero when invalid.
-- [ ] Register the new phase commands next to `plan` in the root command registry.
-- [ ] Keep `devctl up` behavior and flags backward-compatible.
+- [x] Add a shared repo/pipeline setup helper for command implementations that need `config.mutate` plus one downstream phase.
+- [x] Add static `devctl build` command that runs `config.mutate + build.run`.
+- [x] Add static `devctl prepare` command that runs `config.mutate + prepare.run`.
+- [x] Add static `devctl validate` command that runs `config.mutate + validate.run` and exits non-zero when invalid.
+- [x] Register the new phase commands next to `plan` in the root command registry.
+- [x] Keep `devctl up` behavior and flags backward-compatible.
 
 ## Phase 2 — Tests and validation
 
-- [ ] Add command tests for `devctl build --step ...` and JSON output.
-- [ ] Add command tests for `devctl prepare --step ...` and JSON output.
-- [ ] Add command tests for `devctl validate` success and invalid failure behavior.
-- [ ] Add command tests showing profile selection is respected.
-- [ ] Run focused tests for `cmd/devctl/cmds`, `pkg/engine`, and `pkg/runtime`.
+- [x] Add command tests for `devctl build --step ...` and JSON output.
+- [x] Add command tests for `devctl prepare --step ...` and JSON output.
+- [x] Add command tests for `devctl validate` success and invalid failure behavior.
+- [x] Add command tests showing profile selection is respected.
+- [x] Run focused tests for `cmd/devctl/cmds`, `pkg/engine`, and `pkg/runtime`.
 - [ ] Run full `go test ./... -count=1` before final handoff.
 
 ## Phase 3 — Documentation refresh
