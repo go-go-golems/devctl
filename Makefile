@@ -59,3 +59,11 @@ devctl_BINARY=$(shell which devctl)
 install:
 	go build -o ./dist/devctl ./cmd/devctl && \
 		cp ./dist/devctl $(devctl_BINARY)
+
+.PHONY: logcopter-generate
+logcopter-generate:
+	GOWORK=off go tool logcopter-gen -include-main -var zlog -area-prefix go-go-golems.devctl -strip-prefix github.com/go-go-golems/devctl ./cmd/... ./pkg/...
+
+.PHONY: logcopter-check
+logcopter-check:
+	GOWORK=off go tool logcopter-gen -include-main -var zlog -area-prefix go-go-golems.devctl -strip-prefix github.com/go-go-golems/devctl -check ./cmd/... ./pkg/...
