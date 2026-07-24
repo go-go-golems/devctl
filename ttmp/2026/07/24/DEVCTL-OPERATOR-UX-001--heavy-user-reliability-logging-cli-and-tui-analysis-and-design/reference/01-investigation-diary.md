@@ -2297,3 +2297,73 @@ feature, not a transitional compatibility path. Remaining work includes
 provider-qualified inspection/execution, exact collision/help-order
 contracts, stale-cache runtime cases, and documentation of the refresh and
 execution trust boundaries.
+
+## Step 17 — Make catalog collisions inspectable and executable
+
+I audited the automatic command-injection path as a retained public feature.
+The first material gap was in conflict handling. Catalog generation detected
+ambiguous names, but refresh refused to persist the catalog. That made the
+documented provider-qualified escape hatch impossible for commands discovered
+from handshakes: neither inspection nor explicit execution could recover the
+provider metadata after the conflict.
+
+Refresh now persists a structurally valid conflict catalog atomically and
+returns `ErrCatalogConflict` after the write. Normal top-level injection still
+refuses the ambiguous name. The catalog remains available to:
+
+- `devctl plugins commands`, which displays every contender;
+- `devctl plugins inspect PLUGIN`, which emits Glazed rows without starting a
+  provider; and
+- `devctl plugins run PLUGIN COMMAND -- ARGS...`, which selects the requested
+  provider explicitly and forwards the remaining argument bytes unchanged.
+
+I extended the local Glazed adapter with two small optional interfaces for
+commands that need Cobra positional validation. `plugins inspect` therefore
+keeps the exact positional syntax from the design while still using Glazed
+for JSON, YAML, CSV, table, and template output.
+
+Catalog validation now checks conflict entries instead of trusting them
+merely because the conflict map is nonempty. It rejects:
+
+- a map key that differs from the embedded command name;
+- missing providers or mismatched fingerprints;
+- invalid names;
+- empty conflict lists; and
+- duplicate or nondeterministically ordered providers.
+
+Runtime handshake verification now includes commands held in the conflict
+map. This is necessary for provider-qualified execution: a provider's complete
+advertised command set must match the cached set even when the selected name
+is ambiguous globally.
+
+The real-process CLI test creates two plugins that both advertise `echo`.
+Refresh starts both and reports the collision. Inspection reads the saved
+catalog and starts neither. Provider-qualified execution then starts `alpha`
+exactly once and leaves `beta` untouched.
+
+Finally, dynamic command failures now return a typed
+`PluginCommandExitError`. The root preserves valid plugin exit codes 1–125,
+while out-of-range values collapse to the general runtime exit 1.
+
+### Commands and results
+
+```text
+go test ./pkg/plugincatalog ./cmd/devctl/cmds
+  PASS
+
+go test ./cmd/devctl/... ./pkg/plugincatalog
+  first run: compile failure because main_test.go lacked the cmds import
+
+go test ./cmd/devctl/... ./pkg/plugincatalog
+  PASS after adding the import
+```
+
+### Review focus
+
+- Confirm that saving a validated conflict catalog while returning a conflict
+  error is the desired operator contract for `plugins refresh`.
+- Review `catalogEntry` and `validateRuntimeCatalog` together; the former
+  selects one contender, while the latter still verifies that provider's
+  complete command handshake.
+- Inspect the real-binary marker assertions in `cli_contract_test.go`; these
+  are the side-effect boundary for inspection and qualified execution.
