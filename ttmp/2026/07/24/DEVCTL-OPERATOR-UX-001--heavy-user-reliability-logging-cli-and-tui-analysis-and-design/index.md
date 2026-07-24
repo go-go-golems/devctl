@@ -40,6 +40,14 @@ case study. All other changes remain proposed until reviewed.
 - **External Sources**: See frontmatter ExternalSources field
 - **Primary guide**: [devctl Heavy-User Operator Experience Analysis, Redesign, and Implementation Guide](./design-doc/01-devctl-heavy-user-operator-experience-analysis-redesign-and-implementation-guide.md)
 - **Investigation diary**: [Investigation Diary](./reference/01-investigation-diary.md)
+- **External source register**: [External Source Register](./sources/README.md)
+
+## Delivery
+
+- reMarkable document:
+  `DEVCTL-OPERATOR-UX-001 - devctl Heavy-User Operator Redesign.pdf`
+- reMarkable folder: `/ai/2026/07/24/DEVCTL-OPERATOR-UX-001`
+- Upload result: confirmed by `remarquee upload bundle` on 2026-07-24.
 
 ## Status
 

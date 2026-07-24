@@ -873,3 +873,127 @@ atomic run state
 
 Reordering frontend work before the controller would recreate the duplicated
 semantics this design removes.
+
+## Step 6: Validate, relate, and deliver the design
+
+This step attached authoritative source relations, validated the ticket and Go
+repository, rendered the primary guide, and uploaded it to reMarkable.
+
+### Prompt Context
+
+**User prompt (verbatim):**
+
+> Store in the ticket and the nupload to remarkable.
+
+**Assistant interpretation:** Keep the complete guide and audit trail in the
+devctl docmgr ticket, then deliver the primary guide as an annotation-friendly
+PDF with a confirmed remote destination.
+
+**Inferred user intent:** Make the document available both as versioned project
+documentation and as a readable review artifact.
+
+### What I did
+
+- Used `docmgr doc relate` to attach eleven current source files to the primary
+  guide with specific notes.
+- Used `docmgr meta update` to attach seven authoritative external URLs.
+- Ran `docmgr doctor --ticket DEVCTL-OPERATOR-UX-001`; every check passed.
+- Verified all tasks except the final delivery/closure task were checked.
+- Ran all four ticket-local probes during the investigation.
+- Ran `go test ./...`; every package passed.
+- Ran a reMarkable dry run with editor layout and ToC depth 2.
+- Rendered and uploaded the primary guide as:
+
+  ```text
+  /ai/2026/07/24/DEVCTL-OPERATOR-UX-001/
+    DEVCTL-OPERATOR-UX-001 - devctl Heavy-User Operator Redesign.pdf
+  ```
+
+- Received the confirmed uploader result:
+
+  ```text
+  OK: uploaded DEVCTL-OPERATOR-UX-001 - devctl Heavy-User Operator Redesign.pdf -> /ai/2026/07/24/DEVCTL-OPERATOR-UX-001
+  ```
+
+### Why
+
+Relations make the source basis discoverable through docmgr. A dry run checks
+input, name, layout, and destination without a remote mutation. The real
+uploader result is stronger delivery evidence than assuming a locally rendered
+PDF reached the device.
+
+### What worked
+
+- Docmgr resolved the repository-local `devctl/ttmp` root.
+- Doctor reported `All checks passed`.
+- The guide's related-file frontmatter was normalized to `repo://` paths.
+- The reMarkable renderer handled the 12,000-plus-word document, code blocks,
+  ASCII diagrams, and tables without reporting an error.
+- The upload completed in approximately fourteen seconds.
+- Current Go tests passed, including wrapper, supervisor, runtime, state, and
+  logjs packages.
+
+### What didn't work
+
+I first queried a nonexistent command:
+
+```text
+docmgr source --help
+Error: unknown command "source" for "docmgr"
+```
+
+The current CLI manages local captures through `docmgr import file` and
+frontmatter through `docmgr meta update`. The captures already existed in the
+ticket, so I used `meta update` for external URL registration and did not
+duplicate the files through import.
+
+### What I learned
+
+- `docmgr doctor` accepts ticket-local source registers and direct web captures
+  without requiring an import manifest.
+- Related-file updates also refresh document metadata timestamps.
+- The reMarkable bundle command can render a single explicit Markdown file,
+  which avoids bundling the diary and raw source captures into the reader
+  document.
+
+### What was tricky to build
+
+- The delivery artifact needed only the polished guide. Bundling the full
+  ticket directory would have included thousands of lines of raw upstream
+  documentation and diluted the review document.
+- Closure metadata must follow confirmed upload, not precede it, so the final
+  task is not checked on intent alone.
+
+### What warrants a second pair of eyes
+
+- Open the uploaded PDF on reMarkable and spot-check table wrapping and long
+  code blocks; the renderer reported success, but device typography is a
+  visual review.
+- Review the process-identity and breaking-command decisions before creating
+  the implementation ticket.
+
+### What should be done in the future
+
+- Use the proposed Phase 0 downstream-consumer gate before deleting logjs or
+  old CLI spellings.
+- Create the implementation ticket only after design review comments are
+  incorporated.
+
+### Code review instructions
+
+- Run `docmgr doctor --ticket DEVCTL-OPERATOR-UX-001`.
+- Run `go test ./...`.
+- Inspect the guide's `RelatedFiles` and `ExternalSources` frontmatter.
+- Confirm the reMarkable document name and folder against the uploader result.
+
+### Technical details
+
+Validation evidence at delivery:
+
+```text
+docmgr doctor: all checks passed
+Go packages: go test ./... passed
+probe scripts: 01, 02, 03, and 04 executed
+reMarkable dry run: passed
+reMarkable upload: confirmed
+```

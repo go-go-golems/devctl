@@ -12,13 +12,44 @@ Topics:
 DocType: design-doc
 Intent: long-term
 Owners: []
-RelatedFiles: []
-ExternalSources: []
-Summary: "Intern-ready analysis and redesign of devctl's process supervision, logging, CLI, and TUI operator architecture."
-LastUpdated: 2026-07-24T13:22:12.13927521-04:00
-WhatFor: "Provide the technical basis and phased implementation contract for making devctl reliable, observable, ergonomic, and maintainable."
-WhenToUse: "Read before implementing changes to devctl service lifecycle, state, logs, commands, or terminal UI."
+RelatedFiles:
+    - Path: repo://cmd/devctl/cmds/logs.go
+      Note: Current CLI log reader and follower
+    - Path: repo://cmd/devctl/cmds/status.go
+      Note: Current Glazed-adjacent status output
+    - Path: repo://cmd/devctl/cmds/wrap_service.go
+      Note: Current wrapper, signal forwarding, and exit capture
+    - Path: repo://pkg/logjs/module.go
+      Note: Standalone parser evaluated for removal
+    - Path: repo://pkg/state/state.go
+      Note: Current persistent state and PID liveness model
+    - Path: repo://pkg/supervise/supervisor.go
+      Note: Current lifecycle, health, and process-group implementation
+    - Path: repo://pkg/tui/action_runner.go
+      Note: Duplicated TUI lifecycle control plane
+    - Path: repo://pkg/tui/models/root_model.go
+      Note: Current six-view routing and text-derived status
+    - Path: repo://pkg/tui/models/service_model.go
+      Note: Current TUI file-tail implementation
+    - Path: repo://pkg/tui/state_watcher.go
+      Note: Current snapshot, health, stats, and plugin polling
+    - Path: repo://pkg/tui/transform.go
+      Note: Current domain-to-UI transform and repeated state events
+ExternalSources:
+    - https://f1bonacc1.github.io/process-compose/tui/
+    - https://f1bonacc1.github.io/client/
+    - https://f1bonacc1.github.io/process-compose/launcher/
+    - https://docs.docker.com/reference/cli/docker/compose/logs/
+    - https://docs.docker.com/reference/cli/docker/compose/ps/
+    - https://docs.tilt.dev/cli/tilt_logs.html
+    - https://www.freedesktop.org/software/systemd/man/latest/journalctl.html
+Summary: Intern-ready analysis and redesign of devctl's process supervision, logging, CLI, and TUI operator architecture.
+LastUpdated: 2026-07-24T13:49:58.732286898-04:00
+WhatFor: Provide the technical basis and phased implementation contract for making devctl reliable, observable, ergonomic, and maintainable.
+WhenToUse: Read before implementing changes to devctl service lifecycle, state, logs, commands, or terminal UI.
 ---
+
+
 
 # devctl Heavy-User Operator Experience Analysis, Redesign, and Implementation Guide
 

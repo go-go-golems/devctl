@@ -62,3 +62,13 @@ Step 5: completed the target state/run/log/controller architecture, breaking CLI
 - pkg/supervise/supervisor.go — Current lifecycle implementation mapped to proposed supervisor primitives
 - cmd/devctl/cmds/common.go — Existing shared Glazed repository section retained in the design
 - pkg/tui/models/root_model.go — Current six-view root mapped to the proposed three-view typed model
+
+## 2026-07-24
+
+Step 6: related eleven source files and seven external references, passed docmgr doctor and go test ./..., and uploaded the primary guide to reMarkable
+
+### Delivery
+
+- Document: DEVCTL-OPERATOR-UX-001 - devctl Heavy-User Operator Redesign.pdf
+- Remote folder: /ai/2026/07/24/DEVCTL-OPERATOR-UX-001
+- Result: upload confirmed
