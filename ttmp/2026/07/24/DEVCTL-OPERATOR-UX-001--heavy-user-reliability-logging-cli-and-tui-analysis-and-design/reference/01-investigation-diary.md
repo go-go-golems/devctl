@@ -2756,6 +2756,36 @@ git diff --check
   PASS
 ```
 
+## Step 30 — Run the release build and capture generated package loggers
+
+`make build` runs both `go generate ./...` and `go build ./...`. The build
+passed, but generation exposed five missing Logcopter artifacts for packages
+introduced during this ticket:
+
+```text
+pkg/operator/logcopter.go
+pkg/plugincatalog/logcopter.go
+pkg/runlog/logcopter.go
+pkg/runstate/logcopter.go
+pkg/tui/logcopter.go
+```
+
+These are deterministic files produced by the repository's existing
+`logcopter-gen` directive. Leaving them untracked would make a clean checkout
+dirty after the documented build target, so I retained them.
+
+I also ran the high-risk concurrency packages under the race detector. This
+covers repository locking and atomic state, log following, controller event
+delivery, and the TUI's asynchronous operations.
+
+```text
+make build
+  PASS
+
+go test -race ./pkg/operator/... ./pkg/runstate/... ./pkg/runlog/... ./pkg/tui/...
+  PASS
+```
+
 ## Step 29 — Mark historical implementation tickets as superseded
 
 The design audit identified thirteen earlier tickets whose open tasks or
