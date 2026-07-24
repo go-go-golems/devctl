@@ -2399,3 +2399,18 @@ JSON remains an array.
 go test ./cmd/devctl/cmds
   PASS
 ```
+
+## Step 19 — Extend process-level CLI boundary coverage
+
+I extended the real executable contract rather than relying only on command
+unit tests. It now proves:
+
+- `logs --follow --until 1m` exits 2, carries `E_USAGE`, and prints the
+  conflict exactly once; and
+- shell completion reads no dynamic catalog and starts no configured plugin,
+  matching the existing root-help and typo side-effect assertions.
+
+```text
+go test ./cmd/devctl/cmds
+  PASS
+```
