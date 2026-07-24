@@ -2436,6 +2436,61 @@ rendered by the embedded Glazed help system with terminal-width wrapping, so
 the golden test should normalize presentation whitespace while comparing the
 exact ordered command names and descriptions.
 
+## Step 23 — Implement canonical incremental stream rows and strict JSONL
+
+I replaced `stream start`'s separate human and raw-JSON loops with one
+`StreamCommand` that emits canonical rows. The first row identifies the
+stream; every later row carries one protocol event:
+
+```text
+stream row:
+  kind=stream, plugin_id, op, stream_id
+
+event row:
+  kind=event, plugin_id, op, stream_id,
+  event, level, message, fields, ok
+```
+
+The command now has two presentation paths over those same rows:
+
+- default table output selects an incremental human processor that preserves
+  the concise event-feed format; and
+- machine output uses the ordinary Glazed processor and its row
+  transformations.
+
+The adapter gained an optional processor-builder hook so genuinely unbounded
+commands can select an incremental renderer without weakening finite command
+behavior. Context cancellation is checked while waiting for every event, and
+all rejected/non-selected clients use bounded shutdown contexts.
+
+During verification I found that Glazed's built-in individual-row JSON
+formatter pretty-prints objects over multiple lines. My earlier Step 18 claim
+that setting `output-as-objects` alone produced strict JSON Lines was
+incorrect. I introduced a compact `jsonLinesFormatter` instead. It is attached
+as a Glazed row middleware after all standard select/rename/filter
+middlewares, so each processed row is encoded by exactly one `Encoder.Encode`
+call. Both followed logs and protocol streams use it.
+
+The first end-to-end human test appeared to emit JSON because the phase-test
+helper had been changed to append `--output json` to every invocation and was
+reused by the stream test. Per the debugging limit I stopped that pass. On the
+fresh pass I separated `runPhaseCommand` from the general stream runner.
+
+Tests now prove:
+
+- two formatter rows produce exactly two independently parseable physical
+  lines;
+- a real stream plugin produces a four-line JSONL feed (header, two logs,
+  end); and
+- the same plugin with default output produces the expected incremental human
+  feed.
+
+```text
+go test ./cmd/devctl/cmds -run \
+  'TestStreamCommand|TestJSONLines|TestLogs|TestPhaseCommands'
+  PASS
+```
+
 ## Step 20 — Migrate profile inspection to structured rows
 
 I replaced the `profiles list` tabwriter and the special `profiles active`
