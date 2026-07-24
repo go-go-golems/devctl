@@ -1,0 +1,8 @@
+expected_appended_line=append-visible
+expected_after_truncate=after-truncate
+expected_after_rotation=after-rotate
+captured_stdout_begin
+append-visible
+captured_stdout_end
+captured_stderr_begin
+captured_stderr_end

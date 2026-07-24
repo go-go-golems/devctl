@@ -1,0 +1,654 @@
+revision
+3adb8d71d735332080ad73ffb55a14d7387d4808
+
+package_line_counts
+     1 pkg/logjs/doc.go
+     6 pkg/logjs/helpers.go
+     7 cmd/devctl/cmds/logcopter.go
+     7 pkg/logjs/logcopter.go
+     7 pkg/state/logcopter.go
+     7 pkg/supervise/logcopter.go
+     7 pkg/tui/logcopter.go
+     7 pkg/tui/models/logcopter.go
+     7 pkg/tui/widgets/logcopter.go
+     8 pkg/tui/action_events.go
+    12 pkg/tui/root_options.go
+    21 pkg/tui/domain.go
+    28 cmd/devctl/cmds/root.go
+    34 pkg/tui/envelope.go
+    43 cmd/devctl/cmds/down.go
+    46 pkg/logjs/types.go
+    46 pkg/tui/stream_events.go
+    47 pkg/tui/topics.go
+    48 pkg/tui/actions.go
+    49 pkg/tui/stream_actions.go
+    50 pkg/tui/bus.go
+    56 pkg/state/exit_info.go
+    58 cmd/devctl/cmds/stop_service.go
+    62 pkg/tui/widgets/footer.go
+    63 pkg/tui/state_events.go
+    65 pkg/state/tail.go
+    82 cmd/devctl/cmds/profiles_test.go
+    85 cmd/devctl/cmds/start_service.go
+    86 cmd/devctl/cmds/restart.go
+    90 pkg/tui/msgs.go
+    92 pkg/tui/widgets/progress.go
+    94 cmd/devctl/cmds/profiles.go
+    98 cmd/devctl/cmds/plan.go
+   102 pkg/tui/forward.go
+   105 cmd/devctl/cmds/wrap_service_test.go
+   108 pkg/state/sanitize.go
+   111 pkg/tui/pipeline_events.go
+   115 pkg/logjs/fanout.go
+   121 pkg/tui/widgets/box.go
+   128 cmd/devctl/cmds/plugins.go
+   134 cmd/devctl/cmds/tui.go
+   152 pkg/state/state.go
+   152 pkg/state/state_test.go
+   153 pkg/tui/widgets/table.go
+   156 cmd/devctl/cmds/status.go
+   161 pkg/logjs/fanout_test.go
+   167 cmd/devctl/cmds/dynamic_commands_test.go
+   169 cmd/devctl/cmds/phase.go
+   176 pkg/tui/widgets/header.go
+   179 cmd/devctl/cmds/logs.go
+   190 cmd/devctl/cmds/dynamic_commands.go
+   190 pkg/tui/transform.go
+   191 pkg/supervise/supervisor_test.go
+   202 cmd/devctl/cmds/wrap_service.go
+   216 cmd/devctl/cmds/phase_test.go
+   217 cmd/devctl/cmds/stream.go
+   239 cmd/devctl/cmds/common.go
+   273 pkg/logjs/module_test.go
+   274 cmd/devctl/cmds/up.go
+   354 pkg/tui/models/plugin_model.go
+   388 pkg/tui/stream_runner.go
+   450 pkg/tui/state_watcher.go
+   463 pkg/tui/models/streams_model.go
+   483 pkg/supervise/supervisor.go
+   599 pkg/tui/models/eventlog_model.go
+   600 pkg/tui/models/root_model.go
+   695 pkg/logjs/module.go
+   738 pkg/tui/models/pipeline_model.go
+   749 pkg/tui/action_runner.go
+   821 pkg/tui/models/dashboard_model.go
+   923 pkg/tui/models/service_model.go
+ 13063 total
+
+public_and_internal_symbols
+cmd/devctl/cmds/status.go:22:type StatusCommand struct {
+cmd/devctl/cmds/status.go:28:type StatusSettings struct {
+cmd/devctl/cmds/status.go:32:func NewStatusCommand() (*StatusCommand, error) {
+cmd/devctl/cmds/status.go:55:func (c *StatusCommand) RunIntoWriter(ctx context.Context, vals *values.Values, w io.Writer) error {
+cmd/devctl/cmds/status.go:149:func newStatusCmd() *cobra.Command {
+cmd/devctl/cmds/phase.go:18:type phaseRunner struct {
+cmd/devctl/cmds/phase.go:24:func withPhaseRunner(cmd *cobra.Command, fn func(context.Context, *phaseRunner, patch.Config) error) error {
+cmd/devctl/cmds/phase.go:77:func printIndentedJSON(w io.Writer, v any) error {
+cmd/devctl/cmds/phase.go:86:func newBuildCmd() *cobra.Command {
+cmd/devctl/cmds/phase.go:113:func newPrepareCmd() *cobra.Command {
+cmd/devctl/cmds/phase.go:140:func newValidateCmd() *cobra.Command {
+cmd/devctl/cmds/start_service.go:16:func newStartServiceCmd() *cobra.Command {
+cmd/devctl/cmds/restart.go:16:func newRestartCmd() *cobra.Command {
+cmd/devctl/cmds/plan.go:17:func newPlanCmd() *cobra.Command {
+cmd/devctl/cmds/logs.go:16:func newLogsCmd() *cobra.Command {
+cmd/devctl/cmds/logs.go:82:func followFile(ctx context.Context, path string, w io.Writer) error {
+cmd/devctl/cmds/logs.go:110:func writeTail(w io.Writer, path string, tail int) error {
+cmd/devctl/cmds/logs.go:121:func readTailLines(path string, tail int) ([]string, error) {
+cmd/devctl/cmds/logs.go:158:func splitLines(text string) []string {
+cmd/devctl/cmds/profiles_test.go:14:func TestProfilesActiveExplicitDefaultAndNoProfile(t *testing.T) {
+cmd/devctl/cmds/profiles_test.go:33:func TestProfilesListIncludesOverrideProfileAndActiveMarker(t *testing.T) {
+cmd/devctl/cmds/profiles_test.go:63:func executeProfilesCommand(t *testing.T, args ...string) string {
+cmd/devctl/cmds/profiles_test.go:75:func findLineContaining(s, needle string) string {
+cmd/devctl/cmds/stream.go:19:func newStreamCmd() *cobra.Command {
+cmd/devctl/cmds/stream.go:28:func newStreamStartCmd() *cobra.Command {
+cmd/devctl/cmds/stream.go:126:func loadStreamInput(inputJSON, inputFile string) (map[string]any, error) {
+cmd/devctl/cmds/stream.go:155:func selectStreamProvider(
+cmd/devctl/cmds/stream.go:197:func formatProtocolEvent(ev protocol.Event) string {
+cmd/devctl/cmds/dynamic_commands_test.go:14:func TestDynamicCommands_RegisterAndRun(t *testing.T) {
+cmd/devctl/cmds/dynamic_commands_test.go:44:func TestDynamicCommands_SkipsBuiltIns(t *testing.T) {
+cmd/devctl/cmds/dynamic_commands_test.go:78:func TestDynamicCommands_RespectsProfileFiltering(t *testing.T) {
+cmd/devctl/cmds/dynamic_commands_test.go:124:func TestDynamicCommands_SkipsWrapService(t *testing.T) {
+cmd/devctl/cmds/dynamic_commands_test.go:162:func findDevctlRootForTest(t *testing.T) string {
+cmd/devctl/cmds/tui.go:19:func newTuiCmd() *cobra.Command {
+cmd/devctl/cmds/common.go:20:type RepoSettings struct {
+cmd/devctl/cmds/common.go:29:type RepoContext struct {
+cmd/devctl/cmds/common.go:39:func (rc RepoContext) RequestMeta() runtime.RequestMeta {
+cmd/devctl/cmds/common.go:47:func repoContextFromSettings(settings RepoSettings, cwd string) (RepoContext, error) {
+cmd/devctl/cmds/common.go:87:func RepoContextFromParsedLayers(vals *values.Values) (RepoContext, error) {
+cmd/devctl/cmds/common.go:99:func RepoContextFromCobra(cmd *cobra.Command) (RepoContext, error) {
+cmd/devctl/cmds/common.go:146:func getRepoLayer() (*schema.SectionImpl, error) {
+cmd/devctl/cmds/common.go:199:func AddRepoFlags(cmd *cobra.Command) {
+cmd/devctl/cmds/common.go:205:type rootOptions struct {
+cmd/devctl/cmds/common.go:214:func getRootOptions(cmd *cobra.Command) (rootOptions, error) {
+cmd/devctl/cmds/common.go:229:func requestMetaFromRootOptions(opts rootOptions) (runtime.RequestMeta, error) {
+cmd/devctl/cmds/wrap_service_test.go:19:func TestWrapServiceForwardsSIGHUPWithoutKillingWrapper(t *testing.T) {
+cmd/devctl/cmds/wrap_service_test.go:75:func runWrapServiceTestHelper() {
+cmd/devctl/cmds/wrap_service_test.go:95:func bytesTrimSpace(value []byte) string {
+cmd/devctl/cmds/profiles.go:13:func newProfilesCmd() *cobra.Command {
+cmd/devctl/cmds/profiles.go:23:func newProfilesListCmd() *cobra.Command {
+cmd/devctl/cmds/profiles.go:67:func newProfilesActiveCmd() *cobra.Command {
+cmd/devctl/cmds/up.go:24:func newUpCmd() *cobra.Command {
+cmd/devctl/cmds/up.go:215:func stopFromState(ctx context.Context, opts rootOptions) error {
+cmd/devctl/cmds/up.go:232:func isInteractive(r io.Reader) bool {
+cmd/devctl/cmds/up.go:244:func promptConfirm(out io.Writer, in io.Reader, prompt string) (bool, error) {
+cmd/devctl/cmds/up.go:262:func countAliveFromState(repoRoot string) (int, error) {
+cmd/devctl/cmds/root.go:8:func AddCommands(root *cobra.Command) error {
+cmd/devctl/cmds/wrap_service.go:22:func newWrapServiceCmd() *cobra.Command {
+cmd/devctl/cmds/wrap_service.go:181:func parseEnvPairs(pairs []string) map[string]string {
+cmd/devctl/cmds/wrap_service.go:193:func mergeEnv(base []string, extra map[string]string) []string {
+cmd/devctl/cmds/down.go:12:func newDownCmd() *cobra.Command {
+cmd/devctl/cmds/phase_test.go:16:func TestPhaseCommands_BuildPassesStepsAndPrintsJSON(t *testing.T) {
+cmd/devctl/cmds/phase_test.go:38:func TestPhaseCommands_PreparePassesStepsAndPrintsJSON(t *testing.T) {
+cmd/devctl/cmds/phase_test.go:57:func TestPhaseCommands_ValidateSuccessAndFailure(t *testing.T) {
+cmd/devctl/cmds/phase_test.go:86:func TestPhaseCommands_RespectProfileSelection(t *testing.T) {
+cmd/devctl/cmds/phase_test.go:109:func phaseCommandFixture(t *testing.T, mode string) (string, string) {
+cmd/devctl/cmds/phase_test.go:122:func writePhasePlugin(t *testing.T, dir string) string {
+cmd/devctl/cmds/phase_test.go:172:func runDevctlCommand(t *testing.T, args ...string) (string, string, error) {
+cmd/devctl/cmds/phase_test.go:184:func decodePhaseOutput(t *testing.T, stdout string) map[string]any {
+cmd/devctl/cmds/phase_test.go:191:func nestedMap(t *testing.T, v map[string]any, keys ...string) map[string]any {
+cmd/devctl/cmds/phase_test.go:202:func nestedSlice(t *testing.T, v map[string]any, keys ...string) []any {
+cmd/devctl/cmds/phase_test.go:210:func nestedString(t *testing.T, v map[string]any, keys ...string) string {
+cmd/devctl/cmds/dynamic_commands.go:22:func AddDynamicPluginCommands(root *cobra.Command, args []string) error {
+cmd/devctl/cmds/dynamic_commands.go:142:func parseRepoArgs(args []string) (string, string, string, []string, error) {
+cmd/devctl/cmds/dynamic_commands.go:178:func rootHasCommand(root *cobra.Command, name string) bool {
+cmd/devctl/cmds/plugins.go:20:func newPluginsCmd() *cobra.Command {
+cmd/devctl/cmds/plugins.go:29:type PluginsListCommand struct {
+cmd/devctl/cmds/plugins.go:35:func NewPluginsListCommand() (*PluginsListCommand, error) {
+cmd/devctl/cmds/plugins.go:51:func (c *PluginsListCommand) RunIntoWriter(ctx context.Context, vals *values.Values, w io.Writer) error {
+cmd/devctl/cmds/plugins.go:121:func newPluginsListCmd() *cobra.Command {
+cmd/devctl/cmds/stop_service.go:14:func newStopServiceCmd() *cobra.Command {
+cmd/devctl/cmds/dev/smoketest/e2e.go:25:func newE2ECmd() *cobra.Command {
+cmd/devctl/cmds/dev/smoketest/e2e.go:182:func buildTestApp(ctx context.Context, devctlRoot string, pkg string, outPath string) error {
+cmd/devctl/cmds/dev/smoketest/e2e.go:193:func findFreeTCPPort() (int, error) {
+cmd/devctl/cmds/dev/smoketest/e2e.go:211:func assertServiceAlive(st *state.State, name string) error {
+cmd/devctl/cmds/dev/smoketest/e2e.go:223:func readServiceLog(st *state.State, name string, stderr bool) (string, error) {
+cmd/devctl/cmds/dev/smoketest/supervise.go:24:func newSuperviseCmd() *cobra.Command {
+cmd/devctl/cmds/dev/root.go:8:func NewCmd() *cobra.Command {
+cmd/devctl/cmds/dev/smoketest/failures.go:22:func newFailuresCmd() *cobra.Command {
+cmd/devctl/cmds/dev/smoketest/failures.go:54:func smoketestValidateFails(ctx context.Context) error {
+cmd/devctl/cmds/dev/smoketest/failures.go:104:func smoketestLaunchFails(ctx context.Context) error {
+cmd/devctl/cmds/dev/smoketest/failures.go:157:func smoketestPluginTimeout(ctx context.Context) error {
+cmd/devctl/cmds/dev/smoketest/failures.go:189:func startClients(ctx context.Context, factory *runtime.Factory, specs []runtime.PluginSpec, meta runtime.RequestMeta) ([]runtime.Client, error) {
+cmd/devctl/cmds/dev/smoketest/failures.go:202:func closeClients(ctx context.Context, clients []runtime.Client) {
+cmd/devctl/cmds/dev/smoketest/root.go:16:func NewCmd() *cobra.Command {
+cmd/devctl/cmds/dev/smoketest/helpers.go:9:func findDevctlRootFromCaller() string {
+cmd/devctl/cmds/dev/smoketest/logs.go:23:func newLogsCmd() *cobra.Command {
+cmd/devctl/cmds/dev/smoketest/logs.go:119:func buildLogSpewer(ctx context.Context, devctlRoot string, outPath string) error {
+cmd/devctl/cmds/dev/smoketest/logs.go:130:func followFile(ctx context.Context, path string, w io.Writer) error {
+pkg/logjs/module.go:19:type Module struct {
+pkg/logjs/module.go:40:type options struct {
+pkg/logjs/module.go:44:func ParseOptions(opts Options) (options, error) {
+pkg/logjs/module.go:56:func LoadFromFile(ctx context.Context, scriptPath string, opts Options) (*Module, error) {
+pkg/logjs/module.go:159:func (m *Module) Name() string {
+pkg/logjs/module.go:163:func (m *Module) Tag() string {
+pkg/logjs/module.go:170:func (m *Module) ScriptPath() string {
+pkg/logjs/module.go:174:func (m *Module) Stats() Stats {
+pkg/logjs/module.go:178:func (m *Module) Info() ModuleInfo {
+pkg/logjs/module.go:191:func (m *Module) Close(ctx context.Context) error {
+pkg/logjs/module.go:206:func (m *Module) ProcessLine(ctx context.Context, line string, source string, lineNumber int64) ([]*Event, []*ErrorRecord, error) {
+pkg/logjs/module.go:300:func trimTrailingNewline(s string) string {
+pkg/logjs/module.go:308:func (m *Module) buildContext(hook string, source string, lineNumber int64) *goja.Object {
+pkg/logjs/module.go:322:func (m *Module) newDate(t time.Time) goja.Value {
+pkg/logjs/module.go:331:func (m *Module) callHook(hook string, fn goja.Callable, args ...goja.Value) (goja.Value, error) {
+pkg/logjs/module.go:356:func (m *Module) callOnError(hook string, err error, payload goja.Value, ctxObj *goja.Object) {
+pkg/logjs/module.go:366:func (m *Module) ensureEventLike(v goja.Value) (goja.Value, bool, error) {
+pkg/logjs/module.go:384:func (m *Module) ensureEventLikes(v goja.Value) ([]goja.Value, bool, error) {
+pkg/logjs/module.go:427:func (m *Module) normalizeEvent(v goja.Value, source, raw string, lineNumber int64) (*Event, error) {
+pkg/logjs/module.go:493:func (m *Module) timestampToString(v goja.Value) (*string, error) {
+pkg/logjs/module.go:535:func enableConsole(vm *goja.Runtime) {
+pkg/logjs/module.go:556:func joinArgs(args []goja.Value) []any {
+pkg/logjs/module.go:564:func isNullish(v goja.Value) bool {
+pkg/logjs/module.go:571:func isInterruptedByTimeout(err error) bool {
+pkg/logjs/module.go:581:func (m *Module) newErrorRecord(hook string, err error, source string, lineNumber int64, rawLine *string) *ErrorRecord {
+pkg/logjs/module.go:598:func injectGoHelpers(m *Module) error {
+pkg/logjs/types.go:3:type Event struct {
+pkg/logjs/types.go:14:type Stats struct {
+pkg/logjs/types.go:22:type Options struct {
+pkg/logjs/types.go:26:type ModuleInfo struct {
+pkg/logjs/types.go:37:type ErrorRecord struct {
+pkg/logjs/fanout.go:12:type Fanout struct {
+pkg/logjs/fanout.go:16:func LoadFanoutFromFiles(ctx context.Context, scriptPaths []string, opts Options) (*Fanout, error) {
+pkg/logjs/fanout.go:42:func (f *Fanout) Close(ctx context.Context) error {
+pkg/logjs/fanout.go:55:func (f *Fanout) ProcessLine(ctx context.Context, line string, source string, lineNumber int64) ([]*Event, []*ErrorRecord, error) {
+pkg/logjs/fanout.go:79:func injectTag(ev *Event, tag string, moduleName string) {
+pkg/logjs/fanout.go:108:func containsString(xs []string, want string) bool {
+pkg/logjs/module_test.go:12:func writeTempScript(t *testing.T, dir, contents string) string {
+pkg/logjs/module_test.go:19:func TestModule_Parse_Filter_Transform(t *testing.T) {
+pkg/logjs/module_test.go:63:func TestModule_Timestamp_Date_ToISOString(t *testing.T) {
+pkg/logjs/module_test.go:88:func TestModule_Timeout(t *testing.T) {
+pkg/logjs/module_test.go:117:func TestModule_Parse_ReturnArray_Transform_ReturnArray(t *testing.T) {
+pkg/logjs/module_test.go:147:func TestModule_ErrorRecord_OnParseThrow(t *testing.T) {
+pkg/logjs/module_test.go:174:func TestModule_Helper_ParseTimestamp_ToISOString(t *testing.T) {
+pkg/logjs/module_test.go:198:func TestModule_Helper_ParseTimestamp_Numeric(t *testing.T) {
+pkg/logjs/module_test.go:225:func TestModule_Helper_MultilineBuffer_AfterNegate(t *testing.T) {
+pkg/state/sanitize.go:28:func SanitizeEnv(env map[string]string) map[string]string {
+pkg/state/sanitize.go:45:func isSensitiveKey(key string) bool {
+pkg/state/sanitize.go:57:func FilterEnvForDisplay(env map[string]string, maxVars int) map[string]string {
+pkg/state/exit_info.go:12:type ExitInfo struct {
+pkg/state/exit_info.go:26:func WriteExitInfo(path string, info ExitInfo) error {
+pkg/state/exit_info.go:43:func ReadExitInfo(path string) (*ExitInfo, error) {
+pkg/supervise/supervisor_test.go:17:func TestSupervisor_StartStop_Sleep(t *testing.T) {
+pkg/supervise/supervisor_test.go:47:func TestSupervisor_StartServiceAlreadyRunningFails(t *testing.T) {
+pkg/supervise/supervisor_test.go:74:func TestSupervisor_StartDoesNotPersistRawSpecEnv(t *testing.T) {
+pkg/supervise/supervisor_test.go:107:func TestSupervisor_ReadinessTimeoutStopsServices(t *testing.T) {
+pkg/supervise/supervisor_test.go:152:func TestSupervisor_PostReadyCrashIsObservable(t *testing.T) {
+pkg/state/tail.go:12:func TailLines(path string, tailLines int, maxBytes int64) ([]string, error) {
+pkg/state/state.go:22:type State struct {
+pkg/state/state.go:29:type ServiceRecord struct {
+pkg/state/state.go:52:type ServiceSpecRecord struct {
+pkg/state/state.go:60:type HealthCheckRecord struct {
+pkg/state/state.go:67:func StatePath(repoRoot string) string {
+pkg/state/state.go:71:func LogsDir(repoRoot string) string {
+pkg/state/state.go:75:func Load(repoRoot string) (*State, error) {
+pkg/state/state.go:88:func Save(repoRoot string, s *State) error {
+pkg/state/state.go:106:func Remove(repoRoot string) error {
+pkg/state/state.go:117:func ProcessAlive(pid int) bool {
+pkg/state/state.go:134:func isZombie(pid int) bool {
+pkg/supervise/supervisor.go:20:type Options struct {
+pkg/supervise/supervisor.go:27:type Supervisor struct {
+pkg/supervise/supervisor.go:31:func New(opts Options) *Supervisor {
+pkg/supervise/supervisor.go:41:func (s *Supervisor) Start(ctx context.Context, plan engine.LaunchPlan) (*state.State, error) {
+pkg/supervise/supervisor.go:80:func (s *Supervisor) Stop(ctx context.Context, st *state.State) error {
+pkg/supervise/supervisor.go:99:func (s *Supervisor) StopService(ctx context.Context, st *state.State, name string) error {
+pkg/supervise/supervisor.go:128:func (s *Supervisor) StartService(ctx context.Context, st *state.State, spec engine.ServiceSpec) error {
+pkg/supervise/supervisor.go:182:func (s *Supervisor) RestartService(ctx context.Context, st *state.State, spec engine.ServiceSpec) error {
+pkg/supervise/supervisor.go:192:func (s *Supervisor) startService(ctx context.Context, svc engine.ServiceSpec) (state.ServiceRecord, error) {
+pkg/supervise/supervisor.go:324:func mergeEnv(base []string, extra map[string]string) []string {
+pkg/supervise/supervisor.go:335:func waitReady(ctx context.Context, svc engine.ServiceSpec) error {
+pkg/supervise/supervisor.go:361:func waitTCP(ctx context.Context, address string) error {
+pkg/supervise/supervisor.go:381:func waitHTTP(ctx context.Context, url string) error {
+pkg/supervise/supervisor.go:404:func terminatePIDGroup(ctx context.Context, pid int, timeout time.Duration) error {
+pkg/supervise/supervisor.go:468:func specRecordFromServiceSpec(svc engine.ServiceSpec, cwd string) *state.ServiceSpecRecord {
+pkg/state/state_test.go:11:func TestServiceSpecRecordRoundTrip(t *testing.T) {
+pkg/state/state_test.go:65:func TestLoadStateWithoutSpec(t *testing.T) {
+pkg/state/state_test.go:109:func TestSaveLoadWithSpec(t *testing.T) {
+pkg/tui/stream_events.go:9:type StreamStartRequest struct {
+pkg/tui/stream_events.go:16:type StreamStopRequest struct {
+pkg/tui/stream_events.go:21:type StreamStarted struct {
+pkg/tui/stream_events.go:29:type StreamEvent struct {
+pkg/tui/stream_events.go:38:type StreamEnded struct {
+pkg/tui/action_runner.go:21:func RegisterUIActionRunner(tuiCtx context.Context, bus *Bus, opts RootOptions) {
+pkg/tui/action_runner.go:114:func publishActionLog(pub message.Publisher, text string) error {
+pkg/tui/action_runner.go:127:func publishPipelineRunStarted(pub message.Publisher, ev PipelineRunStarted) error {
+pkg/tui/action_runner.go:139:func publishPipelineRunFinished(pub message.Publisher, ev PipelineRunFinished) error {
+pkg/tui/action_runner.go:151:func publishPipelinePhaseStarted(pub message.Publisher, ev PipelinePhaseStarted) error {
+pkg/tui/action_runner.go:163:func publishPipelinePhaseFinished(pub message.Publisher, ev PipelinePhaseFinished) error {
+pkg/tui/action_runner.go:175:func publishPipelineBuildResult(pub message.Publisher, ev PipelineBuildResult) error {
+pkg/tui/action_runner.go:187:func publishPipelinePrepareResult(pub message.Publisher, ev PipelinePrepareResult) error {
+pkg/tui/action_runner.go:199:func publishPipelineValidateResult(pub message.Publisher, ev PipelineValidateResult) error {
+pkg/tui/action_runner.go:211:func publishPipelineLaunchPlan(pub message.Publisher, ev PipelineLaunchPlan) error {
+pkg/tui/action_runner.go:223:func phasesForAction(kind ActionKind) []PipelinePhase {
+pkg/tui/action_runner.go:264:func runDown(ctx context.Context, opts RootOptions, pub message.Publisher, runID string) error {
+pkg/tui/action_runner.go:358:func runStopService(ctx context.Context, opts RootOptions, pub message.Publisher, runID string, serviceName string) error {
+pkg/tui/action_runner.go:415:func runRestartService(ctx context.Context, opts RootOptions, pub message.Publisher, runID string, serviceName string) error {
+pkg/tui/action_runner.go:480:func runUp(ctx context.Context, opts RootOptions, pub message.Publisher, runID string) error {
+pkg/tui/action_runner.go:739:func stepResultsFromEngine(in []engine.StepResult) []PipelineStepResult {
+pkg/tui/forward.go:11:func RegisterUIForwarder(bus *Bus, p *tea.Program) {
+pkg/tui/state_watcher.go:26:type pluginIntrospection struct {
+pkg/tui/state_watcher.go:34:type StateWatcher struct {
+pkg/tui/state_watcher.go:49:func (w *StateWatcher) Run(ctx context.Context) error {
+pkg/tui/state_watcher.go:82:func (w *StateWatcher) ensureIntrospectionState() {
+pkg/tui/state_watcher.go:91:func (w *StateWatcher) requestIntrospection() {
+pkg/tui/state_watcher.go:101:func (w *StateWatcher) RequestIntrospection() {
+pkg/tui/state_watcher.go:106:func (w *StateWatcher) introspectionLoop(ctx context.Context) {
+pkg/tui/state_watcher.go:117:func (w *StateWatcher) runIntrospection(ctx context.Context) {
+pkg/tui/state_watcher.go:162:func (w *StateWatcher) updateIntrospection(id string, info pluginIntrospection) {
+pkg/tui/state_watcher.go:168:func (w *StateWatcher) emitSnapshot(ctx context.Context) error {
+pkg/tui/state_watcher.go:249:func (w *StateWatcher) readPlugins() []PluginSummary {
+pkg/tui/state_watcher.go:310:func (w *StateWatcher) lookupIntrospection(id string) (pluginIntrospection, bool) {
+pkg/tui/state_watcher.go:318:func isCommandPath(path string) bool {
+pkg/tui/state_watcher.go:323:func (w *StateWatcher) checkHealth(services []state.ServiceRecord, alive map[string]bool) map[string]*HealthCheckResult {
+pkg/tui/state_watcher.go:352:func (w *StateWatcher) runHealthCheck(svc state.ServiceRecord) *HealthCheckResult {
+pkg/tui/state_watcher.go:397:func (w *StateWatcher) checkTCP(address string) error {
+pkg/tui/state_watcher.go:410:func (w *StateWatcher) checkHTTP(url string) error {
+pkg/tui/state_watcher.go:426:func (w *StateWatcher) publishSnapshot(snap StateSnapshot) error {
+pkg/tui/state_watcher.go:439:func (w *StateWatcher) publishServiceExit(ev ServiceExitObserved) error {
+pkg/tui/actions.go:12:type ActionKind string
+pkg/tui/actions.go:21:type ActionRequest struct {
+pkg/tui/actions.go:27:func PublishAction(pub message.Publisher, req ActionRequest) error {
+pkg/tui/bus.go:13:type Bus struct {
+pkg/tui/bus.go:21:func NewInMemoryBus() (*Bus, error) {
+pkg/tui/bus.go:36:func (b *Bus) AddHandler(name, topic string, handler func(*message.Message) error) {
+pkg/tui/bus.go:40:func (b *Bus) Run(ctx context.Context) error {
+pkg/tui/envelope.go:9:type Envelope struct {
+pkg/tui/envelope.go:14:func NewEnvelope(typ string, payload any) (Envelope, error) {
+pkg/tui/envelope.go:28:func (e Envelope) MarshalJSONBytes() ([]byte, error) {
+pkg/tui/msgs.go:3:type StateSnapshotMsg struct {
+pkg/tui/msgs.go:7:type EventLogAppendMsg struct {
+pkg/tui/msgs.go:11:type NavigateToServiceMsg struct {
+pkg/tui/msgs.go:15:type NavigateBackMsg struct{}
+pkg/tui/msgs.go:17:type ActionRequestMsg struct {
+pkg/tui/msgs.go:21:type StreamStartRequestMsg struct {
+pkg/tui/msgs.go:25:type StreamStopRequestMsg struct {
+pkg/tui/msgs.go:29:type PipelineRunStartedMsg struct {
+pkg/tui/msgs.go:33:type PipelineRunFinishedMsg struct {
+pkg/tui/msgs.go:37:type PipelinePhaseStartedMsg struct {
+pkg/tui/msgs.go:41:type PipelinePhaseFinishedMsg struct {
+pkg/tui/msgs.go:45:type PipelineBuildResultMsg struct {
+pkg/tui/msgs.go:49:type PipelinePrepareResultMsg struct {
+pkg/tui/msgs.go:53:type PipelineValidateResultMsg struct {
+pkg/tui/msgs.go:57:type PipelineLaunchPlanMsg struct {
+pkg/tui/msgs.go:62:type PipelineLiveOutputMsg struct {
+pkg/tui/msgs.go:67:type PipelineConfigPatchesMsg struct {
+pkg/tui/msgs.go:72:type PipelineStepProgressMsg struct {
+pkg/tui/msgs.go:78:type StreamStartedMsg struct {
+pkg/tui/msgs.go:82:type StreamEventMsg struct {
+pkg/tui/msgs.go:86:type StreamEndedMsg struct {
+pkg/tui/msgs.go:90:type PluginIntrospectionRefreshMsg struct{}
+pkg/logjs/fanout_test.go:12:func writeTempScriptNamed(t *testing.T, dir, filename, contents string) string {
+pkg/logjs/fanout_test.go:19:func TestFanout_TagInjection_DefaultTagIsName(t *testing.T) {
+pkg/logjs/fanout_test.go:49:func TestFanout_TagInjection_ExplicitTag(t *testing.T) {
+pkg/logjs/fanout_test.go:73:func TestFanout_ErrorIsolation(t *testing.T) {
+pkg/logjs/fanout_test.go:113:func TestFanout_StateIsolation(t *testing.T) {
+pkg/tui/models/dashboard_model.go:18:type DashboardModel struct {
+pkg/tui/models/dashboard_model.go:51:type streamSummary struct {
+pkg/tui/models/dashboard_model.go:60:func NewDashboardModel() DashboardModel { return DashboardModel{} }
+pkg/tui/models/dashboard_model.go:62:func (m DashboardModel) WithSize(width, height int) DashboardModel {
+pkg/tui/models/dashboard_model.go:67:func (m DashboardModel) WithSnapshot(s tui.StateSnapshot) DashboardModel {
+pkg/tui/models/dashboard_model.go:103:func (m DashboardModel) Update(msg tea.Msg) (DashboardModel, tea.Cmd) {
+pkg/tui/models/dashboard_model.go:198:func (m DashboardModel) View() string {
+pkg/tui/models/dashboard_model.go:350:func (m DashboardModel) renderPipelineStatus(theme styles.Theme) string {
+pkg/tui/models/dashboard_model.go:403:func (m DashboardModel) renderStopped(theme styles.Theme) string {
+pkg/tui/models/dashboard_model.go:440:func (m DashboardModel) renderError(theme styles.Theme, errText string) string {
+pkg/tui/models/dashboard_model.go:478:func (m DashboardModel) renderEventsPreview(theme styles.Theme) string {
+pkg/tui/models/dashboard_model.go:532:func (m DashboardModel) renderPluginsSummary(theme styles.Theme, plugins []tui.PluginSummary) string {
+pkg/tui/models/dashboard_model.go:577:func (m DashboardModel) renderStreamsSummary(theme styles.Theme) string {
+pkg/tui/models/dashboard_model.go:649:func truncateString(s string, maxLen int) string {
+pkg/tui/models/dashboard_model.go:659:func (m DashboardModel) selectedServiceName() string {
+pkg/tui/models/dashboard_model.go:670:func (m DashboardModel) serviceNames() []string {
+pkg/tui/models/dashboard_model.go:681:func (m DashboardModel) selectedService() *state.ServiceRecord {
+pkg/tui/models/dashboard_model.go:692:func (m DashboardModel) AppendEvent(e tui.EventLogEntry) DashboardModel {
+pkg/tui/models/dashboard_model.go:701:func (m DashboardModel) WithPipelineStarted(run tui.PipelineRunStarted) DashboardModel {
+pkg/tui/models/dashboard_model.go:711:func (m DashboardModel) WithPipelinePhase(phase tui.PipelinePhase) DashboardModel {
+pkg/tui/models/dashboard_model.go:717:func (m DashboardModel) WithPipelineFinished(ok bool) DashboardModel {
+pkg/tui/models/dashboard_model.go:727:func (m DashboardModel) WithStreamStarted(ev tui.StreamStarted) DashboardModel {
+pkg/tui/models/dashboard_model.go:748:func (m DashboardModel) WithStreamEvent(ev tui.StreamEvent) DashboardModel {
+pkg/tui/models/dashboard_model.go:759:func (m DashboardModel) WithStreamEnded(ev tui.StreamEnded) DashboardModel {
+pkg/tui/models/dashboard_model.go:774:func (m DashboardModel) RunningStreamCount() int {
+pkg/tui/models/dashboard_model.go:785:func formatCPU(pct float64) string {
+pkg/tui/models/dashboard_model.go:796:func formatMem(mb int64) string {
+pkg/tui/models/dashboard_model.go:806:func clampInt(v, lo, hi int) int {
+pkg/tui/models/dashboard_model.go:816:func maxInt(a, b int) int {
+pkg/tui/models/streams_model.go:19:type StreamsModel struct {
+pkg/tui/models/streams_model.go:36:type streamRow struct {
+pkg/tui/models/streams_model.go:46:func NewStreamsModel() StreamsModel {
+pkg/tui/models/streams_model.go:60:func (m StreamsModel) WithSize(width, height int) StreamsModel {
+pkg/tui/models/streams_model.go:66:func (m StreamsModel) Update(msg tea.Msg) (StreamsModel, tea.Cmd) {
+pkg/tui/models/streams_model.go:148:func (m StreamsModel) View() string {
+pkg/tui/models/streams_model.go:196:func (m StreamsModel) renderStreamList(theme styles.Theme) string {
+pkg/tui/models/streams_model.go:258:func (m StreamsModel) renderEventsBox(theme styles.Theme) string {
+pkg/tui/models/streams_model.go:270:func (m StreamsModel) renderCreateBox(theme styles.Theme) string {
+pkg/tui/models/streams_model.go:284:func (m StreamsModel) onStreamStarted(ev tui.StreamStarted) StreamsModel {
+pkg/tui/models/streams_model.go:314:func (m StreamsModel) onStreamEvent(ev tui.StreamEvent) StreamsModel {
+pkg/tui/models/streams_model.go:334:func (m StreamsModel) onStreamEnded(ev tui.StreamEnded) StreamsModel {
+pkg/tui/models/streams_model.go:354:func (m StreamsModel) resizeViewport() StreamsModel {
+pkg/tui/models/streams_model.go:362:func (m StreamsModel) refreshViewportContent(gotoBottom bool) StreamsModel {
+pkg/tui/models/streams_model.go:379:func (m StreamsModel) selectedKey() string {
+pkg/tui/models/streams_model.go:387:func (m StreamsModel) selectedRow() *streamRow {
+pkg/tui/models/streams_model.go:394:func parseStreamStartJSON(s string) (tui.StreamStartRequest, error) {
+pkg/tui/models/streams_model.go:413:func sortStreams(in []streamRow) []streamRow {
+pkg/tui/models/streams_model.go:432:func indexOfKey(rows []streamRow, key string) int {
+pkg/tui/models/streams_model.go:441:func formatStreamEventLine(ev tui.StreamEvent) string {
+pkg/tui/models/streams_model.go:458:func themeLine(prefix, text string) string {
+pkg/tui/models/eventlog_model.go:18:type EventLogModel struct {
+pkg/tui/models/eventlog_model.go:46:func NewEventLogModel() EventLogModel {
+pkg/tui/models/eventlog_model.go:69:func (m EventLogModel) WithSize(width, height int) EventLogModel {
+pkg/tui/models/eventlog_model.go:75:func (m EventLogModel) Update(msg tea.Msg) (EventLogModel, tea.Cmd) {
+pkg/tui/models/eventlog_model.go:188:func (m EventLogModel) Append(e tui.EventLogEntry) EventLogModel {
+pkg/tui/models/eventlog_model.go:221:func (m EventLogModel) View() string {
+pkg/tui/models/eventlog_model.go:276:func (m EventLogModel) resizeViewport() EventLogModel {
+pkg/tui/models/eventlog_model.go:305:func (m EventLogModel) refreshViewportContent(gotoBottom bool) EventLogModel {
+pkg/tui/models/eventlog_model.go:343:func (m EventLogModel) formatEventLine(theme styles.Theme, e tui.EventLogEntry) string {
+pkg/tui/models/eventlog_model.go:405:func (m EventLogModel) ensureServiceKnown(source string) EventLogModel {
+pkg/tui/models/eventlog_model.go:424:func (m EventLogModel) toggleServiceFilter(idx int) EventLogModel {
+pkg/tui/models/eventlog_model.go:431:func (m EventLogModel) toggleServiceByName(name string) EventLogModel {
+pkg/tui/models/eventlog_model.go:442:func (m EventLogModel) toggleLevelFilter(level tui.LogLevel) EventLogModel {
+pkg/tui/models/eventlog_model.go:454:func (m EventLogModel) setAllLevelFilters(enabled bool) EventLogModel {
+pkg/tui/models/eventlog_model.go:465:func (m EventLogModel) renderStatusLine(theme styles.Theme) string {
+pkg/tui/models/eventlog_model.go:493:func (m EventLogModel) renderStyledServiceFilterBar(theme styles.Theme) string {
+pkg/tui/models/eventlog_model.go:526:func (m EventLogModel) renderStyledLevelFilterBar(theme styles.Theme) string {
+pkg/tui/models/eventlog_model.go:564:func (m EventLogModel) renderStatsLine(theme styles.Theme) string {
+pkg/tui/models/eventlog_model.go:575:func (m EventLogModel) renderFooterKeybindings(theme styles.Theme) string {
+pkg/tui/models/eventlog_model.go:591:func normalizeEventLogEntry(e tui.EventLogEntry) tui.EventLogEntry {
+pkg/tui/widgets/progress.go:11:type ProgressBar struct {
+pkg/tui/widgets/progress.go:21:func NewProgressBar(percent int) ProgressBar {
+pkg/tui/widgets/progress.go:38:func (p ProgressBar) WithWidth(width int) ProgressBar {
+pkg/tui/widgets/progress.go:47:func (p ProgressBar) WithStyle(style lipgloss.Style) ProgressBar {
+pkg/tui/widgets/progress.go:53:func (p ProgressBar) WithChars(filled, empty rune) ProgressBar {
+pkg/tui/widgets/progress.go:60:func (p ProgressBar) WithShowText(show bool) ProgressBar {
+pkg/tui/widgets/progress.go:66:func (p ProgressBar) Render() string {
+pkg/tui/widgets/progress.go:82:func (p ProgressBar) RenderCompact() string {
+pkg/tui/widgets/table.go:11:type TableColumn struct {
+pkg/tui/widgets/table.go:18:type TableRow struct {
+pkg/tui/widgets/table.go:25:type Table struct {
+pkg/tui/widgets/table.go:35:func NewTable(cols []TableColumn) Table {
+pkg/tui/widgets/table.go:43:func (t Table) WithRows(rows []TableRow) Table {
+pkg/tui/widgets/table.go:49:func (t Table) WithCursor(idx int) Table {
+pkg/tui/widgets/table.go:55:func (t Table) WithSize(width, height int) Table {
+pkg/tui/widgets/table.go:62:func (t Table) Render() string {
+pkg/tui/widgets/table.go:147:func ServiceRow(icon, name, status, pid, extra string, selected bool) TableRow {
+pkg/tui/models/root_model.go:16:type ViewID string
+pkg/tui/models/root_model.go:27:type RootModel struct {
+pkg/tui/models/root_model.go:52:type RootModelOptions struct {
+pkg/tui/models/root_model.go:59:func NewRootModel(opts RootModelOptions) RootModel {
+pkg/tui/models/root_model.go:82:func (m RootModel) Init() tea.Cmd { return nil }
+pkg/tui/models/root_model.go:84:func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+pkg/tui/models/root_model.go:390:func (m RootModel) View() string {
+pkg/tui/models/root_model.go:526:func (m RootModel) footerKeybinds() []widgets.Keybind {
+pkg/tui/models/root_model.go:576:func (m RootModel) headerLines() int {
+pkg/tui/models/root_model.go:588:func (m RootModel) applyChildSizes() RootModel {
+pkg/tui/models/pipeline_model.go:17:type PipelineModel struct {
+pkg/tui/models/pipeline_model.go:56:type pipelineFocus string
+pkg/tui/models/pipeline_model.go:64:type pipelinePhaseState struct {
+pkg/tui/models/pipeline_model.go:72:func NewPipelineModel() PipelineModel {
+pkg/tui/models/pipeline_model.go:80:func (m PipelineModel) WithSize(width, height int) PipelineModel {
+pkg/tui/models/pipeline_model.go:89:func (m PipelineModel) Update(msg tea.Msg) (PipelineModel, tea.Cmd) {
+pkg/tui/models/pipeline_model.go:253:func (m PipelineModel) View() string {
+pkg/tui/models/pipeline_model.go:388:func (m PipelineModel) phaseIconAndStyle(st *pipelinePhaseState, theme styles.Theme) (string, lipgloss.Style) {
+pkg/tui/models/pipeline_model.go:404:func (m PipelineModel) formatStyledPhaseState(st *pipelinePhaseState, theme styles.Theme) string {
+pkg/tui/models/pipeline_model.go:426:func (m PipelineModel) renderStyledSteps(title string, steps []tui.PipelineStepResult, focused bool, cursor int, showDetails bool, artifacts map[string]string, theme styles.Theme) string {
+pkg/tui/models/pipeline_model.go:498:func (m PipelineModel) renderStyledValidation(theme styles.Theme) string {
+pkg/tui/models/pipeline_model.go:585:func (m PipelineModel) renderConfigPatches(theme styles.Theme) string {
+pkg/tui/models/pipeline_model.go:606:func (m PipelineModel) renderLiveOutput(theme styles.Theme) string {
+pkg/tui/models/pipeline_model.go:618:func (m PipelineModel) moveCursor(delta int) PipelineModel {
+pkg/tui/models/pipeline_model.go:632:func (m PipelineModel) toggleDetails() PipelineModel {
+pkg/tui/models/pipeline_model.go:644:type validationIssue struct {
+pkg/tui/models/pipeline_model.go:651:func validationIssues(v *tui.PipelineValidateResult) []validationIssue {
+pkg/tui/models/pipeline_model.go:675:func copyStringMap(in map[string]string) map[string]string {
+pkg/tui/models/pipeline_model.go:686:func (m PipelineModel) phase(p tui.PipelinePhase) *pipelinePhaseState {
+pkg/tui/models/pipeline_model.go:698:func formatDurationMs(ms int64) string {
+pkg/tui/models/pipeline_model.go:713:func formatLiveOutputLine(out tui.PipelineLiveOutput) string {
+pkg/tui/models/pipeline_model.go:725:func (m PipelineModel) refreshLiveViewport() PipelineModel {
+pkg/tui/widgets/box.go:9:type Box struct {
+pkg/tui/widgets/box.go:20:func NewBox(title string) Box {
+pkg/tui/widgets/box.go:30:func (b Box) WithContent(content string) Box {
+pkg/tui/widgets/box.go:36:func (b Box) WithTitleRight(text string) Box {
+pkg/tui/widgets/box.go:42:func (b Box) WithSize(width, height int) Box {
+pkg/tui/widgets/box.go:49:func (b Box) WithStyle(s lipgloss.Style) Box {
+pkg/tui/widgets/box.go:55:func (b Box) Render() string {
+pkg/tui/widgets/box.go:119:func SimpleBox(content string, width int) string {
+pkg/tui/models/plugin_model.go:16:type PluginInfo struct {
+pkg/tui/models/plugin_model.go:32:type PluginModel struct {
+pkg/tui/models/plugin_model.go:41:func NewPluginModel() PluginModel {
+pkg/tui/models/plugin_model.go:48:func (m PluginModel) WithSize(width, height int) PluginModel {
+pkg/tui/models/plugin_model.go:54:func (m PluginModel) WithPlugins(plugins []tui.PluginSummary) PluginModel {
+pkg/tui/models/plugin_model.go:81:func (m PluginModel) Update(msg tea.Msg) (PluginModel, tea.Cmd) {
+pkg/tui/models/plugin_model.go:119:func (m PluginModel) View() string {
+pkg/tui/models/plugin_model.go:155:func (m PluginModel) renderPluginCard(index int, p PluginInfo, selected, expanded bool, theme styles.Theme) string {
+pkg/tui/models/plugin_model.go:299:func (m PluginModel) renderCapStatusInline(p PluginInfo, theme styles.Theme) string {
+pkg/tui/models/plugin_model.go:307:func (m PluginModel) renderCapStatusLine(p PluginInfo, theme styles.Theme) string {
+pkg/tui/models/plugin_model.go:338:func truncatePath(path string, maxLen int) string {
+pkg/tui/domain.go:7:type LogLevel string
+pkg/tui/domain.go:16:type EventLogEntry struct {
+pkg/tui/widgets/footer.go:9:type Footer struct {
+pkg/tui/widgets/footer.go:16:func NewFooter(keybinds []Keybind) Footer {
+pkg/tui/widgets/footer.go:24:func (f Footer) WithWidth(w int) Footer {
+pkg/tui/widgets/footer.go:30:func (f Footer) Render() string {
+pkg/tui/stream_runner.go:19:type streamHandle struct {
+pkg/tui/stream_runner.go:31:type streamManager struct {
+pkg/tui/stream_runner.go:40:func RegisterUIStreamRunner(tuiCtx context.Context, bus *Bus, opts RootOptions) {
+pkg/tui/stream_runner.go:82:func (m *streamManager) handleStart(req StreamStartRequest) error {
+pkg/tui/stream_runner.go:238:func (m *streamManager) handleStop(req StreamStopRequest) error {
+pkg/tui/stream_runner.go:257:func (m *streamManager) forwardEvents(ctx context.Context, h *streamHandle, events <-chan protocol.Event) {
+pkg/tui/stream_runner.go:320:func closeClient(client runtime.Client) {
+pkg/tui/stream_runner.go:329:func orderedSpecs(specs []runtime.PluginSpec) []runtime.PluginSpec {
+pkg/tui/stream_runner.go:340:func streamKey(pluginID, op string, input map[string]any) string {
+pkg/tui/stream_runner.go:354:func (m *streamManager) publishStreamStarted(ev StreamStarted) error {
+pkg/tui/stream_runner.go:366:func (m *streamManager) publishStreamEvent(ev StreamEvent) error {
+pkg/tui/stream_runner.go:378:func (m *streamManager) publishStreamEnded(ev StreamEnded) error {
+pkg/tui/widgets/header.go:12:type Keybind struct {
+pkg/tui/widgets/header.go:18:type Header struct {
+pkg/tui/widgets/header.go:30:func NewHeader(title string) Header {
+pkg/tui/widgets/header.go:38:func (h Header) WithStatus(icon, status string, ok bool) Header {
+pkg/tui/widgets/header.go:46:func (h Header) WithUptime(d time.Duration) Header {
+pkg/tui/widgets/header.go:52:func (h Header) WithKeybinds(kb []Keybind) Header {
+pkg/tui/widgets/header.go:58:func (h Header) WithWidth(w int) Header {
+pkg/tui/widgets/header.go:64:func (h Header) Render() string {
+pkg/tui/widgets/header.go:149:func RenderKeybinds(keybinds []Keybind, theme styles.Theme) string {
+pkg/tui/widgets/header.go:161:func formatDuration(d time.Duration) string {
+pkg/tui/models/service_model.go:21:type LogStream string
+pkg/tui/models/service_model.go:28:type logTickMsg struct{}
+pkg/tui/models/service_model.go:30:type logStreamState struct {
+pkg/tui/models/service_model.go:39:type ServiceModel struct {
+pkg/tui/models/service_model.go:67:func NewServiceModel() ServiceModel {
+pkg/tui/models/service_model.go:85:func (m ServiceModel) WithSize(width, height int) ServiceModel {
+pkg/tui/models/service_model.go:91:func (m ServiceModel) WithSnapshot(s tui.StateSnapshot) ServiceModel {
+pkg/tui/models/service_model.go:98:func (m ServiceModel) WithService(name string) ServiceModel {
+pkg/tui/models/service_model.go:116:func (m ServiceModel) Update(msg tea.Msg) (ServiceModel, tea.Cmd) {
+pkg/tui/models/service_model.go:213:func (m ServiceModel) View() string {
+pkg/tui/models/service_model.go:409:func (m ServiceModel) exitInfoHeight() int {
+pkg/tui/models/service_model.go:415:func (m ServiceModel) renderCompactExitInfo(theme styles.Theme, maxLines int) string {
+pkg/tui/models/service_model.go:500:func (m ServiceModel) tickCmd() tea.Cmd {
+pkg/tui/models/service_model.go:507:func (m ServiceModel) resizeViewport() ServiceModel {
+pkg/tui/models/service_model.go:551:func (m ServiceModel) recalculateViewportHeight() ServiceModel {
+pkg/tui/models/service_model.go:555:func (m ServiceModel) activeState() *logStreamState {
+pkg/tui/models/service_model.go:562:func (m ServiceModel) lookupService() (*state.ServiceRecord, bool, bool) {
+pkg/tui/models/service_model.go:579:func (m ServiceModel) hasHealthConfig() bool {
+pkg/tui/models/service_model.go:587:func (m ServiceModel) hasEnvVars() bool {
+pkg/tui/models/service_model.go:595:func (m ServiceModel) renderHealthInfo(theme styles.Theme) string {
+pkg/tui/models/service_model.go:657:func (m ServiceModel) renderEnvVars(theme styles.Theme, rec *state.ServiceRecord) string {
+pkg/tui/models/service_model.go:689:func formatDuration(d time.Duration) string {
+pkg/tui/models/service_model.go:704:func (m ServiceModel) syncPathsFromSnapshot() ServiceModel {
+pkg/tui/models/service_model.go:714:func (m ServiceModel) syncExitInfoFromSnapshot() ServiceModel {
+pkg/tui/models/service_model.go:743:func (m ServiceModel) loadInitialTail() ServiceModel {
+pkg/tui/models/service_model.go:750:func (m ServiceModel) loadTailForStream(s logStreamState) logStreamState {
+pkg/tui/models/service_model.go:772:func (m ServiceModel) tickReadAll() ServiceModel {
+pkg/tui/models/service_model.go:778:func (m ServiceModel) readNewBytes(s logStreamState) logStreamState {
+pkg/tui/models/service_model.go:843:func (m ServiceModel) refreshViewportContent(gotoBottom bool) ServiceModel {
+pkg/tui/models/service_model.go:872:func readTailLines(path string, tailLines int, maxBytes int64) ([]string, int64, error) {
+pkg/tui/stream_actions.go:11:func PublishStreamStart(pub message.Publisher, req StreamStartRequest) error {
+pkg/tui/stream_actions.go:31:func PublishStreamStop(pub message.Publisher, req StreamStopRequest) error {
+pkg/tui/action_events.go:5:type ActionLog struct {
+pkg/tui/state_events.go:10:type ServiceExitObserved struct {
+pkg/tui/state_events.go:18:type HealthStatus string
+pkg/tui/state_events.go:27:type HealthCheckResult struct {
+pkg/tui/state_events.go:38:type PluginSummary struct {
+pkg/tui/state_events.go:53:type StateSnapshot struct {
+pkg/tui/pipeline_events.go:9:type PipelinePhase string
+pkg/tui/pipeline_events.go:24:type PipelineRunStarted struct {
+pkg/tui/pipeline_events.go:32:type PipelineRunFinished struct {
+pkg/tui/pipeline_events.go:42:type PipelinePhaseStarted struct {
+pkg/tui/pipeline_events.go:48:type PipelinePhaseFinished struct {
+pkg/tui/pipeline_events.go:57:type PipelineStepResult struct {
+pkg/tui/pipeline_events.go:65:type PipelineLiveOutput struct {
+pkg/tui/pipeline_events.go:73:type ConfigPatch struct {
+pkg/tui/pipeline_events.go:80:type PipelineConfigPatches struct {
+pkg/tui/pipeline_events.go:85:type PipelineBuildResult struct {
+pkg/tui/pipeline_events.go:92:type PipelinePrepareResult struct {
+pkg/tui/pipeline_events.go:99:type PipelineValidateResult struct {
+pkg/tui/pipeline_events.go:107:type PipelineLaunchPlan struct {
+pkg/tui/root_options.go:5:type RootOptions struct {
+pkg/tui/transform.go:13:func RegisterDomainToUITransformer(bus *Bus) {
+pkg/tui/styles/theme.go:6:type Theme struct {
+pkg/tui/styles/theme.go:30:func DefaultTheme() Theme {
+pkg/tui/styles/icons.go:21:func StatusIcon(alive bool) string {
+pkg/tui/styles/icons.go:29:func PhaseIcon(ok *bool, running bool) string {
+pkg/tui/styles/icons.go:43:func LogLevelIcon(level string) string {
+pkg/tui/styles/icons.go:59:func HealthIcon(status string) string {
+pkg/tui/styles/icons.go:71:func EventIcon(eventType string) string {
+
+test_inventory
+cmd/devctl/cmds/profiles_test.go:14:func TestProfilesActiveExplicitDefaultAndNoProfile(t *testing.T) {
+cmd/devctl/cmds/profiles_test.go:33:func TestProfilesListIncludesOverrideProfileAndActiveMarker(t *testing.T) {
+cmd/devctl/cmds/dynamic_commands_test.go:14:func TestDynamicCommands_RegisterAndRun(t *testing.T) {
+cmd/devctl/cmds/dynamic_commands_test.go:44:func TestDynamicCommands_SkipsBuiltIns(t *testing.T) {
+cmd/devctl/cmds/dynamic_commands_test.go:78:func TestDynamicCommands_RespectsProfileFiltering(t *testing.T) {
+cmd/devctl/cmds/dynamic_commands_test.go:124:func TestDynamicCommands_SkipsWrapService(t *testing.T) {
+cmd/devctl/cmds/wrap_service_test.go:19:func TestWrapServiceForwardsSIGHUPWithoutKillingWrapper(t *testing.T) {
+cmd/devctl/cmds/phase_test.go:16:func TestPhaseCommands_BuildPassesStepsAndPrintsJSON(t *testing.T) {
+cmd/devctl/cmds/phase_test.go:38:func TestPhaseCommands_PreparePassesStepsAndPrintsJSON(t *testing.T) {
+cmd/devctl/cmds/phase_test.go:57:func TestPhaseCommands_ValidateSuccessAndFailure(t *testing.T) {
+cmd/devctl/cmds/phase_test.go:86:func TestPhaseCommands_RespectProfileSelection(t *testing.T) {
+pkg/state/state_test.go:11:func TestServiceSpecRecordRoundTrip(t *testing.T) {
+pkg/state/state_test.go:65:func TestLoadStateWithoutSpec(t *testing.T) {
+pkg/state/state_test.go:109:func TestSaveLoadWithSpec(t *testing.T) {
+pkg/logjs/module_test.go:19:func TestModule_Parse_Filter_Transform(t *testing.T) {
+pkg/logjs/module_test.go:63:func TestModule_Timestamp_Date_ToISOString(t *testing.T) {
+pkg/logjs/module_test.go:88:func TestModule_Timeout(t *testing.T) {
+pkg/logjs/module_test.go:117:func TestModule_Parse_ReturnArray_Transform_ReturnArray(t *testing.T) {
+pkg/logjs/module_test.go:147:func TestModule_ErrorRecord_OnParseThrow(t *testing.T) {
+pkg/logjs/module_test.go:174:func TestModule_Helper_ParseTimestamp_ToISOString(t *testing.T) {
+pkg/logjs/module_test.go:198:func TestModule_Helper_ParseTimestamp_Numeric(t *testing.T) {
+pkg/logjs/module_test.go:225:func TestModule_Helper_MultilineBuffer_AfterNegate(t *testing.T) {
+pkg/logjs/fanout_test.go:19:func TestFanout_TagInjection_DefaultTagIsName(t *testing.T) {
+pkg/logjs/fanout_test.go:49:func TestFanout_TagInjection_ExplicitTag(t *testing.T) {
+pkg/logjs/fanout_test.go:73:func TestFanout_ErrorIsolation(t *testing.T) {
+pkg/logjs/fanout_test.go:113:func TestFanout_StateIsolation(t *testing.T) {
+pkg/supervise/supervisor_test.go:17:func TestSupervisor_StartStop_Sleep(t *testing.T) {
+pkg/supervise/supervisor_test.go:47:func TestSupervisor_StartServiceAlreadyRunningFails(t *testing.T) {
+pkg/supervise/supervisor_test.go:74:func TestSupervisor_StartDoesNotPersistRawSpecEnv(t *testing.T) {
+pkg/supervise/supervisor_test.go:107:func TestSupervisor_ReadinessTimeoutStopsServices(t *testing.T) {
+pkg/supervise/supervisor_test.go:152:func TestSupervisor_PostReadyCrashIsObservable(t *testing.T) {
+
+operator_commands
+cmd/devctl/cmds/status.go:39:		CommandDescription: glazedcmds.NewCommandDescription(
+cmd/devctl/cmds/phase.go:90:		Use:   "build",
+cmd/devctl/cmds/phase.go:117:		Use:   "prepare",
+cmd/devctl/cmds/phase.go:142:		Use:   "validate",
+cmd/devctl/cmds/start_service.go:18:		Use:   "start <service-name>",
+cmd/devctl/cmds/restart.go:18:		Use:   "restart <service-name>",
+cmd/devctl/cmds/plan.go:19:		Use:   "plan",
+cmd/devctl/cmds/logs.go:23:		Use:   "logs",
+cmd/devctl/cmds/profiles_test.go:65:	root := &cobra.Command{Use: "devctl"}
+cmd/devctl/cmds/stream.go:21:		Use:   "stream",
+cmd/devctl/cmds/stream.go:37:		Use:   "start",
+cmd/devctl/cmds/dynamic_commands_test.go:26:	root := &cobra.Command{Use: "devctl"}
+cmd/devctl/cmds/dynamic_commands_test.go:56:	root := &cobra.Command{Use: "devctl"}
+cmd/devctl/cmds/dynamic_commands_test.go:90:	root := &cobra.Command{Use: "devctl"}
+cmd/devctl/cmds/dynamic_commands_test.go:109:	root = &cobra.Command{Use: "devctl"}
+cmd/devctl/cmds/dynamic_commands_test.go:136:	root := &cobra.Command{Use: "devctl"}
+cmd/devctl/cmds/tui.go:25:		Use:   "tui",
+cmd/devctl/cmds/profiles.go:15:		Use:   "profiles",
+cmd/devctl/cmds/profiles.go:25:		Use:   "list",
+cmd/devctl/cmds/profiles.go:69:		Use:   "active",
+cmd/devctl/cmds/up.go:33:		Use:   "up",
+cmd/devctl/cmds/wrap_service.go:33:		Use:    "__wrap-service -- [cmd args...]",
+cmd/devctl/cmds/phase_test.go:174:	root := &cobra.Command{Use: "devctl", SilenceUsage: true, SilenceErrors: true}
+cmd/devctl/cmds/down.go:14:		Use:   "down",
+cmd/devctl/cmds/dynamic_commands.go:80:			Use:   name,
+cmd/devctl/cmds/stop_service.go:16:		Use:   "stop-service <service-name>",
+cmd/devctl/cmds/plugins.go:22:		Use:   "plugins",
+cmd/devctl/cmds/plugins.go:42:		CommandDescription: glazedcmds.NewCommandDescription(
+cmd/devctl/cmds/dev/root.go:10:		Use:    "dev",
+cmd/devctl/cmds/dev/smoketest/logs.go:27:		Use:   "logs",
+cmd/devctl/cmds/dev/smoketest/e2e.go:29:		Use:   "e2e",
+cmd/devctl/cmds/dev/smoketest/supervise.go:28:		Use:   "supervise",
+cmd/devctl/cmds/dev/smoketest/root.go:21:		Use:   "smoketest",
+cmd/devctl/cmds/dev/smoketest/failures.go:26:		Use:   "failures",
+
+active_or_inconsistent_tickets
+ttmp/2026/01/06/MO-005-IMPROVE-STARTDEV--improve-startdev-sh-script-analysis-and-enhancement/index.md
+ttmp/2026/01/06/MO-009-TUI-COMPLETE-FEATURES--complete-tui-features-per-mo-006-design/index.md
+ttmp/2026/01/08/MO-012-PORT-CMDS-TO-GLAZED--port-devctl-cli-commands-to-glazed/index.md
+ttmp/2026/01/08/MO-014-IMPROVE-PIPELINE-TUI--improve-pipeline-tui-phase-inspection/index.md
+ttmp/2026/01/08/MO-016-LOGPARSER-DEVCTL-INTEGRATION--integrate-log-parser-into-devctl-workflow-tui/index.md
+ttmp/2026/01/08/MO-018-PIPELINE-VIEW-STUCK-STATE--pipeline-view-shows-stuck-running-state-and-navigation-issues/index.md
+ttmp/2026/01/08/MO-018-STATE-EVENT-TRACE--improve-missing-state-reporting-and-attach-event-locations/index.md
+ttmp/2026/01/08/STREAMS-TUI--streams-tui-integration-for-devctl/index.md
+ttmp/2026/01/09/MO-017-DIARY-TAIL-APP--diary-tail-webapp-real-time-event-viewer/index.md
+ttmp/2026/01/13/MO-018-ADD-DEVCTL-README--add-devctl-readme/index.md
+ttmp/2026/04/28/DEVCTL-GLAZED-MIGRATION--migrate-devctl-to-new-glazed-schema-fields-values-api/index.md
+ttmp/2026/05/04/DCTL-PROFILES--devctl-multiple-profiles-analysis-design-and-implementation-guide/index.md
+ttmp/2026/05/04/DCTL-SERVICES--devctl-individual-service-start-stop-analysis-design-and-implementation-guide/index.md
+ttmp/2026/05/14/DEVCTL-PHASE-VERBS--add-devctl-phase-verbs-for-long-running-build-steps/index.md
+ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/index.md

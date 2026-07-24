@@ -1,0 +1,1 @@
+/home/manuel/code/wesen/go-go-golems/corporate-headquarters/go.work

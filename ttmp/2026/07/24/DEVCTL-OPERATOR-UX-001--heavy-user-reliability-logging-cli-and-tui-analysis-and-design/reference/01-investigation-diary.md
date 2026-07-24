@@ -1058,3 +1058,182 @@ The corrected design retains the former and replaces the latter.
   design defaults to no implicit execution during typo resolution.
 - Confirm whether valid plugin exit codes should pass through exactly or map
   into devctl's global exit-code taxonomy.
+
+## Step 8: Reopen the ticket and establish the implementation baseline
+
+Implementation began by converting the seven design phases into tracked
+ticket tasks and capturing an authoritative pre-change baseline. No production
+behavior changed in this step. A repository-local test fixture helper now
+ensures new state, supervisor, CLI, and TUI tests cannot accidentally use a
+developer's real `.devctl` directory.
+
+The destructive-change gate found no external Go imports of `pkg/logjs`, so
+the standalone parser can be removed without an extraction package or
+compatibility adapter. It also found 42 legacy CLI references outside devctl;
+those are a downstream migration inventory rather than a reason to preserve
+the old command spellings.
+
+### Prompt Context
+
+**User prompt (verbatim):**
+
+> implement DEVCTL-OPERATOR-UX-001. Keep a detailed frequent diary as you work, commit at appropriate intervals.
+
+**Assistant interpretation:** Execute every implementation phase in the
+approved operator redesign, update this diary throughout the work, and create
+reviewable commits at phase boundaries.
+
+**Inferred user intent:** Move devctl from an analysis artifact to a reliable
+daily operator tool while preserving enough implementation evidence for
+review, debugging, and intern handoff.
+
+### What I did
+
+- Changed the ticket index status from `complete` to `active`.
+- Added eight tasks covering Phase 0 through Phase 7.
+- Added `scripts/05-phase0-baseline.sh` to archive tests, build, lint, and all
+  four existing operator probes.
+- Added `scripts/06-phase0-consumer-gate.sh` to search sibling go-go-golems
+  repositories while excluding historical devctl ticket files and the devctl
+  repository itself.
+- Archived every command result under `sources/local/phase0`.
+- Added `internal/testrepo.Repository`, which uses `testing.TB.TempDir`,
+  pre-creates a mode-0700 `.devctl`, and writes mode-0600 test configuration.
+- Ran focused tests for the new helper and the existing CLI, supervisor, and
+  state packages.
+
+### Why
+
+- The design requires observable before/after evidence for logging and TUI
+  behavior.
+- Removing `logjs` is permitted only after proving there are no downstream Go
+  consumers.
+- Future crash, lock, and lifecycle tests need one safe repository fixture
+  contract rather than repeated ad hoc temporary-directory setup.
+
+### What worked
+
+- With normal Git cache and tmux access, `go test ./...`, `go build ./...`,
+  `make lint`, and all four probes passed.
+- The existing log probe reproduced loss after truncation and
+  rename-and-create rotation: only `append-visible` reached stdout.
+- The tmux capture reproduced repeated identical `state: missing` events at
+  the 200 ms polling interval.
+- The corrected external search found zero `pkg/logjs` imports and 42 legacy
+  CLI references.
+- Focused tests passed for `internal/testrepo`, `cmd/devctl/cmds`,
+  `pkg/supervise`, and `pkg/state`.
+
+### What didn't work
+
+The first baseline ran inside the restricted filesystem sandbox. The exact
+build error was:
+
+```text
+error obtaining VCS status: exit status 128
+        Use -buildvcs=false to disable VCS stamping.
+```
+
+The first lint loader ended with:
+
+```text
+level=error msg="Running error: context loading failed: no go files to analyze: running `go mod tidy` may solve the problem"
+make: *** [Makefile:17: lint] Error 5
+```
+
+The first TUI probe failed before launch:
+
+```text
+error connecting to /tmp/tmux-1000/default (Operation not permitted)
+```
+
+The first focused test attempt also hit the restricted Go cache:
+
+```text
+open /home/manuel/.cache/go-build/f7/f7e402a4335d411cb754764ae210c43725f0d6459f67b586d637ef8f8f994488-d: read-only file system
+```
+
+These were environment restrictions rather than software failures. The same
+baseline script and focused tests passed with access to Git worktree metadata,
+the Go cache, and tmux. The initially recorded failure files were overwritten
+by the authoritative successful run; the errors remain recorded here.
+
+The consumer script initially used `--glob '!devctl/**'`, which did not exclude
+the repository when the search root was absolute. It reported three internal
+imports and 118 mixed matches. Changing the exclusion to
+`--glob '!**/go-go-golems/devctl/**'` produced the intended external-only
+result.
+
+### What I learned
+
+- Baseline commands that invoke Go VCS stamping or golangci-lint need access to
+  the linked worktree's Git metadata.
+- The current TUI emits observed polling state as event history even when the
+  semantic state is unchanged.
+- The parser subsystem is internally documented but has no external Go
+  consumer in the searched workspace.
+- Active sibling projects still teach the old log and individual-service
+  syntax, so Phase 7 must publish a concrete migration inventory.
+
+### What was tricky to build
+
+The downstream search needed to distinguish current external consumers from
+devctl's own source, generated help, examples, and historical ticket files.
+The output is therefore split by concern, excludes all `ttmp` trees, and
+preserves active documentation/script hits instead of collapsing them into a
+single count.
+
+The baseline also needed to preserve genuine command results without
+misclassifying sandbox restrictions as a red repository. The same script was
+run twice; only the unrestricted result is the authoritative summary, while
+the first errors are preserved verbatim in this diary.
+
+### What warrants a second pair of eyes
+
+- Review the 42-line downstream migration inventory before Phase 7 and decide
+  which sibling repositories should receive follow-up commits outside this
+  devctl worktree.
+- Confirm that no private or unmounted workspace imports `pkg/logjs`; the
+  evidence covers `/home/manuel/code/wesen/go-go-golems`.
+- Check whether the test fixture should gain fixture builders for services and
+  run records as those schemas land, rather than placing those helpers in
+  individual package tests.
+
+### What should be done in the future
+
+- Use `internal/testrepo.New(t)` for every new test that writes `.devctl`
+  artifacts.
+- Remove the standalone parser during Phase 5 because the Phase 0 consumer
+  gate passed.
+- Re-run the baseline and behavioral probes after Phases 5 and 6.
+
+### Code review instructions
+
+- Start with `scripts/05-phase0-baseline.sh` and
+  `scripts/06-phase0-consumer-gate.sh`.
+- Inspect `sources/local/phase0/summary.tsv` and
+  `consumer-gate-summary.tsv`.
+- Review `internal/testrepo/repository.go` for isolation and file modes.
+- Run `go test ./internal/testrepo ./cmd/devctl/cmds ./pkg/supervise ./pkg/state`.
+
+### Technical details
+
+Authoritative baseline:
+
+```text
+go-test        0
+go-build       0
+make-lint      0
+probe-01       0
+probe-02       0
+probe-03       0
+probe-04       0
+```
+
+Consumer gate:
+
+```text
+external_logjs_import_lines    0
+external_legacy_cli_lines      42
+go_work_files                  1
+```
