@@ -16,7 +16,7 @@ import (
 func TestPhaseCommands_BuildPassesStepsAndPrintsJSON(t *testing.T) {
 	repoRoot, cfgPath := phaseCommandFixture(t, "")
 
-	stdout, _, err := runDevctlCommand(t,
+	stdout, _, err := runPhaseCommand(t,
 		"build",
 		"--repo-root", repoRoot,
 		"--config", cfgPath,
@@ -38,7 +38,7 @@ func TestPhaseCommands_BuildPassesStepsAndPrintsJSON(t *testing.T) {
 func TestPhaseCommands_PreparePassesStepsAndPrintsJSON(t *testing.T) {
 	repoRoot, cfgPath := phaseCommandFixture(t, "")
 
-	stdout, _, err := runDevctlCommand(t,
+	stdout, _, err := runPhaseCommand(t,
 		"prepare",
 		"--repo-root", repoRoot,
 		"--config", cfgPath,
@@ -57,7 +57,7 @@ func TestPhaseCommands_PreparePassesStepsAndPrintsJSON(t *testing.T) {
 func TestPhaseCommands_ValidateSuccessAndFailure(t *testing.T) {
 	repoRoot, cfgPath := phaseCommandFixture(t, "")
 
-	stdout, _, err := runDevctlCommand(t,
+	stdout, _, err := runPhaseCommand(t,
 		"validate",
 		"--repo-root", repoRoot,
 		"--config", cfgPath,
@@ -68,7 +68,7 @@ func TestPhaseCommands_ValidateSuccessAndFailure(t *testing.T) {
 	require.Equal(t, true, nestedMap(t, out, "validate")["valid"])
 
 	repoRoot, cfgPath = phaseCommandFixture(t, "invalid")
-	stdout, _, err = runDevctlCommand(t,
+	stdout, _, err = runPhaseCommand(t,
 		"validate",
 		"--repo-root", repoRoot,
 		"--config", cfgPath,
@@ -90,7 +90,7 @@ func TestPhaseCommands_RespectProfileSelection(t *testing.T) {
 	cfg := []byte("profiles:\n  selected:\n    plugins: [selected]\nplugins:\n  - id: default\n    path: python3\n    args:\n      - \"" + plugin + "\"\n    env:\n      PHASE_MARKER: default\n    priority: 10\n  - id: selected\n    path: python3\n    args:\n      - \"" + plugin + "\"\n    env:\n      PHASE_MARKER: selected\n    priority: 20\n")
 	require.NoError(t, os.WriteFile(cfgPath, cfg, 0o644))
 
-	stdout, _, err := runDevctlCommand(t,
+	stdout, _, err := runPhaseCommand(t,
 		"build",
 		"--repo-root", repoRoot,
 		"--config", cfgPath,
@@ -169,7 +169,7 @@ for line in sys.stdin:
 	return path
 }
 
-func runDevctlCommand(t *testing.T, args ...string) (string, string, error) {
+func runPhaseCommand(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 	root := &cobra.Command{Use: "devctl", SilenceUsage: true, SilenceErrors: true}
 	require.NoError(t, AddCommands(root))

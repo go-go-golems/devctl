@@ -3,6 +3,7 @@ package cmds
 import (
 	"context"
 	stderrors "errors"
+	"io"
 	"strings"
 	"time"
 
@@ -41,6 +42,27 @@ type LogsSettings struct {
 }
 
 var _ glazedcmds.GlazeCommand = (*LogsCommand)(nil)
+
+func (c *LogsCommand) BuildGlazedProcessor(
+	vals *values.Values,
+	writer io.Writer,
+) (middlewares.Processor, bool, error) {
+	logValues, exists := vals.Get(schema.DefaultSlug)
+	if !exists {
+		return nil, false, errors.New("logs settings are unavailable")
+	}
+	follow, _ := logValues.GetField("follow")
+	outputValues, exists := vals.Get(glazedsettings.GlazedSlug)
+	if !exists {
+		return nil, false, errors.New("glazed output settings are unavailable")
+	}
+	output, _ := outputValues.GetField("output")
+	if follow != true || output != "json" {
+		return nil, false, nil
+	}
+	processor, err := newJSONLinesProcessor(outputValues, writer)
+	return processor, true, err
+}
 
 func (c *LogsCommand) PrepareGlazedValues(vals *values.Values) error {
 	logValues, exists := vals.Get(schema.DefaultSlug)

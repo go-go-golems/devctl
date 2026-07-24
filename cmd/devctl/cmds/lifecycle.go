@@ -3,6 +3,7 @@ package cmds
 import (
 	"context"
 	stderrors "errors"
+	"io"
 	"os"
 	"time"
 
@@ -227,12 +228,26 @@ func buildGlazedCommand(command glazedcmds.GlazeCommand) *cobra.Command {
 		if !exists {
 			return errors.New("glazed output settings are unavailable")
 		}
-		processor, err := glazedsettings.SetupTableProcessor(glazedValues)
-		if err != nil {
-			return err
+		var processor middlewares.Processor
+		custom := false
+		if builder, ok := command.(interface {
+			BuildGlazedProcessor(*values.Values, io.Writer) (middlewares.Processor, bool, error)
+		}); ok {
+			processor, custom, err = builder.BuildGlazedProcessor(parsedValues, cmd.OutOrStdout())
+			if err != nil {
+				return err
+			}
 		}
-		if _, err := glazedsettings.SetupProcessorOutput(processor, glazedValues, cmd.OutOrStdout()); err != nil {
-			return err
+		if !custom {
+			tableProcessor, setupErr := glazedsettings.SetupTableProcessor(glazedValues)
+			err = setupErr
+			if err != nil {
+				return err
+			}
+			processor = tableProcessor
+			if _, err := glazedsettings.SetupProcessorOutput(tableProcessor, glazedValues, cmd.OutOrStdout()); err != nil {
+				return err
+			}
 		}
 		runErr := command.RunIntoGlazeProcessor(cmd.Context(), parsedValues, processor)
 		closeErr := processor.Close(cmd.Context())
