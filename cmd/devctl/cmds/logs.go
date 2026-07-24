@@ -42,6 +42,31 @@ type LogsSettings struct {
 
 var _ glazedcmds.GlazeCommand = (*LogsCommand)(nil)
 
+func (c *LogsCommand) PrepareGlazedValues(vals *values.Values) error {
+	logValues, exists := vals.Get(schema.DefaultSlug)
+	if !exists {
+		return errors.New("logs settings are unavailable")
+	}
+	followValue, exists := logValues.Fields.Get("follow")
+	if !exists || followValue.Value != true {
+		return nil
+	}
+	glazedValues, exists := vals.Get(glazedsettings.GlazedSlug)
+	if !exists {
+		return errors.New("glazed output settings are unavailable")
+	}
+	outputValue, exists := glazedValues.Fields.Get("output")
+	if !exists || outputValue.Value != "json" {
+		return nil
+	}
+	objectsValue, exists := glazedValues.Fields.Get("output-as-objects")
+	if !exists {
+		return errors.New("glazed JSON object output setting is unavailable")
+	}
+	objectsValue.Value = true
+	return nil
+}
+
 func NewLogsCommand() (*LogsCommand, error) {
 	repoSection, err := getRepoLayer()
 	if err != nil {

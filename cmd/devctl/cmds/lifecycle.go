@@ -218,6 +218,11 @@ func buildGlazedCommand(command glazedcmds.GlazeCommand) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		if preparer, ok := command.(interface{ PrepareGlazedValues(*values.Values) error }); ok {
+			if err := preparer.PrepareGlazedValues(parsedValues); err != nil {
+				return err
+			}
+		}
 		glazedValues, exists := parsedValues.Get(glazedsettings.GlazedSlug)
 		if !exists {
 			return errors.New("glazed output settings are unavailable")
