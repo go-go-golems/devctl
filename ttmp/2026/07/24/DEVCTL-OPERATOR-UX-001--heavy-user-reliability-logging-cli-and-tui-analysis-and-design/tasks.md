@@ -3,7 +3,7 @@
 ## TODO
 
 - [x] Establish ticket scope, evidence rules, and current repository baseline <!-- t:zhzi -->
-- [ ] Map process supervision, state, health, exit, and restart architecture <!-- t:ud53 -->
+- [x] Map process supervision, state, health, exit, and restart architecture <!-- t:ud53 -->
 - [ ] Map service logs, protocol streams, Logcopter, and log-parser surfaces <!-- t:1x08 -->
 - [ ] Audit CLI command ergonomics, output contracts, and automation behavior <!-- t:zn2u -->
 - [ ] Audit TUI architecture, views, event routing, actions, and failure UX <!-- t:iwzu -->
