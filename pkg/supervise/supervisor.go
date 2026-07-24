@@ -2,6 +2,7 @@ package supervise
 
 import (
 	"context"
+	stderrors "errors"
 	"net"
 	"net/http"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-go-golems/devctl/pkg/engine"
+	"github.com/go-go-golems/devctl/pkg/runstate"
 	"github.com/go-go-golems/devctl/pkg/state"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -163,6 +165,11 @@ func (s *Supervisor) StartService(ctx context.Context, st *state.State, spec eng
 	}
 
 	rec.PID = newRec.PID
+	rec.RunID = newRec.RunID
+	rec.WrapperStartToken = newRec.WrapperStartToken
+	rec.ChildPID = newRec.ChildPID
+	rec.ChildStartToken = newRec.ChildStartToken
+	rec.ChildPGID = newRec.ChildPGID
 	rec.Command = newRec.Command
 	rec.Cwd = newRec.Cwd
 	rec.Env = newRec.Env
@@ -209,8 +216,6 @@ func (s *Supervisor) startService(ctx context.Context, svc engine.ServiceSpec) (
 	ts := time.Now().Format("20060102-150405")
 	stdoutPath := filepath.Join(state.LogsDir(s.opts.RepoRoot), svc.Name+"-"+ts+".stdout.log")
 	stderrPath := filepath.Join(state.LogsDir(s.opts.RepoRoot), svc.Name+"-"+ts+".stderr.log")
-	exitInfoPath := filepath.Join(state.LogsDir(s.opts.RepoRoot), svc.Name+"-"+ts+".exit.json")
-	readyPath := filepath.Join(state.LogsDir(s.opts.RepoRoot), svc.Name+"-"+ts+".ready")
 
 	if s.opts.WrapperExe == "" {
 		stdoutFile, err := os.OpenFile(stdoutPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
@@ -261,57 +266,103 @@ func (s *Supervisor) startService(ctx context.Context, svc engine.ServiceSpec) (
 		return rec, nil
 	}
 
-	args := []string{
-		"__wrap-service",
-		"--service", svc.Name,
-		"--cwd", cwd,
-		"--stdout-log", stdoutPath,
-		"--stderr-log", stderrPath,
-		"--exit-info", exitInfoPath,
-		"--ready-file", readyPath,
+	store, err := runstate.NewStore(s.opts.RepoRoot)
+	if err != nil {
+		return state.ServiceRecord{}, err
 	}
-	for k, v := range svc.Env {
-		args = append(args, "--env", k+"="+v)
+	runID, err := runstate.NewRunID()
+	if err != nil {
+		return state.ServiceRecord{}, err
 	}
-	args = append(args, "--")
-	args = append(args, svc.Command...)
+	run := runstate.RunRecord{
+		RunID:   runID,
+		Service: svc.Name,
+		Phase:   runstate.RunPlanned,
+		Spec: runstate.ServiceSpecRecord{
+			Name:        svc.Name,
+			Command:     append([]string{}, svc.Command...),
+			Cwd:         cwd,
+			Environment: state.SanitizeEnv(svc.Env),
+			Health:      runstateHealthRecord(svc),
+		},
+	}
+	if err := store.CreateRun(ctx, run); err != nil {
+		return state.ServiceRecord{}, errors.Wrap(err, "create planned run")
+	}
+	request, err := NewWrapperRequest(store, runID, svc.Name, cwd, svc.Command, svc.Env)
+	if err != nil {
+		markRunFailed(store, runID, "WRAPPER_REQUEST_INVALID", err)
+		return state.ServiceRecord{}, err
+	}
+	if err := WriteWrapperRequest(request); err != nil {
+		markRunFailed(store, runID, "WRAPPER_REQUEST_WRITE_FAILED", err)
+		return state.ServiceRecord{}, err
+	}
+	if err := store.UpdateRun(ctx, runID, func(record *runstate.RunRecord) error {
+		record.Phase = runstate.RunStarting
+		return nil
+	}); err != nil {
+		_ = os.Remove(request.RequestPath())
+		return state.ServiceRecord{}, errors.Wrap(err, "mark run starting")
+	}
 
 	// #nosec G204 -- wrapper executable is configured in the repo spec.
-	cmd := exec.Command(s.opts.WrapperExe, args...)
+	cmd := exec.Command(s.opts.WrapperExe, "__wrap-service", "--request", request.RequestPath())
 	cmd.Dir = s.opts.RepoRoot
 	cmd.Env = os.Environ()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	if err := cmd.Start(); err != nil {
+		_ = os.Remove(request.RequestPath())
+		markRunFailed(store, runID, "WRAPPER_START_FAILED", err)
 		return state.ServiceRecord{}, errors.Wrap(err, "start wrapper")
 	}
 
 	pid := cmd.Process.Pid
 	log.Info().Str("service", svc.Name).Int("pid", pid).Msg("service started")
+	wrapperIdentity, err := runstate.ReadProcessIdentity(pid)
+	if err != nil {
+		_ = terminatePIDGroup(context.Background(), pid, time.Second)
+		markRunFailed(store, runID, "WRAPPER_IDENTITY_FAILED", err)
+		return state.ServiceRecord{}, errors.Wrap(err, "read launched wrapper identity")
+	}
 
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		if _, err := os.Stat(readyPath); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			_ = terminatePIDGroup(context.Background(), pid, 1*time.Second)
-			return state.ServiceRecord{}, errors.New("wrapper did not report child start")
-		}
-		time.Sleep(10 * time.Millisecond)
+	handshakeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	owner, ready, err := waitWrapperHandshake(handshakeCtx, request, wrapperIdentity)
+	cancel()
+	if err != nil {
+		_ = terminatePIDGroup(context.Background(), pid, time.Second)
+		_ = os.Remove(request.RequestPath())
+		markRunFailed(store, runID, "WRAPPER_HANDSHAKE_FAILED", err)
+		return state.ServiceRecord{}, err
+	}
+	if err := store.UpdateRun(ctx, runID, func(record *runstate.RunRecord) error {
+		record.Phase = runstate.RunReady
+		record.Wrapper = &owner.Wrapper
+		record.Child = &ready.Child
+		record.ChildPGID = ready.ChildPGID
+		return nil
+	}); err != nil {
+		_ = terminatePIDGroup(context.Background(), pid, time.Second)
+		return state.ServiceRecord{}, errors.Wrap(err, "persist ready run")
 	}
 
 	rec := state.ServiceRecord{
-		Name:      svc.Name,
-		PID:       pid,
-		Command:   svc.Command,
-		Cwd:       cwd,
-		Env:       state.SanitizeEnv(svc.Env),
-		StdoutLog: stdoutPath,
-		StderrLog: stderrPath,
-		ExitInfo:  exitInfoPath,
-		StartedAt: time.Now(),
-		Spec:      specRecordFromServiceSpec(svc, cwd),
+		Name:              svc.Name,
+		PID:               pid,
+		RunID:             runID,
+		WrapperStartToken: owner.Wrapper.StartToken,
+		ChildPID:          ready.Child.PID,
+		ChildStartToken:   ready.Child.StartToken,
+		ChildPGID:         ready.ChildPGID,
+		Command:           svc.Command,
+		Cwd:               cwd,
+		Env:               state.SanitizeEnv(svc.Env),
+		StdoutLog:         request.StdoutPath(),
+		StderrLog:         request.StderrPath(),
+		ExitInfo:          request.ExitPath(),
+		StartedAt:         ready.WrittenAt,
+		Spec:              specRecordFromServiceSpec(svc, cwd),
 	}
 	if svc.Health != nil {
 		rec.HealthType = svc.Health.Type
@@ -319,6 +370,76 @@ func (s *Supervisor) startService(ctx context.Context, svc engine.ServiceSpec) (
 		rec.HealthURL = svc.Health.URL
 	}
 	return rec, nil
+}
+
+func waitWrapperHandshake(
+	ctx context.Context,
+	request *WrapperRequest,
+	wrapperIdentity *runstate.ProcessIdentity,
+) (*OwnerRecord, *ReadyRecord, error) {
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	var owner *OwnerRecord
+	for {
+		if owner == nil {
+			record, err := ReadOwnerRecord(request.OwnerPath())
+			if err == nil {
+				if err := ValidateOwnerRecord(ctx, request, wrapperIdentity, record); err != nil {
+					return nil, nil, err
+				}
+				owner = record
+			} else if !os.IsNotExist(errors.Cause(err)) {
+				return nil, nil, err
+			}
+		}
+		if owner != nil {
+			record, err := ReadReadyRecord(request.ReadyPath())
+			if err == nil {
+				if err := ValidateReadyRecord(ctx, request, owner, record); err != nil {
+					return nil, nil, err
+				}
+				return owner, record, nil
+			} else if !os.IsNotExist(errors.Cause(err)) {
+				return nil, nil, err
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			if owner == nil {
+				return nil, nil, stderrors.Join(ErrOwnerRecordMissing, ctx.Err())
+			}
+			return nil, nil, stderrors.Join(ErrReadyRecordMissing, ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func markRunFailed(store *runstate.Store, runID string, code string, failure error) {
+	if store == nil || runID == "" || failure == nil {
+		return
+	}
+	_ = store.UpdateRun(context.Background(), runID, func(record *runstate.RunRecord) error {
+		record.Phase = runstate.RunFailed
+		record.LastError = &runstate.ErrorRecord{
+			Code:    code,
+			Message: failure.Error(),
+		}
+		return nil
+	})
+}
+
+func runstateHealthRecord(service engine.ServiceSpec) *runstate.HealthCheckRecord {
+	if service.Health == nil {
+		return nil
+	}
+	return &runstate.HealthCheckRecord{
+		Type:      service.Health.Type,
+		Address:   service.Health.Address,
+		URL:       service.Health.URL,
+		TimeoutMs: service.Health.TimeoutMs,
+	}
 }
 
 func mergeEnv(base []string, extra map[string]string) []string {

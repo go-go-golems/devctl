@@ -28,15 +28,20 @@ type State struct {
 }
 
 type ServiceRecord struct {
-	Name      string            `json:"name"`
-	PID       int               `json:"pid"`
-	Command   []string          `json:"command"`
-	Cwd       string            `json:"cwd"`
-	Env       map[string]string `json:"env,omitempty"`
-	StdoutLog string            `json:"stdout_log"`
-	StderrLog string            `json:"stderr_log"`
-	ExitInfo  string            `json:"exit_info,omitempty"`
-	StartedAt time.Time         `json:"started_at,omitempty"` // When the process was started
+	Name              string            `json:"name"`
+	PID               int               `json:"pid"`
+	RunID             string            `json:"run_id,omitempty"`
+	WrapperStartToken string            `json:"wrapper_start_token,omitempty"`
+	ChildPID          int               `json:"child_pid,omitempty"`
+	ChildStartToken   string            `json:"child_start_token,omitempty"`
+	ChildPGID         int               `json:"child_pgid,omitempty"`
+	Command           []string          `json:"command"`
+	Cwd               string            `json:"cwd"`
+	Env               map[string]string `json:"env,omitempty"`
+	StdoutLog         string            `json:"stdout_log"`
+	StderrLog         string            `json:"stderr_log"`
+	ExitInfo          string            `json:"exit_info,omitempty"`
+	StartedAt         time.Time         `json:"started_at,omitempty"` // When the process was started
 
 	// Health check configuration (if any)
 	HealthType    string `json:"health_type,omitempty"`    // "tcp"|"http"
