@@ -131,3 +131,15 @@ Completed Phase 2 acceptance with pre-indexed v2 runs, durable wrapper ownership
 ## 2026-07-24
 
 Completed Phase 4: bounded byte framing, exact raw capture, single sequenced logs.jsonl writer, live flush/sync-before-exit ordering, disk-full child termination, deterministic query/tail merge, corruption diagnostics, cursor follow, and 100,000-record/race coverage (78141a2, 1afe2e7).
+
+## 2026-07-24
+
+Implemented Phases 3, 5, and 6: centralized typed lifecycle controller, robust retained dynamic top-level catalog injection, Glazed CLI contracts, structured logs, and three-view typed TUI with tmux validation.
+
+## 2026-07-24
+
+Completed Phase 7: removed legacy TUI dependencies, refreshed public and embedded documentation, added v2 upgrade guidance and historical supersession notes, passed build/test/race/lint/gosec/tmux verification, and uploaded the final ticket bundle to reMarkable.
+
+## 2026-07-24
+
+Implementation complete: all phases and verification tasks passed; final ticket bundle uploaded to reMarkable.

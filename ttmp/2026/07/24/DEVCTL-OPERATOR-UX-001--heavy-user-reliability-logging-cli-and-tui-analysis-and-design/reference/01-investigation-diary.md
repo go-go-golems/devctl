@@ -2756,6 +2756,59 @@ git diff --check
   PASS
 ```
 
+## Step 34 — Complete release checks and deliver the updated ticket
+
+The final release pass exercised generation, compilation, unit/integration
+tests, race detection, lint, security analysis, embedded help, CLI contract
+searches, docmgr frontmatter, and the live tmux operator workflow.
+
+```text
+make logcopter-check
+  PASS
+
+make build
+  PASS; clean generation after committed logger artifacts
+
+go test ./...
+  PASS
+
+go test -race ./pkg/operator/... ./pkg/runstate/... ./pkg/runlog/... ./pkg/tui/...
+  PASS
+
+golangci-lint run -v
+  PASS; 0 issues
+
+gosec ... ./...
+  PASS; 81 files, 0 issues
+
+docmgr validate frontmatter --doc <ticket-document>
+  PASS for index, design, and diary
+```
+
+The acceptance search for `stop-service|logs --service` now finds only the
+process-level test proving the removed spelling is unknown and the upgrade
+table documenting its replacement. The TUI source search finds no JSON
+routing, syscall signaling, raw file opening, legacy state saving, or
+Watermill dependency.
+
+I attempted `govulncheck ./...` with an isolated cache. The sandboxed attempt
+could not resolve `vuln.go.dev`; the requested network escalation was rejected
+because it would disclose repository dependency metadata to an external
+service without explicit user authorization. I did not retry through another
+route. This is recorded as an unrun external database check, not as a clean
+vulnerability result.
+
+Finally, I uploaded a new default-layout bundle containing the closed ticket
+index, full design guide, and complete implementation diary:
+
+```text
+DEVCTL Operator UX Final Implementation Report.pdf
+/ai/2026/07/24/DEVCTL-OPERATOR-UX-001
+```
+
+The uploader returned `OK: uploaded`; per the reMarkable workflow, no redundant
+cloud listing was performed.
+
 ## Step 33 — Reconcile terminal exits during snapshots and replay in tmux
 
 The live tmux matrix found a correctness bug that unit-only rendering tests did

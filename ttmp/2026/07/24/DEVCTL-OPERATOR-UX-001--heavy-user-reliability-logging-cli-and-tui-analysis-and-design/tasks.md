@@ -16,8 +16,8 @@
 - [x] Phase 0: archive baseline tests, builds, lint, probes, and downstream-consumer gate <!-- t:j4q2 -->
 - [x] Phase 1: implement versioned atomic run state, repository lock, and process identity <!-- t:z2o6 -->
 - [x] Phase 2: implement wrapper request and durable ownership/ready handshake <!-- t:jvyg -->
-- [ ] Phase 3: centralize lifecycle operations in pkg/operator <!-- t:22pg -->
+- [x] Phase 3: centralize lifecycle operations in pkg/operator <!-- t:22pg -->
 - [x] Phase 4: implement sequenced run-scoped structured logging <!-- t:flln -->
-- [ ] Phase 5: migrate CLI and robust dynamic command catalog <!-- t:fiu7 -->
-- [ ] Phase 6: replace TUI with typed Overview, Logs, and Runs models <!-- t:snce -->
-- [ ] Phase 7: remove dead paths, update documentation, and complete release verification <!-- t:6hze -->
+- [x] Phase 5: migrate CLI and robust dynamic command catalog <!-- t:fiu7 -->
+- [x] Phase 6: replace TUI with typed Overview, Logs, and Runs models <!-- t:snce -->
+- [x] Phase 7: remove dead paths, update documentation, and complete release verification <!-- t:6hze -->
