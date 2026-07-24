@@ -281,6 +281,489 @@ These are observations. The CLI analysis later in this document will define a
 consistent rule for absence, invalid configuration, human output, structured
 output, and error rendering.
 
+## The five current log and event planes
+
+Devctl currently has five related but semantically different streams. A new
+engineer must not combine them until each record has explicit provenance.
+
+### Service stdout and stderr
+
+The wrapper writes the child process's byte streams to two append-only files
+whose paths are stored in the service record. These bytes are unstructured:
+they may contain text, ANSI control sequences, JSON, carriage-return progress
+updates, or binary fragments. Separate files destroy the original temporal
+ordering between stdout and stderr.
+
+`devctl logs` selects one current service record and one stream
+(`cmd/devctl/cmds/logs.go:16-80`). Its capabilities are:
+
+- exactly one service selected by the required `--service` flag;
+- stdout by default or stderr with `--stderr`;
+- last 50 lines by default, all bytes with `--tail 0`;
+- optional polling follow mode.
+
+It has no all-service mode, combined stream, run selection, source prefixes,
+timestamps, `--since`, structured output, ANSI policy, rotation handling, or
+backpressure contract.
+
+### Devctl and plugin diagnostic logging
+
+Devctl uses generated Logcopter areas with zerolog. Root flags select level,
+format, file, stdout mirroring, caller, and area overrides. These diagnostics
+describe devctl itself and should normally remain on stderr so stdout is safe
+for data.
+
+Plugin stdout is reserved for NDJSON protocol frames. Any non-JSON stdout line
+fails all outstanding calls as protocol contamination
+(`pkg/runtime/client.go:216-263`). Plugin stderr is read line by line and
+re-emitted as an info-level devctl log with a `plugin` field
+(`client.go:266-284`). The original plugin severity and timestamp are not
+preserved unless encoded inside the text.
+
+This separation is correct:
+
+```text
+plugin stdout  -> machine protocol; contamination is fatal
+plugin stderr  -> operator diagnostic; never parsed as protocol
+service output -> application-owned bytes persisted per run
+```
+
+### Protocol stream events
+
+The v2 protocol exposes `Event{StreamID, Event, Level, Message, Fields, Ok}` and
+capabilities for operations, streams, and commands
+(`pkg/protocol/types.go:19-77`). `devctl stream start` selects a provider,
+starts a stream, and prints either human lines or raw event JSON
+(`cmd/devctl/cmds/stream.go:28-123`).
+
+Protocol streams are not service file logs. They can represent telemetry,
+progress, sensor data, or a plugin-defined feed. They need bounded buffering
+and explicit start/end ownership. The current TUI correctly avoids echoing
+every stream event into its global event log
+(`pkg/tui/transform.go:161-167`), but it gives streams an entire primary view.
+
+### Ephemeral TUI events
+
+The TUI creates its own in-memory events for snapshot polling, action text,
+pipeline phases, service-exit observations, and stream lifecycle. They are not
+persisted and disappear when the TUI exits. A state snapshot is transformed
+into `state: loaded`, `state: missing`, or `state: error` on every refresh
+(`pkg/tui/transform.go:43-65`), even if nothing changed.
+
+`scripts/04-tui-state-event-probe.sh` observed five identical
+`state: missing` events per second with a 200 ms refresh. The committed
+dashboard screenshot shows the same issue at a one-second refresh. This is
+polling noise presented as event history.
+
+### JavaScript parsed-log events
+
+`pkg/logjs` embeds goja and supports module registration, parsing, filtering,
+transformation, timeouts, normalization, errors, multiline state, and
+multi-module fan-out. `cmd/log-parse` is a standalone stream processor. The
+subsystem contains 1,668 Go lines plus examples and a long help page.
+
+Repository search found no integration from `devctl logs`, the supervisor, or
+the TUI. Historical ticket `MO-007-LOG-PARSER` explicitly called devctl
+integration future work; `MO-016-LOGPARSER-DEVCTL-INTEGRATION` still has nine
+integration tasks open.
+
+**Design disposition:** the operator redesign must not integrate this
+subsystem. Before implementation, search known downstream repositories for
+imports of `github.com/go-go-golems/devctl/pkg/logjs`. If there are none,
+remove `cmd/log-parse`, `pkg/logjs`, its examples, and its devctl help entry in
+one explicit change. Git history is the archive. Do not add a compatibility
+command or adapter. If external consumers exist, stop that removal and open a
+separate extraction ticket; do not let it block the core logging work.
+
+## Log-reader implementation audit
+
+There are three tail implementations:
+
+| Reader | Algorithm | Limit | Follow behavior |
+|---|---|---:|---|
+| CLI `readTailLines` | scans entire file with 1 MiB token cap | line count | separate `followFile` |
+| `state.TailLines` | reads at most final byte window | caller supplied, usually 2 MiB | none |
+| TUI `readTailLines` | reads final byte window and returns offset | 2 MiB default | polls both files |
+
+The CLI follow loop opens the file once, seeks to the end, and retries EOF
+every 200 ms (`cmd/devctl/cmds/logs.go:82-108`). It never compares file
+identity or detects a shorter size. `scripts/03-log-follow-lifecycle-probe.sh`
+established:
+
+```text
+expected_appended_line=append-visible
+expected_after_truncate=after-truncate
+expected_after_rotation=after-rotate
+captured_stdout_begin
+append-visible
+captured_stdout_end
+```
+
+The baseline append proves the follower was active. Missing later lines prove
+that current behavior cannot follow common copy-truncate or rename/recreate
+lifecycles.
+
+The TUI implementation is more robust to truncation because it resets an
+offset when size decreases (`pkg/tui/models/service_model.go:778-840`), but it
+reopens and reads each stream every 250 ms and still has no inode identity. It
+duplicates the bounded-tail algorithm at `service_model.go:872-922`.
+
+**Required consolidation:** implement one package, tentatively
+`pkg/runlog`, with snapshot and follow APIs. CLI, status diagnostics, and TUI
+must consume it. No frontend may open service log files directly.
+
+## CLI architecture and ergonomic audit
+
+### Registration and framework mixture
+
+`cmd/devctl/cmds/root.go:8-27` registers 17 top-level commands, including the
+hidden wrapper and hidden developer group. Most are hand-written Cobra
+commands. Only status and plugin list declare Glazed `WriterCommand`
+interfaces, and both manually marshal composite JSON instead of emitting
+Glazed rows. Consequently the code has Glazed schema parsing without the
+consistent table/JSON/YAML/CSV output contract that motivates Glazed.
+
+The repository section is a useful shared unit. It defines repo root, config,
+profile, strictness, dry-run, and timeout in one schema
+(`cmd/devctl/cmds/common.go:18-197`). That section should remain and be used by
+every public command. The current `--timeout` help calls it a plugin-operation
+timeout even though lifecycle commands also use it for readiness and shutdown.
+
+### Syntax inconsistencies
+
+| Intent | Current syntax | Problem |
+|---|---|---|
+| Start one service | `devctl start SERVICE` | clear positional form |
+| Restart one service | `devctl restart SERVICE` | clear positional form |
+| Stop one service | `devctl stop-service SERVICE` | noun is embedded in verb |
+| Read one service | `devctl logs --service SERVICE` | same noun becomes required flag |
+| Stop all | `devctl down` | separate environment-level vocabulary |
+| Observe plugin stream | `devctl stream start --op OP` | start is a subgroup verb |
+
+The redesign uses:
+
+```text
+devctl up [SERVICE...]
+devctl down [SERVICE...]
+devctl restart [SERVICE...]
+devctl logs [SERVICE...]
+```
+
+With no service arguments, `up` and `down` operate on the environment and
+`logs` selects all current services. With arguments, they operate on the named
+set. Remove public `start`, `stop-service`, and their old spellings rather than
+keeping aliases. This is an intentional breaking cleanup and requires the
+release note to say so.
+
+### Output inconsistencies
+
+The isolated CLI probe recorded:
+
+- missing state is successful JSON for `status` but an error for `down`;
+- missing config is a warning plus successful `{}` for `plan`;
+- an empty profile list is a successful table;
+- errors are printed twice when Cobra receives returned errors and renders the
+  rich help wrapper;
+- lifecycle success is the word `ok`, while list/snapshot commands emit JSON
+  or tables.
+
+The future contract is:
+
+| Condition | Human mode | Machine mode | Exit |
+|---|---|---|---:|
+| No state for `status` | one “stopped” row | one environment row | 0 |
+| No state for `down` | “already stopped” outcome | one no-op outcome row | 0 |
+| No configuration for planning/up | concise error with config path | error on stderr, no data rows | 2 |
+| Empty list | headings/no rows | empty stream/array per Glazed formatter | 0 |
+| Usage error | one error plus focused usage | same stderr | 2 |
+| Runtime failure | one contextual error | same stderr | 1 |
+| Partial multi-service failure | result row per service plus summary | result row per service | 1 |
+
+Never print a warning and an empty object to claim successful planning. Never
+print errors twice. Stdout is data; diagnostics stay on stderr.
+
+### Glazed command contract
+
+Snapshot, list, and lifecycle-result commands must implement
+`RunIntoGlazeProcessor` and emit one row per environment, service, plugin,
+phase, or outcome. Their command descriptions include:
+
+- `settings.NewGlazedSchema()` for output selection;
+- `cli.NewCommandSettingsSection()` for schema/debug inspection;
+- the shared repository section;
+- `cmds.WithArguments` for variadic `SERVICE...` using
+  `fields.TypeStringList` and `fields.WithIsArgument(true)`.
+
+Streaming logs use the same command-description and settings machinery, but
+emit a stable record shape:
+
+```go
+type LogRecord struct {
+    Sequence uint64
+    Time     time.Time
+    RunID    string
+    Service  string
+    Stream   string // stdout | stderr | system
+    Text     string
+    Partial  bool
+}
+```
+
+Human default renders compact prefixed text. `--output json` emits one JSON
+object per record and flushes after each row. A streaming command must honor
+context cancellation promptly. Environment-variable flag sources must not be
+introduced silently; the repository already uses explicit flags/config and
+the project instructions require notification before environment reads.
+
+### Dynamic command discovery
+
+`AddDynamicPluginCommands` starts configured plugin processes during root
+construction for unknown top-level verbs (`cmd/devctl/cmds/dynamic_commands.go:
+22-139`). This makes command discovery depend on executing repository code and
+can add startup latency or side effects before normal argument validation.
+
+**Design disposition:** remove automatic top-level injection. Expose plugin
+commands as:
+
+```text
+devctl plugin command list
+devctl plugin command run PLUGIN COMMAND -- ARGS...
+```
+
+Discovery then occurs only under an explicit plugin namespace. Do not retain
+top-level compatibility aliases.
+
+## TUI architecture audit
+
+### Measured size and views
+
+The current `pkg/tui` contains 7,757 Go lines, seven model files, and no
+`*_test.go` files. The root exposes six views:
+
+```text
+Dashboard -> Events -> Pipeline -> Plugins -> Streams -> Dashboard
+                    \
+                     Service detail (entered from Dashboard)
+```
+
+The largest files are:
+
+| File | Lines | Responsibility |
+|---|---:|---|
+| `models/service_model.go` | 923 | service detail, health/env/exit, dual log tailer |
+| `models/dashboard_model.go` | 821 | services, events, plugins, streams, actions |
+| `action_runner.go` | 749 | duplicate lifecycle orchestration and phase events |
+| `models/pipeline_model.go` | 738 | phase/step/config/live-output presentation |
+| `models/root_model.go` | 600 | routing, global state, view navigation |
+| `models/eventlog_model.go` | 599 | ephemeral filters, queue, stats, viewport |
+| `models/streams_model.go` | 463 | protocol-stream creation and inspection |
+| `state_watcher.go` | 450 | state, liveness, stats, health, plugin introspection |
+| `stream_runner.go` | 388 | plugin process and stream lifecycle |
+| `models/plugin_model.go` | 354 | capability inspection |
+
+Large files are not defects by themselves. Here they correspond to duplicated
+I/O and orchestration responsibilities inside presentation models.
+
+### Event transport
+
+The TUI uses an in-memory Watermill broker, JSON envelopes, a domain-to-UI
+transformer, another JSON envelope, a UI topic, and a forwarder before calling
+`tea.Program.Send`:
+
+```text
+StateWatcher / ActionRunner / StreamRunner
+          │ typed domain value
+          ▼
+     JSON Envelope
+          ▼
+ Watermill: devctl.events
+          ▼
+ unmarshal + transform
+          ▼
+     JSON UI Envelope
+          ▼
+ Watermill: devctl.ui.msgs
+          ▼
+ unmarshal + switch
+          ▼
+ typed tea.Msg -> RootModel
+```
+
+This process is entirely in-memory. It provides no persistence, replay,
+cross-process boundary, or independent scaling. It adds two serialization
+failure points and several type switches before reaching Bubble Tea, whose
+native API already accepts typed messages.
+
+**Design disposition:** remove Watermill and JSON envelopes from the TUI.
+Application services send typed immutable events to a small sink interface:
+
+```go
+type EventSink interface {
+    Send(context.Context, OperatorEvent) error
+}
+
+type TeaSink struct {
+    Program interface{ Send(tea.Msg) }
+}
+
+func (s TeaSink) Send(ctx context.Context, event OperatorEvent) error {
+    select {
+    case <-ctx.Done():
+        return ctx.Err()
+    default:
+        s.Program.Send(EventMsg{Event: event})
+        return nil
+    }
+}
+```
+
+Persistence, if needed, belongs in the run journal, not an in-memory message
+broker.
+
+### Polling and health divergence
+
+`StateWatcher` publishes a complete snapshot on every interval and performs
+process stats and health checks (`pkg/tui/state_watcher.go:168-245`). Its HTTP
+health rule treats status 400 and above as unhealthy
+(`state_watcher.go:409-423`), while startup accepts every status below 500.
+Thus the same endpoint can be “ready” during `up` and “unhealthy” in the TUI.
+
+Plugin introspection starts and stops each configured plugin in a background
+loop (`state_watcher.go:106-159`). A display refresh can therefore execute
+plugin code. Capability inspection should be a cached result of explicit
+planning/doctor operations, not a recurring TUI side effect.
+
+The future watcher compares a revision/hash and emits:
+
+- a snapshot message when a model first attaches;
+- a state-changed message only when durable state changes;
+- health-transition messages only when status changes;
+- resource samples on a separately throttled interval without adding event
+  history.
+
+### Duplicate control plane
+
+`pkg/tui/action_runner.go` reimplements up, down, stop, and restart instead of
+calling the CLI's underlying application operations. Concrete divergence
+already exists:
+
+- CLI `down` errors when state is absent; TUI `runDown` succeeds.
+- CLI restart resolves the new plan before stopping; TUI restart stops first,
+  then resolves. A resolution failure leaves the service stopped.
+- Both down paths ignore supervisor stop errors and remove state.
+- Phase definitions and actual phase behavior are manually synchronized.
+
+The dashboard also has a separate `x` action that calls
+`syscall.Kill(pid, SIGTERM)` (`models/dashboard_model.go:124-140`). It does not
+target the child group, wait, escalate, persist an outcome, or update state.
+
+**Design disposition:** introduce one `pkg/operator` application service used
+by both CLI and TUI:
+
+```go
+type Controller interface {
+    Up(ctx context.Context, request UpRequest, sink EventSink) (OperationResult, error)
+    Down(ctx context.Context, request DownRequest, sink EventSink) (OperationResult, error)
+    Restart(ctx context.Context, request RestartRequest, sink EventSink) (OperationResult, error)
+    Snapshot(ctx context.Context, request SnapshotRequest) (Snapshot, error)
+    FollowLogs(ctx context.Context, request FollowRequest, sink LogSink) error
+}
+```
+
+The CLI adapts operation results to Glazed rows. The TUI adapts typed events to
+Bubble Tea messages. Models never signal processes, start plugins, read state
+files, or tail logs.
+
+### Text-derived state
+
+`RootModel` sets its status line by checking prefixes such as
+`action failed:`, `action ok:`, and `sent SIGTERM`
+(`pkg/tui/models/root_model.go:176-191`). Changing prose can silently change
+behavior.
+
+Use a typed outcome:
+
+```go
+type OperationFinished struct {
+    OperationID string
+    Kind        OperationKind
+    Status      OperationStatus // succeeded | failed | canceled | partial
+    Error       *OperatorError
+    FinishedAt  time.Time
+}
+```
+
+Text is rendered at the edge and is never parsed back into state.
+
+### Reduced information architecture
+
+The redesigned default TUI has three views:
+
+1. **Overview** — environment state, service table, health, current operation,
+   and the last important transition.
+2. **Logs** — combined or selected services/streams, follow/pause/search,
+   timestamps, and run selector.
+3. **Runs** — current and recent lifecycle operations, phases, validation
+   issues, durations, and failure details.
+
+The current Events view is folded into Runs as typed transitions and into Logs
+for system records. Pipeline becomes Runs. Plugin capability inspection and
+protocol-stream experimentation remain explicit CLI developer workflows and
+are removed from the primary TUI. The service-detail page becomes a side panel
+or filtered Overview/Logs state rather than a fourth navigation system.
+
+This reduction prioritizes daily questions:
+
+- What is running?
+- What failed?
+- What is it printing?
+- What operation is devctl performing?
+- What do I need to do next?
+
+It does not remove plugin or stream protocol capability; it removes their
+permanent position in the operator's main navigation.
+
+## Historical ticket reconciliation
+
+Prior tickets are design evidence, not authoritative completion records.
+Several index headers say `complete` while their body says `active`; task lists
+also disagree with both.
+
+| Ticket | Recorded state | Current interpretation |
+|---|---|---|
+| `MO-006-DEVCTL-TUI` | header complete; body active; 27 open task markers | foundational intent implemented, completion metadata unreliable |
+| `MO-007-LOG-PARSER` | header complete; one future integration task open | standalone parser complete; devctl integration absent by design |
+| `MO-008-IMPROVE-TUI-LOOKS` | header complete; placeholder task open | visual work exists; ticket cannot prove acceptance |
+| `MO-009-TUI-COMPLETE-FEATURES` | active; 58 checked, 31 open | feature expansion explains current breadth; not a stable target |
+| `MO-010-DEVCTL-CLEANUP-PASS` | header complete; manual checks recorded | useful historical cleanup, not a current architecture audit |
+| `MO-011-IMPLEMENT-STREAMS` | header complete; optional stop semantics open | CLI/TUI streams exist; lifecycle remains one-client-per-stream |
+| `MO-012-PORT-CMDS-TO-GLAZED` | active; most public verbs still open | migration is partial; current hybrid contract confirms it |
+| `MO-014-IMPROVE-PIPELINE-TUI` | active; placeholder only | no actionable source of truth |
+| `MO-016-LOGPARSER-DEVCTL-INTEGRATION` | active; nine implementation tasks open | integration was designed but never implemented |
+| `MO-017-TUI-CONTEXT-LIFETIME-SCOPING` | header complete; shutdown validation open | important context fixes landed; verification incomplete |
+| `MO-018-PIPELINE-VIEW-STUCK-STATE` | active; fix tasks open | evidence against relying on current pipeline view state |
+| `MO-018-STATE-EVENT-TRACE` | active; repeated state-event fix open | directly reproduced by this ticket |
+| `STREAMS-TUI` | active; most feature tasks checked | current view exists; does not establish default-TUI value |
+| `DCTL-SERVICES` | active; implementation checked; upload open | individual lifecycle exists; current safety gaps supersede design |
+
+After approval, update those tickets with a short “superseded in whole or part
+by DEVCTL-OPERATOR-UX-001” note. Do not rewrite their historical task lists.
+Create implementation tasks only in the new execution ticket so two trackers
+cannot claim ownership of the same refactor.
+
+## Current-state gap summary
+
+| Area | Keep | Consolidate or correct | Remove from core path |
+|---|---|---|---|
+| Plugin pipeline | config mutation, phases, launch plan | typed operation events | automatic top-level dynamic command injection |
+| Wrapper | detached ownership and exit capture | durable run identity/state transaction | direct no-wrapper production branch if unowned |
+| State | non-secret planned metadata | atomic versioned run records | destructive clearing of diagnostic links |
+| Logs | persisted service output | one run-aware reader and record schema | three frontend-specific readers |
+| CLI | shared repo Glazed section | nouns, exit codes, rows, error rendering | old `start`/`stop-service` aliases |
+| TUI | Bubble Tea and focused operator views | shared controller and typed messages | Watermill/JSON chain, duplicate actions, kill shortcut |
+| Plugin streams | explicit protocol capability | bounded CLI lifecycle | default primary TUI view |
+| Log parser | independent functionality if separately owned | external consumer gate | devctl integration and repository ownership |
+
 ## References
 
 - [Investigation Diary](../reference/01-investigation-diary.md)

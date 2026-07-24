@@ -355,3 +355,207 @@ start wrapper -> ready marker -> health wait -> Supervisor.Start returns
 ```
 
 Only the final operation makes the run discoverable by a later devctl process.
+
+## Step 3: Audit logs, CLI contracts, TUI behavior, and historical intent
+
+This step mapped all five things that current code calls a log, audited command
+syntax and output, ran a real TUI under tmux, and compared the implementation
+with prior devctl tickets. It separates useful capabilities from complexity
+that accumulated because each surface grew independently.
+
+### Prompt Context
+
+**User prompt (verbatim):**
+
+> Furthermore, before you start implementating, research about possible
+> improvements you could make to devctl while you are at it, especially in
+> terms of properly displaying and handling logs, ergonomic improvements to
+> the CLI and TUI, things that could be removed and simplified that don't seem
+> useful, etc...
+>
+> Review it all from the perspective of an actual heavy user like you are, with
+> potentially more complex setups too.
+
+**Assistant interpretation:** Evaluate real daily workflows and complex,
+multi-service failure modes; do not treat the presence of a feature as proof
+that its current interaction model is worth retaining.
+
+**Inferred user intent:** Reduce the amount of devctl-specific behavior an
+operator must remember while making failures easier to inspect and automation
+safer.
+
+### What I did
+
+- Traced service stdout/stderr from wrapper creation through CLI and TUI
+  readers.
+- Traced devctl diagnostics through Logcopter/zerolog and plugin stderr into
+  the runtime logger.
+- Traced NDJSON protocol events through `runtime.Client`, the stream CLI, and
+  the TUI stream runner.
+- Audited the standalone `cmd/log-parse` and `pkg/logjs` subsystem and searched
+  the repository for integration consumers.
+- Counted 7,757 Go lines under `pkg/tui`, seven model files, and zero TUI test
+  files.
+- Read the root registration, repository flag layer, lifecycle commands,
+  status, logs, plugin inspection, streams, and dynamic command registration.
+- Ran `scripts/03-log-follow-lifecycle-probe.sh` against append, copy-truncate,
+  and rename/recreate behavior.
+- Ran `scripts/04-tui-state-event-probe.sh` in tmux with a 200 ms refresh and
+  captured the Events view.
+- Reviewed the implementation and task state of the prior TUI, streams,
+  log-parser, Glazed migration, context-lifetime, state-event, and
+  single-service tickets.
+- Added current-state maps, gap tables, and consolidation constraints to the
+  primary design guide.
+- Checked tasks `1x08`, `zn2u`, `iwzu`, `8qz7`, and `wslm` only after the
+  associated evidence was written.
+
+### Why
+
+Heavy-use reliability depends on consistency across surfaces. A CLI and TUI
+that independently implement “restart” can each look correct in isolation
+while producing different failure behavior. Likewise, a log viewer that works
+for a quiet single service can silently lose output when a file rotates or
+become unusable when ten services interleave.
+
+### What worked
+
+- The log lifecycle probe observed `append-visible`, proving its baseline
+  setup worked, then observed neither `after-truncate` nor `after-rotate`.
+- The TUI probe reproduced repeated state events without starting or stopping
+  services. At a 200 ms refresh it reported eight events and five events per
+  second after approximately two seconds.
+- The existing screenshot
+  `docs/screenshots/devctl-tui-dashboard.png` independently shows the same
+  repetition at the default one-second refresh.
+- Repository search found the JavaScript parser used by its standalone binary,
+  tests, examples, and long-form help, but not by `devctl logs`, supervision,
+  or the TUI.
+- Historical task lists explain why features exist and expose metadata drift
+  that prevents ticket status from serving as current truth.
+
+### What didn't work
+
+The first historical-ticket loop used `status` as a zsh variable:
+
+```text
+zsh:1: read-only variable: status
+```
+
+I renamed it to `ticket_status` and reran the inventory. No ticket was edited.
+
+The first log lifecycle probe used a fresh empty `GOCACHE`. Compilation
+consumed the available execution interval and the command exited with status
+143 before printing assertions. I changed only the build-cache choice,
+retaining a temporary binary and temporary repository. The rerun completed in
+under five seconds and produced the expected baseline plus missing
+post-lifecycle lines.
+
+The first tmux command inside the filesystem sandbox failed:
+
+```text
+error connecting to /tmp/tmux-1000/default (Operation not permitted)
+```
+
+I reran the scoped tmux operations with approved access, captured the pane,
+sent `q`, and verified the pane disappeared. A capture attempted immediately
+after the quit raced with shutdown and returned `can't find pane`, which is
+positive cleanup evidence rather than a TUI failure.
+
+### What I learned
+
+- The service log CLI follows one file descriptor and never checks inode or
+  size. It misses replacement files and can stall after truncation.
+- CLI tailing, `state.TailLines`, and TUI tailing are three implementations
+  with different limits and semantics.
+- Service output, operator diagnostics, protocol events, TUI events, and
+  JavaScript-parsed records are distinct data planes. Presenting all of them
+  as “logs” without source/run metadata causes ambiguity.
+- `status` is a Glazed `WriterCommand` but manually emits a JSON object, so
+  Glazed row processors and normal table/output selection are not actually
+  used. Only two non-test command files implement `WriterCommand`.
+- Lifecycle syntax is inconsistent: `start SERVICE`, `restart SERVICE`, and
+  `stop-service SERVICE`, while logs uses `--service SERVICE`.
+- The CLI and TUI duplicate orchestration. The TUI's `down` treats absent state
+  as success while the CLI returns an error. The TUI single-service restart
+  stops before resolving a fresh plan; the CLI resolves before stopping.
+- The TUI action runner also duplicates the unsafe ignored-stop-error behavior.
+- The TUI transforms every polled snapshot into an event even when the state
+  has not changed.
+- Root-model status is derived by parsing text prefixes such as
+  `action failed:` and `action ok:` rather than consuming typed outcomes.
+- Dashboard `x` signals a single wrapper PID directly, bypassing the
+  supervisor's group-aware termination, timeout, state update, and structured
+  result.
+- Plugin capability introspection launches plugin processes independently of
+  normal actions. This may have side effects and makes a display refresh an
+  execution operation.
+- The TUI has broad feature coverage but no automated tests under `pkg/tui`.
+
+### What was tricky to build
+
+- Protocol stream events must not be merged blindly with service logs. They
+  can be high-volume telemetry and have their own stream lifecycle.
+- The JavaScript parser is well implemented and documented in isolation. The
+  simplification question is not whether that code is low quality; it is
+  whether a 1,668-line independent product belongs inside devctl when the main
+  operator log path does not use it.
+- Old ticket headers often say `complete` while their body says `active` and
+  tasks remain unchecked. Current source and executed behavior therefore had
+  to outrank metadata.
+
+### What warrants a second pair of eyes
+
+- Confirm the product decision to remove the standalone JavaScript log parser
+  from devctl's core repository if a downstream consumer inventory finds no
+  external imports.
+- Confirm that plugin capability and protocol-stream exploration can move out
+  of the default TUI into explicit CLI/developer commands.
+- Evaluate whether complex users need an optional “all events” diagnostic view
+  after the default TUI is reduced to Overview, Logs, and Runs.
+
+### What should be done in the future
+
+- Build one run-aware log reader used by CLI and TUI.
+- Emit typed lifecycle outcomes and let both frontends call the same
+  application service.
+- Convert snapshot/list commands to true Glazed rows; keep streaming records as
+  stable NDJSON-capable rows.
+- Consolidate command nouns and positional service selection.
+- Retire stale tickets into a superseded index after this design is approved.
+
+### Code review instructions
+
+- Run `scripts/03-log-follow-lifecycle-probe.sh`; only `append-visible` should
+  appear under current code.
+- Run `scripts/04-tui-state-event-probe.sh`; verify repeated identical state
+  events and that the tmux session exits.
+- Compare `cmd/devctl/cmds/restart.go:53-74` with
+  `pkg/tui/action_runner.go:426-462` to see the resolve/stop ordering
+  divergence.
+- Compare `cmd/devctl/cmds/down.go:21-37` with
+  `pkg/tui/action_runner.go:264-355` to see absent-state divergence and common
+  stop-error loss.
+
+### Technical details
+
+Current TUI event transport performs multiple JSON round trips inside one
+process:
+
+```text
+producer
+  -> domain struct
+  -> JSON Envelope
+  -> Watermill topic devctl.events
+  -> unmarshal + type switch
+  -> UI struct
+  -> JSON Envelope
+  -> Watermill topic devctl.ui.msgs
+  -> unmarshal + type switch
+  -> tea.Program.Send(typed message)
+  -> RootModel type switch
+```
+
+The useful boundary is the final typed Bubble Tea message. The earlier
+in-process JSON and broker layers do not provide persistence, cross-process
+transport, replay, or independent deployment.
