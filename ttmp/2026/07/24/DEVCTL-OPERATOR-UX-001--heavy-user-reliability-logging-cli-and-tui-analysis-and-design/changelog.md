@@ -123,3 +123,7 @@ Phase 2 milestone: replaced wrapper argument fan-out with a consumed mode-0600 r
 
 - /home/manuel/workspaces/2026-07-07/prod-tiny-idp/devctl/pkg/supervise/supervisor_wrapper_test.go — Real devctl self-wrapper integration evidence
 - /home/manuel/workspaces/2026-07-07/prod-tiny-idp/devctl/pkg/supervise/wrapper_request.go — Durable wrapper protocol
+
+## 2026-07-24
+
+Completed Phase 2 acceptance with pre-indexed v2 runs, durable wrapper ownership/ready evidence, conservative crash reconciliation, kernel PID/start-token/PGID validation, failed-attempt retention, and normal/race coverage.

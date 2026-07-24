@@ -1694,3 +1694,127 @@ restart request
      -> start wrappers and complete health checks
   -> aggregate deterministic per-service outcomes
 ```
+
+## Step 12 — Reconcile crash evidence and prove partial stop semantics
+
+### Prompt
+
+(same as Step 8)
+
+### What I did
+
+- Added conservative reconciliation in `pkg/operator/reconcile.go`.
+- Made reconciliation run under the repository lock before `up`, `down`, and
+  each locked phase of `restart`.
+- Made `doctor` acquire the lifecycle lock, reconcile, and include the
+  structured reconciliation report in its result.
+- Added Linux process-group inspection beside PID/start-token inspection, with
+  an explicit unsupported-platform result on non-Linux builds.
+- Reconciled:
+  - planned runs with no owner into authoritative failed attempts;
+  - valid owner-only evidence into `starting`;
+  - valid live owner/ready evidence into `ready` when no health gate exists;
+  - health-gated live handshakes into `starting` pending health evaluation;
+  - exit artifacts with absent owned processes into `failed` or `exited`;
+  - identity, handshake, PGID, artifact, and liveness contradictions into
+    `unknown`.
+- Cleared current-run slots only for terminal runs whose lack of live
+  ownership was proven.
+- Scanned unreferenced run directories and reported them without signaling or
+  deleting anything.
+- Extended the observing supervisor test double to launch a real isolated
+  process group and emit valid owner/ready evidence.
+- Added reconciliation tests and a two-service partial-stop test.
+
+### Why
+
+Pre-creating a run closes the startup indexing gap but deliberately creates
+intermediate states after controller interruption. A later command needs to
+interpret those states from durable evidence before deciding whether a new
+process may start or an old process may be signaled.
+
+An unindexed run directory is not ownership proof. Automatic signaling based
+on directory names or command strings would reintroduce PID-reuse and
+cross-process hazards.
+
+### What worked
+
+- `go test ./pkg/operator ./pkg/runstate ./pkg/supervise` passed.
+- `go test -race ./pkg/operator ./pkg/runstate ./pkg/supervise` passed.
+- A planned run with no owner becomes failed and moves from
+  `current_run_id` to `last_run_id`.
+- A valid exit artifact with absent identities becomes an exited run with its
+  exit code retained.
+- An unindexed run remains untouched and appears in the report.
+- In a two-service stop, one injected failure produces a partial operation,
+  retains that service's current run and desired-running state, and still
+  clears the successfully stopped service.
+
+### What didn't work
+
+N/A. The focused and race suites passed on the first execution of this
+reconciliation slice.
+
+### What I learned
+
+The fake supervisor must produce the same durable ownership contract as the
+real supervisor. Marking a fake run `ready` without owner, ready, and live
+identity evidence correctly becomes a reconciliation contradiction.
+
+Reconciliation must distinguish a recovered live handshake with a health
+contract from a ready service. Durable process ownership proves the child is
+owned; it does not prove application health.
+
+### What was tricky to build
+
+Exit evidence and live-process evidence can contradict each other. The
+reconciler must not prefer the exit file merely because it is terminal-looking:
+an exit artifact plus a still-matching process becomes `unknown`.
+
+The process group in `ready.json` must be checked against the kernel, not only
+against the child PID encoded in JSON. Otherwise a tampered artifact could
+cause a later stop to address the wrong group.
+
+### What warrants a second pair of eyes
+
+- Review whether `doctor` should always reconcile mutably or gain a distinct
+  report-only mode before public CLI migration.
+- Review the classification of a wrapper that disappears after writing only
+  `owner.json`; the current implementation preserves it as `unknown`.
+- Confirm that health-gated recovered handshakes should be evaluated
+  synchronously by the next mutation or exclusively by an explicit
+  reconciliation/doctor policy.
+
+### What should be done in the future
+
+- Add cancellation-boundary tests around state indexing and wrapper start.
+- Classify start, handshake, and health errors with distinct stable codes.
+- Ensure failed health starts terminate their owned process before the run is
+  considered authoritatively failed.
+- Move Cobra and Bubble Tea onto the controller, then delete their lifecycle
+  policy.
+
+### Code review instructions
+
+- Start with `pkg/operator/reconcile.go`.
+- Check every branch that returns `terminal=true`; those are the only branches
+  allowed to clear a current-run slot.
+- Inspect the partial-stop test in `pkg/operator/controller_test.go`.
+- Run both focused normal and race commands listed above.
+
+### Technical details
+
+```text
+current run
+  ├─ no owner, planned, no stored identity
+  │    -> failed (start never observed) -> clear current
+  ├─ owner live, ready absent
+  │    -> starting
+  ├─ owner + ready live, PGID matches kernel
+  │    ├─ no health contract -> ready
+  │    └─ health contract    -> starting (health not yet proven)
+  ├─ exit exists, all owned identities absent
+  │    -> failed/exited -> clear current
+  └─ artifact or identity contradiction
+       -> unknown -> retain current, never guess or signal
+```

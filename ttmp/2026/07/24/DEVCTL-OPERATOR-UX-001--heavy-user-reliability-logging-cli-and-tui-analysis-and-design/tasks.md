@@ -15,7 +15,7 @@
 - [x] Complete docmgr relations, changelog, validation, commits, and reMarkable upload <!-- t:eoh0 -->
 - [x] Phase 0: archive baseline tests, builds, lint, probes, and downstream-consumer gate <!-- t:j4q2 -->
 - [x] Phase 1: implement versioned atomic run state, repository lock, and process identity <!-- t:z2o6 -->
-- [ ] Phase 2: implement wrapper request and durable ownership/ready handshake <!-- t:jvyg -->
+- [x] Phase 2: implement wrapper request and durable ownership/ready handshake <!-- t:jvyg -->
 - [ ] Phase 3: centralize lifecycle operations in pkg/operator <!-- t:22pg -->
 - [ ] Phase 4: implement sequenced run-scoped structured logging <!-- t:flln -->
 - [ ] Phase 5: migrate CLI and robust dynamic command catalog <!-- t:fiu7 -->
