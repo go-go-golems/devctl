@@ -2513,6 +2513,96 @@ go test ./cmd/devctl/cmds -run \
   second run: PASS
 ```
 
+## Step 25 — Replace the legacy TUI with typed Overview, Logs, and Runs
+
+I deleted the legacy TUI implementation rather than adapting it. The removed
+tree included the Watermill bus, JSON envelopes and transformer, action and
+stream runners, polling watcher, six primary/detail models, plugin
+introspection, direct process kill action, model-local log tailers, and the
+old widget/style packages.
+
+The replacement is 989 lines including tests and has six source files:
+
+```text
+messages.go   typed Bubble Tea messages
+model.go      root navigation, controller commands, snapshot/log scheduling
+overview.go   durable service snapshot selection and rendering
+logs.go       bounded structured-record buffer and filter state
+runs.go       typed lifecycle operations, events, and service outcomes
+model_test.go pure model, controller-boundary, cancellation, and size tests
+```
+
+The new command constructs one `operator.Controller` and injects it into the
+model. TUI code does not start plugins, plan services, signal processes, read
+state files, or open logs. Up/down/restart commands call only the controller.
+Controller events cross an in-process typed channel as `EventMsg`; completion
+arrives as `OperationDoneMsg`. No prose is parsed into state.
+
+Snapshot polling uses `Controller.Snapshot`. Durable revision changes update
+the Overview, while same-revision snapshots still update sampled health
+fields without creating Runs history. Log consumption uses
+`Controller.Logs().Follow` with `(run_id, sequence)` cursors. A single-flight
+guard prevents a snapshot tick or repeated navigation from starting duplicate
+followers. Every follower and operation channel selects on the command
+context, so quitting cancels blocked work.
+
+The three models implement the MVP interactions:
+
+- `1`, `2`, `3`, and `Tab` navigate exactly three primary views;
+- Overview selects services and confirms up/down/restart with exact names;
+- Logs retains service, stream, search, follow, pause, and wrap state across
+  view switches;
+- the log buffer is bounded by both records and bytes and reports display
+  drops while paused;
+- Runs renders typed operation statuses, phases/events, service outcomes, and
+  stable error codes;
+- confirmation, palette, search, and help modals take precedence over quit or
+  global navigation.
+
+The first size test expected the literal inactive label while the active label
+was uppercased. I changed the active marker to `> [1] Overview <`, preserving
+the exact label and accessibility of the navigation text.
+
+Verification:
+
+```text
+go test ./pkg/tui/... ./cmd/devctl/cmds
+  PASS
+
+go test -race ./pkg/tui/...
+  PASS
+
+rg 'encoding/json|json\.|syscall|os\.Open|state\.Save|watermill' pkg/tui
+  no matches
+```
+
+### Manual tmux smoke
+
+I launched the no-state TUI at 100x28:
+
+```text
+go run ./cmd/devctl tui \
+  --repo-root /tmp/devctl-tui-empty \
+  --alt-screen=false \
+  --refresh 200ms
+```
+
+The captured pane showed the three-view navigation, revision zero, stopped
+environment, and no-state start guidance without logging corruption. A
+batched key sequence did not quit because the final key was not delivered
+reliably by tmux; an explicit `send-keys q` closed the session, and
+`tmux has-session` confirmed it no longer existed.
+
+### Review focus
+
+- `model.go` intentionally uses one-record `runlog.Follow` commands so Bubble
+  Tea remains the sole owner of model mutation.
+- The current palette provides operator guidance for doctor/plugin workflows;
+  richer selection can be added without restoring permanent plugin/stream
+  views.
+- Human rendering is deliberately plain and responsive; styling can be
+  layered onto these pure models after behavior is stable.
+
 ## Step 20 — Migrate profile inspection to structured rows
 
 I replaced the `profiles list` tabwriter and the special `profiles active`
