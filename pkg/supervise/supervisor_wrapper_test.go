@@ -1,7 +1,9 @@
 package supervise
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-go-golems/devctl/pkg/engine"
+	"github.com/go-go-golems/devctl/pkg/runlog"
 	"github.com/go-go-golems/devctl/pkg/runstate"
 	"github.com/go-go-golems/devctl/pkg/state"
 	"github.com/stretchr/testify/require"
@@ -31,7 +34,7 @@ func TestSupervisorWrapperHandshakeCreatesRunArtifacts(t *testing.T) {
 		Services: []engine.ServiceSpec{
 			{
 				Name:    "wrapped-sleep",
-				Command: []string{"sleep", "30"},
+				Command: []string{"sh", "-c", "printf 'out\\r\\n'; printf 'err\\n' >&2; sleep 30"},
 				Env:     map[string]string{"API_KEY": "secret-value"},
 			},
 		},
@@ -59,6 +62,37 @@ func TestSupervisorWrapperHandshakeCreatesRunArtifacts(t *testing.T) {
 	require.NoFileExists(t, filepath.Join(runDir, WrapperRequestName))
 	require.FileExists(t, filepath.Join(runDir, OwnerRecordName))
 	require.FileExists(t, filepath.Join(runDir, ReadyRecordName))
+	require.Eventually(t, func() bool {
+		info, statErr := os.Stat(filepath.Join(runDir, JournalLogName))
+		return statErr == nil && info.Size() > 0
+	}, time.Second, 10*time.Millisecond)
+
+	journal, err := os.Open(filepath.Join(runDir, JournalLogName))
+	require.NoError(t, err)
+	defer func() { _ = journal.Close() }()
+	scanner := bufio.NewScanner(journal)
+	records := make([]runlog.LogRecord, 0, 2)
+	for scanner.Scan() {
+		var record runlog.LogRecord
+		require.NoError(t, json.Unmarshal(scanner.Bytes(), &record))
+		records = append(records, record)
+	}
+	require.NoError(t, scanner.Err())
+	require.Len(t, records, 2)
+	textByStream := map[runlog.StreamKind]string{}
+	for index, record := range records {
+		require.Equal(t, uint64(index+1), record.Sequence)
+		require.Equal(t, service.RunID, record.RunID)
+		textByStream[record.Stream] = record.Text
+	}
+	require.Equal(t, "out", textByStream[runlog.StreamStdout])
+	require.Equal(t, "err", textByStream[runlog.StreamStderr])
+	stdoutRaw, err := os.ReadFile(filepath.Join(runDir, StdoutLogName))
+	require.NoError(t, err)
+	require.Equal(t, "out\r\n", string(stdoutRaw))
+	stderrRaw, err := os.ReadFile(filepath.Join(runDir, StderrLogName))
+	require.NoError(t, err)
+	require.Equal(t, "err\n", string(stderrRaw))
 
 	runJSON, err := os.ReadFile(filepath.Join(runDir, "run.json"))
 	require.NoError(t, err)

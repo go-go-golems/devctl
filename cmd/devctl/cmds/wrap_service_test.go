@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"testing"
 	"time"
@@ -107,6 +108,56 @@ func TestWrapServiceForwardsSIGHUPWithoutKillingWrapper(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "hangup", exitInfo.Signal)
 	require.False(t, state.ProcessAlive(ready.Child.PID))
+}
+
+func TestWrapServiceTerminatesChildWhenJournalWriteFails(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("/dev/full fixture is Linux-specific")
+	}
+	if os.Getenv(wrapServiceHelperEnv) == "disk-full" {
+		runWrapServiceTestHelper()
+		return
+	}
+
+	repo := testrepo.New(t)
+	store, err := runstate.NewStore(repo.Root)
+	require.NoError(t, err)
+	require.NoError(t, store.CreateRun(context.Background(), runstate.RunRecord{
+		RunID: wrapServiceRunID, Service: "disk-full-fixture", Phase: runstate.RunPlanned,
+		Spec: runstate.ServiceSpecRecord{
+			Name: "disk-full-fixture", Command: []string{"sh", "-c", "while :; do echo x; done"},
+		},
+	}))
+	request, err := supervise.NewWrapperRequest(
+		store, wrapServiceRunID, "disk-full-fixture", repo.Root,
+		[]string{"sh", "-c", "while :; do echo x; done"}, nil,
+	)
+	require.NoError(t, err)
+	require.NoError(t, supervise.WriteWrapperRequest(request))
+	require.NoError(t, os.Symlink("/dev/full", request.JournalPath()))
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestWrapServiceTerminatesChildWhenJournalWriteFails$")
+	cmd.Env = append(os.Environ(),
+		wrapServiceHelperEnv+"=disk-full",
+		"DEVCTL_WRAP_SERVICE_TEST_DIR="+repo.Root,
+	)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	require.NoError(t, cmd.Start())
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case waitErr := <-done:
+		require.Error(t, waitErr)
+	case <-time.After(5 * time.Second):
+		_ = cmd.Process.Kill()
+		require.FailNow(t, "wrapper did not terminate after journal write failure")
+	}
+
+	exitInfo, err := state.ReadExitInfo(request.ExitPath())
+	require.NoError(t, err)
+	require.Contains(t, exitInfo.Error, "log capture")
+	require.Positive(t, exitInfo.PID)
+	require.False(t, state.ProcessAlive(exitInfo.PID))
 }
 
 func runWrapServiceTestHelper() {

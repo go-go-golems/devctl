@@ -21,6 +21,7 @@ const (
 	ReadyRecordName       = "ready.json"
 	StdoutLogName         = "stdout.log"
 	StderrLogName         = "stderr.log"
+	JournalLogName        = "logs.jsonl"
 	ExitRecordName        = "exit.json"
 )
 
@@ -142,6 +143,10 @@ func (r *WrapperRequest) StdoutPath() string {
 
 func (r *WrapperRequest) StderrPath() string {
 	return filepath.Join(r.ArtifactDir, StderrLogName)
+}
+
+func (r *WrapperRequest) JournalPath() string {
+	return filepath.Join(r.ArtifactDir, JournalLogName)
 }
 
 func (r *WrapperRequest) ExitPath() string {

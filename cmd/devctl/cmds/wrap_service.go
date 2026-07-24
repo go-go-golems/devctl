@@ -1,6 +1,7 @@
 package cmds
 
 import (
+	"context"
 	stderrors "errors"
 	"io"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-go-golems/devctl/pkg/runlog"
 	"github.com/go-go-golems/devctl/pkg/runstate"
 	"github.com/go-go-golems/devctl/pkg/state"
 	"github.com/go-go-golems/devctl/pkg/supervise"
@@ -81,14 +83,26 @@ func runWrappedService(request *supervise.WrapperRequest) error {
 	}
 	defer func() { _ = stderrFile.Close() }()
 
+	journalFile, err := os.OpenFile(request.JournalPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return recordWrapperSetupFailure(request, errors.Wrap(err, "open structured log journal"))
+	}
+	defer func() { _ = journalFile.Close() }()
+
 	startedAt := time.Now().UTC()
 	// #nosec G204 -- command comes from the validated repository service spec.
 	child := exec.Command(request.Command[0], request.Command[1:]...)
 	child.Dir = request.Cwd
 	child.Env = mergeEnv(os.Environ(), request.Environment)
-	child.Stdout = stdoutFile
-	child.Stderr = stderrFile
 	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	stdoutPipe, err := child.StdoutPipe()
+	if err != nil {
+		return recordWrapperSetupFailure(request, errors.Wrap(err, "create child stdout pipe"))
+	}
+	stderrPipe, err := child.StderrPipe()
+	if err != nil {
+		return recordWrapperSetupFailure(request, errors.Wrap(err, "create child stderr pipe"))
+	}
 
 	signalChannel := make(chan os.Signal, 8)
 	signal.Notify(signalChannel, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
@@ -110,19 +124,30 @@ func runWrappedService(request *supervise.WrapperRequest) error {
 		}
 		return startErr
 	}
+	captureDone := make(chan error, 1)
+	go func() {
+		captureDone <- runlog.Capture(
+			context.Background(),
+			runlog.CaptureOptions{RunID: request.RunID, Service: request.Service},
+			journalFile,
+			runlog.CaptureStream{Kind: runlog.StreamStdout, Read: stdoutPipe, Raw: stdoutFile},
+			runlog.CaptureStream{Kind: runlog.StreamStderr, Read: stderrPipe, Raw: stderrFile},
+		)
+	}()
 
 	childPGID, err := syscall.Getpgid(child.Process.Pid)
 	if err != nil {
-		return terminateChildAfterHandshakeFailure(request, child, startedAt, errors.Wrap(err, "read child process group"))
+		return terminateChildAfterHandshakeFailure(request, child, captureDone, startedAt, errors.Wrap(err, "read child process group"))
 	}
 	childIdentity, err := runstate.ReadProcessIdentity(child.Process.Pid)
 	if err != nil {
-		return terminateChildAfterHandshakeFailure(request, child, startedAt, errors.Wrap(err, "read child process identity"))
+		return terminateChildAfterHandshakeFailure(request, child, captureDone, startedAt, errors.Wrap(err, "read child process identity"))
 	}
 	if childPGID != child.Process.Pid {
 		return terminateChildAfterHandshakeFailure(
 			request,
 			child,
+			captureDone,
 			startedAt,
 			errors.Errorf("child process group %d does not match child PID %d", childPGID, child.Process.Pid),
 		)
@@ -140,10 +165,24 @@ func runWrappedService(request *supervise.WrapperRequest) error {
 		WrittenAt: time.Now().UTC(),
 	}
 	if err := supervise.WriteReadyRecord(request.ReadyPath(), ready); err != nil {
-		return terminateChildAfterHandshakeFailure(request, child, startedAt, err)
+		return terminateChildAfterHandshakeFailure(request, child, captureDone, startedAt, err)
 	}
 
-	waitErr := child.Wait()
+	waitDone := make(chan error, 1)
+	go func() {
+		waitDone <- child.Wait()
+	}()
+	var waitErr error
+	var captureErr error
+	select {
+	case captureErr = <-captureDone:
+		if captureErr != nil {
+			_ = syscall.Kill(-child.Process.Pid, syscall.SIGKILL)
+		}
+		waitErr = <-waitDone
+	case waitErr = <-waitDone:
+		captureErr = <-captureDone
+	}
 	exitedAt := time.Now().UTC()
 	exitInfo := state.ExitInfo{
 		Service:   request.Service,
@@ -169,9 +208,14 @@ func runWrappedService(request *supervise.WrapperRequest) error {
 		code := 0
 		exitInfo.ExitCode = &code
 	}
+	if captureErr != nil {
+		if exitInfo.Error == "" {
+			exitInfo.Error = captureErr.Error()
+		} else {
+			exitInfo.Error = exitInfo.Error + "; log capture: " + captureErr.Error()
+		}
+	}
 
-	_ = stdoutFile.Sync()
-	_ = stderrFile.Sync()
 	if lines, err := state.TailLines(request.StderrPath(), request.TailLines, 2<<20); err == nil {
 		exitInfo.StderrTail = lines
 	}
@@ -217,12 +261,17 @@ func recordWrapperSetupFailure(request *supervise.WrapperRequest, setupErr error
 func terminateChildAfterHandshakeFailure(
 	request *supervise.WrapperRequest,
 	child *exec.Cmd,
+	captureDone <-chan error,
 	startedAt time.Time,
 	handshakeErr error,
 ) error {
 	if child.Process != nil {
 		_ = syscall.Kill(-child.Process.Pid, syscall.SIGKILL)
 		_ = child.Wait()
+	}
+	captureErr := <-captureDone
+	if captureErr != nil {
+		handshakeErr = errors.Wrapf(handshakeErr, "log capture also failed: %v", captureErr)
 	}
 	recordErr := writeWrapperExit(request, state.ExitInfo{
 		Service:   request.Service,
