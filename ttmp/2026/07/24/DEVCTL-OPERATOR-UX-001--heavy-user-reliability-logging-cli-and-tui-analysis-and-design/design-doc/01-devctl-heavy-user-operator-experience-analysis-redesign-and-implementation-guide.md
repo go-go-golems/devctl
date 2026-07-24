@@ -15,6 +15,8 @@ Owners: []
 RelatedFiles:
     - Path: repo://cmd/devctl/cmds/logs.go
       Note: Current CLI log reader and follower
+    - Path: repo://cmd/devctl/cmds/dynamic_commands.go
+      Note: Current automatic top-level plugin command discovery and execution path
     - Path: repo://cmd/devctl/cmds/status.go
       Note: Current Glazed-adjacent status output
     - Path: repo://cmd/devctl/cmds/wrap_service.go
@@ -82,12 +84,14 @@ Glazed. It introduces:
 - conventional `up/down/restart/logs [SERVICE...]` commands with Glazed rows;
 - a three-view Overview, Logs, and Runs TUI using typed messages.
 
-It removes duplicate TUI orchestration, Watermill/JSON message plumbing,
-direct process signaling from models, frontend-specific log readers,
-automatic top-level plugin command injection, old lifecycle spellings, and,
-after a downstream-consumer gate, the unintegrated standalone JavaScript log
-parser. It deliberately does not add a daemon, REST API, scheduler, restart
-policy, state compatibility layer, or automatic repair.
+It preserves automatic top-level plugin command injection as a first-class
+extension mechanism, while replacing eager process-based discovery with a
+validated, deterministic command catalog. It removes duplicate TUI
+orchestration, Watermill/JSON message plumbing, direct process signaling from
+models, frontend-specific log readers, old lifecycle spellings, and, after a
+downstream-consumer gate, the unintegrated standalone JavaScript log parser.
+It deliberately does not add a daemon, REST API, scheduler, restart policy,
+state compatibility layer, or automatic repair.
 
 The implementation is divided into seven dependency-ordered phases with exact
 schemas, APIs, pseudocode, file changes, tests, commit boundaries, and
@@ -587,16 +591,145 @@ construction for unknown top-level verbs (`cmd/devctl/cmds/dynamic_commands.go:
 22-139`). This makes command discovery depend on executing repository code and
 can add startup latency or side effects before normal argument validation.
 
-**Design disposition:** remove automatic top-level injection. Expose plugin
-commands as:
+The capability itself is intentional and valuable. A repository plugin can
+advertise a command in its protocol handshake and make that command appear as
+a native root verb:
 
 ```text
-devctl plugin command list
-devctl plugin command run PLUGIN COMMAND -- ARGS...
+plugin handshake: commands=[{name:"seed-demo", help:"Seed demo identities"}]
+operator command: devctl seed-demo --tenant local
 ```
 
-Discovery then occurs only under an explicit plugin namespace. Do not retain
-top-level compatibility aliases.
+The current implementation has four weaknesses that must be separated from
+that user-facing contract:
+
+- an unknown verb or typo starts every selected plugin;
+- discovery and execution start the selected plugin twice in one invocation;
+- a collision logs a warning and keeps whichever provider was encountered
+  first;
+- the generated Cobra command accepts arbitrary arguments even though
+  `CommandSpec.ArgsSpec` exists.
+
+**Design disposition:** retain automatic top-level injection and make its
+catalog deterministic, inspectable, and side-effect bounded. The native
+`devctl COMMAND` form remains the primary interface. The `plugins` namespace
+provides diagnostics and an unambiguous escape hatch, not a replacement:
+
+```text
+devctl plugins commands
+devctl plugins inspect PLUGIN
+devctl plugins run PLUGIN COMMAND -- ARGS...
+devctl plugins refresh
+```
+
+#### Command catalog
+
+Introduce `pkg/plugincatalog`. It produces immutable catalog entries from the
+selected repository configuration:
+
+```go
+type CommandEntry struct {
+    Name        string
+    Help        string
+    ProviderID  string
+    PluginName  string
+    Args        []protocol.CommandArg
+    Fingerprint string
+}
+
+type Catalog struct {
+    ConfigFingerprint string
+    Profile           string
+    Commands          map[string]CommandEntry
+    Conflicts         map[string][]CommandEntry
+}
+```
+
+The preferred source is a static command declaration in `.devctl.yaml`.
+Handshake discovery remains available for plugins whose capabilities cannot
+be declared statically, but it is performed only by the explicit
+`plugins refresh` operation. A missing or stale cache never triggers plugin
+execution during root command construction. The cache is stored under
+`.devctl/cache/` and is never treated as trusted configuration. Its
+fingerprint covers:
+
+- the fully resolved configuration and selected profile;
+- plugin executable path, arguments, priority, and working directory;
+- executable file identity where available;
+- devctl catalog schema and protocol versions.
+
+The loader validates cached names, providers, and fingerprints before
+constructing Cobra commands. It does not execute plugins merely because a
+user typed an unknown word, requested root help, or invoked shell completion.
+
+```text
+argv
+  |
+  v
+parse bootstrap flags --> load validated catalog --> built-in name?
+                                |                       |
+                                |                       +--> execute built-in
+                                v
+                         dynamic name found?
+                          |             |
+                         no            yes
+                          |             |
+                    Cobra unknown   start one provider
+                    command error   and command.run
+```
+
+#### Namespace and collision rules
+
+Built-in command names and aliases are reserved. A plugin cannot shadow them.
+Two selected plugins advertising the same root name make that name
+unavailable; startup returns a structured `PLUGIN_COMMAND_CONFLICT` error that
+lists both providers and the configured profile. Ordering must never resolve
+ownership silently. The operator can then disable one provider, rename a
+static declaration, or use the explicit provider-qualified escape hatch.
+
+Names must match `^[a-z][a-z0-9-]*$`, must not begin with `__`, and must pass
+the same reserved-name check during config validation, refresh, and runtime
+handshake verification. A plugin returning a command set different from the
+catalog at execution fails with `PLUGIN_CATALOG_STALE` and tells the operator
+to run `devctl plugins refresh`; devctl does not silently change the active
+root command tree midway through execution.
+
+#### Execution contract
+
+Selecting a dynamic root command starts only its recorded provider. Devctl
+verifies the v2 handshake, `command.run` support, provider identity, and the
+selected command before applying `config.mutate` and issuing `command.run`.
+Cancellation and the root timeout cover startup, mutation, invocation, and
+shutdown. Plugin stdout remains protocol-only; stderr is captured through the
+same bounded diagnostic renderer used by other plugin operations.
+
+Argument metadata must be honored. Known `ArgsSpec` types become Cobra/Glazed
+positionals or flags after a deliberately versioned schema extension defines
+required, repeatable, default, and flag semantics. Until that extension
+lands, dynamic commands retain `cobra.ArbitraryArgs` and forward bytes
+unchanged. Do not infer stronger validation from the current two-field
+`CommandArg` structure.
+
+#### Failure behavior
+
+Catalog failures are visible and actionable:
+
+| Condition | Behavior |
+|---|---|
+| No matching command | Normal Cobra unknown-command error; no plugin starts |
+| Cache absent/stale | Explain `plugins refresh`; do not start all plugins implicitly |
+| Built-in collision | Reject catalog entry as reserved |
+| Plugin/plugin collision | Reject ambiguous root name and list providers |
+| Provider fails to start | Attribute error to provider and phase `startup` |
+| Runtime handshake differs | Return `PLUGIN_CATALOG_STALE` |
+| `command.run` times out | Cancel, close provider, return timeout exit class |
+| Plugin returns nonzero | Preserve plugin exit code when valid and render provider context |
+
+Tests must prove that root help, completion, built-ins, and typos start zero
+plugins; a valid dynamic command starts exactly one provider; catalog output
+is stable across plugin ordering; collisions fail deterministically; profile
+selection produces separate catalogs; stale fingerprints are rejected; and
+arguments plus cancellation reach `command.run` unchanged.
 
 ## TUI architecture audit
 
@@ -820,7 +953,7 @@ cannot claim ownership of the same refactor.
 
 | Area | Keep | Consolidate or correct | Remove from core path |
 |---|---|---|---|
-| Plugin pipeline | config mutation, phases, launch plan | typed operation events | automatic top-level dynamic command injection |
+| Plugin pipeline | config mutation, phases, launch plan, top-level dynamic commands | deterministic cached command catalog, collision errors, typed operation events | eager all-plugin discovery during unknown-command parsing |
 | Wrapper | detached ownership and exit capture | durable run identity/state transaction | direct no-wrapper production branch if unowned |
 | State | non-secret planned metadata | atomic versioned run records | destructive clearing of diagnostic links |
 | Logs | persisted service output | one run-aware reader and record schema | three frontend-specific readers |
@@ -1719,20 +1852,23 @@ devctl
   prepare
   validate
   profiles ...
-  plugin
+  plugins
     list
-    command list
-    command run PLUGIN COMMAND -- ARGS...
+    commands
+    inspect PLUGIN
+    refresh
+    run PLUGIN COMMAND -- ARGS...
   stream
     start ...
   tui
+  PLUGIN_COMMAND [ARGS...]       catalog-backed dynamic root command
   dev ...                         hidden
   __wrap-service --request PATH   hidden
 ```
 
-Remove `start`, `stop-service`, automatic top-level plugin commands, and the
-standalone log parser from the core command tree according to the consumer
-gate. No aliases remain.
+Remove `start`, `stop-service`, and the standalone log parser from the core
+command tree according to the consumer gate. Preserve catalog-backed dynamic
+top-level plugin commands. No lifecycle aliases remain.
 
 ### Logs flags
 
@@ -2002,11 +2138,15 @@ time, sequence, cursors, combined display, and stable machine output.
 ### D5: Breaking CLI cleanup
 
 **Decision:** Replace `start`/`stop-service` with service arguments on
-`up`/`down`, make logs positional, and remove automatic top-level plugin
-commands.
+`up`/`down`, make logs positional, and retain automatic top-level plugin
+commands through a validated catalog.
 
-**Reason:** One vocabulary is easier to learn and script. The project
-explicitly does not require backward-compatibility adapters.
+**Reason:** One lifecycle vocabulary is easier to learn and script, while
+repository-defined root commands are a deliberate devctl extensibility
+contract. Catalog-backed registration preserves that ergonomics without
+executing every plugin during typo handling, help, or completion. The project
+explicitly does not require backward-compatibility adapters for removed
+lifecycle spellings.
 
 ### D6: Three-view TUI
 
@@ -2267,7 +2407,10 @@ Files:
 
 - refactor `cmd/devctl/cmds/{up,down,restart,status,logs}.go`;
 - add `doctor.go`;
-- reorganize explicit `plugin/` and `stream/` groups;
+- add `pkg/plugincatalog` and reorganize diagnostic `plugins/` and `stream/`
+  groups;
+- refactor `dynamic_commands.go` to register only validated catalog entries
+  and start only the selected provider;
 - update root error handling and embedded help.
 
 For each command:
@@ -2285,7 +2428,7 @@ Delete:
 
 - `newStartServiceCmd`;
 - `newStopServiceCmd`;
-- automatic dynamic top-level command registration;
+- eager all-plugin discovery from automatic top-level command registration;
 - CLI-local `readTailLines`, `followFile`, and raw JSON marshaling;
 - log-parser subsystem if Phase 0 gate passed.
 
@@ -2300,6 +2443,11 @@ Tests:
 - JSON follow produces one object per line and flushes;
 - exit codes match the specification;
 - built-in command help never starts a plugin;
+- root help, completion, and unknown verbs never start a plugin;
+- one dynamic command starts exactly one provider;
+- reserved-name and plugin/plugin collisions fail deterministically;
+- profile-specific catalogs cannot be reused across fingerprints;
+- runtime handshake drift returns `PLUGIN_CATALOG_STALE`;
 - root initialization includes logging and embedded Glazed help.
 
 Acceptance:
@@ -2414,7 +2562,8 @@ review would otherwise be obscured.
 | `cmd/devctl/cmds/restart.go` | retain command settings only; call controller |
 | `cmd/devctl/cmds/start_service.go` | delete |
 | `cmd/devctl/cmds/stop_service.go` | delete |
-| `cmd/devctl/cmds/dynamic_commands.go` | replace automatic injection with explicit plugin group |
+| `cmd/devctl/cmds/dynamic_commands.go` | retain root injection; replace eager discovery with validated catalog lookup and single-provider execution |
+| `pkg/plugincatalog` | add catalog schema, fingerprinting, cache validation, refresh, conflicts, and tests |
 | `pkg/tui/action_runner.go` | delete after controller wiring |
 | `pkg/tui/bus.go`, `envelope.go`, `transform.go`, `forward.go` | delete |
 | `pkg/tui/state_watcher.go` | replace with revision-aware controller snapshot watcher |

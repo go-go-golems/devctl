@@ -76,3 +76,16 @@ Step 6: related eleven source files and seven external references, passed docmgr
 ## 2026-07-24
 
 Research, design, validation, source relations, commits, and reMarkable delivery completed
+
+## 2026-07-24
+
+Revised the operator design to preserve automatic top-level plugin commands
+and harden them with a validated catalog, deterministic collision handling,
+zero-plugin typo/help/completion paths, explicit refresh and inspection, and
+single-provider execution.
+
+### Related Files
+
+- cmd/devctl/cmds/dynamic_commands.go — Existing dynamic registration path retained as a product capability and redesigned for robust discovery
+- pkg/protocol/types.go — Existing command and handshake schema used as the catalog contract baseline
+- cmd/devctl/cmds/dynamic_commands_test.go — Existing behavior tests extended by the proposed robustness matrix

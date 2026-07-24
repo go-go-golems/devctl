@@ -1008,3 +1008,49 @@ probe scripts: 01, 02, 03, and 04 executed
 reMarkable dry run: passed
 reMarkable upload: confirmed
 ```
+
+## Step 7: Preserve and harden top-level plugin commands
+
+This step corrects the design disposition after product-owner review. Automatic
+top-level plugin command injection is a desired devctl capability. The design
+must preserve its native `devctl COMMAND` ergonomics while removing the eager,
+ambiguous discovery behavior of the current implementation.
+
+### Prompt Context
+
+**User prompt (verbatim):**
+
+> I want to keep the feature, but make it more robust.
+
+**Assistant interpretation:** Revise the completed operator design so dynamic
+root commands remain a first-class contract, then specify deterministic
+cataloging, collision handling, lifecycle boundaries, diagnostics, and tests.
+
+### What I did
+
+- Re-read `cmd/devctl/cmds/dynamic_commands.go`, its tests, and the protocol
+  `CommandSpec` and handshake validation types.
+- Replaced every recommendation to remove dynamic root commands.
+- Specified a `pkg/plugincatalog` boundary, cache fingerprints, static
+  declarations, explicit refresh and inspection commands, reserved names,
+  deterministic conflict errors, runtime handshake verification, and
+  single-provider execution.
+- Extended the CLI tree, architectural decision, implementation phase,
+  verification requirements, and file-by-file map.
+
+### Why
+
+The earlier recommendation conflated two separate concerns. Native
+repository-specific root commands are useful operator ergonomics. Starting
+every plugin while resolving an unknown word is the implementation weakness.
+The corrected design retains the former and replaces the latter.
+
+### What warrants a second pair of eyes
+
+- Decide the exact `.devctl.yaml` syntax for optional static command
+  declarations before implementation.
+- Decide whether a missing catalog should produce an instruction to refresh or
+  whether an explicitly enabled `discovery: eager` mode is necessary. The
+  design defaults to no implicit execution during typo resolution.
+- Confirm whether valid plugin exit codes should pass through exactly or map
+  into devctl's global exit-code taxonomy.
