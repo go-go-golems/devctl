@@ -1037,6 +1037,10 @@ cataloging, collision handling, lifecycle boundaries, diagnostics, and tests.
   single-provider execution.
 - Extended the CLI tree, architectural decision, implementation phase,
   verification requirements, and file-by-file map.
+- Uploaded the revised primary guide to
+  `/ai/2026/07/24/DEVCTL-OPERATOR-UX-001` using the default renderer and a
+  separate document name so the earlier PDF and any annotations were not
+  overwritten.
 
 ### Why
 
