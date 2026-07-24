@@ -51,3 +51,8 @@ Step 8: fix status missing-state payload scope (commit a0c50b3)
 
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/status.go — Move svc type before missing-state return
 
+
+## 2026-07-24
+
+Superseded in part by DEVCTL-OPERATOR-UX-001 for the default TUI log workflow; standalone stream history remains here.
+

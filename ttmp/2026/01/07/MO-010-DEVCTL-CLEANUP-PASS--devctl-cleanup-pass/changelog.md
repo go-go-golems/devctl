@@ -167,3 +167,8 @@ Completed TUI testing in tmux: validated all views (Dashboard, Events, Pipeline,
 
 Close: tasks complete, cleanup pass implemented and validated
 
+
+## 2026-07-24
+
+Superseded in part by DEVCTL-OPERATOR-UX-001 for operator architecture, CLI, logging, and TUI cleanup.
+

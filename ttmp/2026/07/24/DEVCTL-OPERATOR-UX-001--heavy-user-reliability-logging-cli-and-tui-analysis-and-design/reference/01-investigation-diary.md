@@ -2756,6 +2756,30 @@ git diff --check
   PASS
 ```
 
+## Step 29 — Mark historical implementation tickets as superseded
+
+The design audit identified thirteen earlier tickets whose open tasks or
+architectural direction overlapped this implementation. I added one dated
+changelog note to each through `docmgr changelog update`. I did not close the
+tickets, rewrite their task lists, or erase their historical scope.
+
+The notes distinguish full supersession from partial supersession where the
+older ticket still owns a standalone artifact, such as the JavaScript log
+parser or stream experiments. The new ticket is now the sole tracker for:
+
+- durable lifecycle ownership and individual-service safety;
+- structured run-journal integration;
+- public Glazed output contracts and robust dynamic command injection; and
+- the typed three-view operator TUI.
+
+```text
+docmgr changelog update --ticket <historical-ticket> --entry <scope note>
+  PASS for 13 tickets
+
+git diff --check
+  PASS
+```
+
 ## Step 28 — Rewrite public help and add the v2 upgrade procedure
 
 I used the Glazed help-page conventions and ran the two authoritative
