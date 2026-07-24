@@ -23,14 +23,14 @@ type Capabilities struct {
 }
 
 type CommandSpec struct {
-	Name     string       `json:"name"`
-	Help     string       `json:"help,omitempty"`
-	ArgsSpec []CommandArg `json:"args_spec,omitempty"`
+	Name     string       `json:"name" yaml:"name"`
+	Help     string       `json:"help,omitempty" yaml:"help,omitempty"`
+	ArgsSpec []CommandArg `json:"args_spec,omitempty" yaml:"args,omitempty"`
 }
 
 type CommandArg struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
+	Name string `json:"name" yaml:"name"`
+	Type string `json:"type" yaml:"type"`
 }
 
 type Handshake struct {

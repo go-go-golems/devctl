@@ -2,127 +2,207 @@ package cmds
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"time"
+	stderrors "errors"
+	"sort"
 
-	"github.com/go-go-golems/devctl/pkg/protocol"
+	"github.com/go-go-golems/devctl/pkg/plugincatalog"
 	"github.com/go-go-golems/devctl/pkg/repository"
-	"github.com/go-go-golems/devctl/pkg/runtime"
 	"github.com/go-go-golems/glazed/pkg/cli"
 	glazedcmds "github.com/go-go-golems/glazed/pkg/cmds"
 	"github.com/go-go-golems/glazed/pkg/cmds/values"
+	"github.com/go-go-golems/glazed/pkg/middlewares"
+	"github.com/go-go-golems/glazed/pkg/types"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
 func newPluginsCmd() *cobra.Command {
-	cmd := &cobra.Command{
+	command := &cobra.Command{
 		Use:   "plugins",
-		Short: "Plugin discovery and inspection",
+		Short: "Inspect plugins and manage the dynamic command catalog",
 	}
-	cmd.AddCommand(newPluginsListCmd())
-	return cmd
+	command.AddCommand(newPluginsListCmd())
+	command.AddCommand(newPluginsCommandsCmd())
+	command.AddCommand(newPluginsRefreshCmd())
+	return command
 }
 
-type PluginsListCommand struct {
+type PluginsCommand struct {
 	*glazedcmds.CommandDescription
+	kind string
 }
 
-var _ glazedcmds.WriterCommand = (*PluginsListCommand)(nil)
+var _ glazedcmds.GlazeCommand = (*PluginsCommand)(nil)
 
-func NewPluginsListCommand() (*PluginsListCommand, error) {
-	repoLayer, err := getRepoLayer()
+func NewPluginsCommand(kind string) (*PluginsCommand, error) {
+	repoSection, err := getRepoLayer()
 	if err != nil {
 		return nil, err
 	}
-
-	return &PluginsListCommand{
+	short := map[string]string{
+		"list":     "List selected configured plugins without starting them",
+		"commands": "List validated dynamic root commands",
+		"refresh":  "Start selected providers and refresh the command catalog",
+	}[kind]
+	if short == "" {
+		return nil, errors.Errorf("unknown plugins command %q", kind)
+	}
+	return &PluginsCommand{
 		CommandDescription: glazedcmds.NewCommandDescription(
-			"list",
-			glazedcmds.WithShort("List configured plugins and their handshake capabilities"),
+			kind,
+			glazedcmds.WithShort(short),
 			glazedcmds.WithParents("plugins"),
-			glazedcmds.WithSections(repoLayer),
+			glazedcmds.WithSections(repoSection),
 		),
+		kind: kind,
 	}, nil
 }
 
-func (c *PluginsListCommand) RunIntoWriter(ctx context.Context, vals *values.Values, w io.Writer) error {
-	rc, err := RepoContextFromParsedLayers(vals)
+func (c *PluginsCommand) RunIntoGlazeProcessor(
+	ctx context.Context,
+	vals *values.Values,
+	processor middlewares.Processor,
+) error {
+	repositoryContext, err := RepoContextFromParsedLayers(vals)
 	if err != nil {
 		return err
 	}
-
 	repo, err := repository.Load(repository.Options{
-		RepoRoot:    rc.RepoRoot,
-		ConfigPath:  rc.ConfigPath,
-		ProfileName: rc.Profile,
-		Cwd:         rc.Cwd,
-		DryRun:      rc.DryRun,
+		RepoRoot: repositoryContext.RepoRoot, ConfigPath: repositoryContext.ConfigPath,
+		ProfileName: repositoryContext.Profile, Cwd: repositoryContext.Cwd,
+		DryRun: repositoryContext.DryRun,
 	})
 	if err != nil {
 		return err
 	}
-	if len(repo.Specs) == 0 {
-		return errors.New("no plugins configured (add .devctl.yaml)")
-	}
-
-	factory := runtime.NewFactory(runtime.FactoryOptions{
-		HandshakeTimeout: 2 * time.Second,
-		ShutdownTimeout:  2 * time.Second,
-	})
-
-	type pluginInfo struct {
-		ID           string                 `json:"id"`
-		Path         string                 `json:"path"`
-		Args         []string               `json:"args,omitempty"`
-		WorkDir      string                 `json:"workdir"`
-		Priority     int                    `json:"priority"`
-		PluginName   string                 `json:"plugin_name"`
-		Protocol     string                 `json:"protocol_version"`
-		Ops          []string               `json:"ops,omitempty"`
-		Streams      []string               `json:"streams,omitempty"`
-		Commands     []protocol.CommandSpec `json:"commands,omitempty"`
-		HandshakeRaw any                    `json:"handshake_raw,omitempty"`
-	}
-
-	infos := make([]pluginInfo, 0, len(repo.Specs))
-	for _, spec := range repo.Specs {
-		client, err := factory.Start(ctx, spec, runtime.StartOptions{Meta: repo.Request})
+	switch c.kind {
+	case "list":
+		specs := append([]runtimePluginSpec{}, pluginRows(repo)...)
+		sort.Slice(specs, func(left, right int) bool { return specs[left].ID < specs[right].ID })
+		for _, spec := range specs {
+			if err := processor.AddRow(ctx, types.NewRow(
+				types.MRP("id", spec.ID),
+				types.MRP("path", spec.Path),
+				types.MRP("args", spec.Args),
+				types.MRP("workdir", spec.WorkDir),
+				types.MRP("priority", spec.Priority),
+				types.MRP("profile", repo.ProfileName),
+			)); err != nil {
+				return err
+			}
+		}
+		return nil
+	case "commands":
+		catalog, loadErr := plugincatalog.Load(repo, defaultReservedCommandNames())
+		if loadErr != nil {
+			if !stderrors.Is(loadErr, plugincatalog.ErrCatalogMissing) &&
+				!stderrors.Is(loadErr, plugincatalog.ErrCatalogStale) {
+				return loadErr
+			}
+			catalog, err = plugincatalog.Static(repo, defaultReservedCommandNames())
+			if err != nil {
+				return err
+			}
+		}
+		return addCatalogRows(ctx, processor, catalog)
+	case "refresh":
+		catalog, err := plugincatalog.Refresh(ctx, repo, plugincatalog.RefreshOptions{
+			Reserved: defaultReservedCommandNames(),
+		})
 		if err != nil {
 			return err
 		}
-		hs := client.Handshake()
-		_ = client.Close(ctx)
+		return addCatalogRows(ctx, processor, catalog)
+	default:
+		return errors.Errorf("unsupported plugins command %q", c.kind)
+	}
+}
 
-		infos = append(infos, pluginInfo{
-			ID:         spec.ID,
-			Path:       spec.Path,
-			Args:       spec.Args,
-			WorkDir:    spec.WorkDir,
-			Priority:   spec.Priority,
-			PluginName: hs.PluginName,
-			Protocol:   string(hs.ProtocolVersion),
-			Ops:        hs.Capabilities.Ops,
-			Streams:    hs.Capabilities.Streams,
-			Commands:   hs.Capabilities.Commands,
+type runtimePluginSpec struct {
+	ID       string
+	Path     string
+	Args     []string
+	WorkDir  string
+	Priority int
+}
+
+func pluginRows(repo *repository.Repository) []runtimePluginSpec {
+	rows := make([]runtimePluginSpec, 0, len(repo.Specs))
+	for _, spec := range repo.Specs {
+		rows = append(rows, runtimePluginSpec{
+			ID: spec.ID, Path: spec.Path, Args: spec.Args,
+			WorkDir: spec.WorkDir, Priority: spec.Priority,
 		})
 	}
+	return rows
+}
 
-	b, err := json.MarshalIndent(map[string]any{"plugins": infos}, "", "  ")
-	if err != nil {
-		return errors.Wrap(err, "marshal output")
+func addCatalogRows(
+	ctx context.Context,
+	processor middlewares.Processor,
+	catalog *plugincatalog.Catalog,
+) error {
+	names := make([]string, 0, len(catalog.Commands))
+	for name := range catalog.Commands {
+		names = append(names, name)
 	}
-	_, _ = fmt.Fprintln(w, string(b))
+	sort.Strings(names)
+	for _, name := range names {
+		entry := catalog.Commands[name]
+		if err := processor.AddRow(ctx, types.NewRow(
+			types.MRP("name", entry.Name),
+			types.MRP("help", entry.Help),
+			types.MRP("provider_id", entry.ProviderID),
+			types.MRP("plugin_name", entry.PluginName),
+			types.MRP("profile", catalog.Profile),
+			types.MRP("fingerprint", catalog.ConfigFingerprint),
+			types.MRP("conflict", false),
+		)); err != nil {
+			return err
+		}
+	}
+	conflictNames := make([]string, 0, len(catalog.Conflicts))
+	for name := range catalog.Conflicts {
+		conflictNames = append(conflictNames, name)
+	}
+	sort.Strings(conflictNames)
+	for _, name := range conflictNames {
+		for _, entry := range catalog.Conflicts[name] {
+			if err := processor.AddRow(ctx, types.NewRow(
+				types.MRP("name", name),
+				types.MRP("help", entry.Help),
+				types.MRP("provider_id", entry.ProviderID),
+				types.MRP("plugin_name", entry.PluginName),
+				types.MRP("profile", catalog.Profile),
+				types.MRP("fingerprint", catalog.ConfigFingerprint),
+				types.MRP("conflict", true),
+			)); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
-func newPluginsListCmd() *cobra.Command {
-	c, err := NewPluginsListCommand()
+func buildPluginsSubcommand(kind string) *cobra.Command {
+	command, err := NewPluginsCommand(kind)
 	cobra.CheckErr(err)
+	built, err := cli.BuildCobraCommand(
+		command,
+		cli.WithParserConfig(cli.CobraParserConfig{AppName: "devctl"}),
+	)
+	cobra.CheckErr(err)
+	return built
+}
 
-	cmd, err := cli.BuildCobraCommand(c, cli.WithParserConfig(cli.CobraParserConfig{AppName: "devctl"}))
-	cobra.CheckErr(err)
-	return cmd
+func newPluginsListCmd() *cobra.Command {
+	return buildPluginsSubcommand("list")
+}
+
+func newPluginsCommandsCmd() *cobra.Command {
+	return buildPluginsSubcommand("commands")
+}
+
+func newPluginsRefreshCmd() *cobra.Command {
+	return buildPluginsSubcommand("refresh")
 }

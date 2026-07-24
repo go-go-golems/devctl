@@ -2,19 +2,16 @@ package cmds
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"io/fs"
-	"os"
 	"time"
 
-	"github.com/go-go-golems/devctl/pkg/state"
+	"github.com/go-go-golems/devctl/pkg/operator"
 	"github.com/go-go-golems/glazed/pkg/cli"
 	glazedcmds "github.com/go-go-golems/glazed/pkg/cmds"
 	"github.com/go-go-golems/glazed/pkg/cmds/fields"
 	"github.com/go-go-golems/glazed/pkg/cmds/schema"
 	"github.com/go-go-golems/glazed/pkg/cmds/values"
+	"github.com/go-go-golems/glazed/pkg/middlewares"
+	"github.com/go-go-golems/glazed/pkg/types"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
@@ -23,134 +20,114 @@ type StatusCommand struct {
 	*glazedcmds.CommandDescription
 }
 
-var _ glazedcmds.WriterCommand = (*StatusCommand)(nil)
-
 type StatusSettings struct {
-	TailLines int `glazed:"tail-lines"`
+	Services []string `glazed:"services"`
 }
 
+var _ glazedcmds.GlazeCommand = (*StatusCommand)(nil)
+
 func NewStatusCommand() (*StatusCommand, error) {
-	repoLayer, err := getRepoLayer()
+	repoSection, err := getRepoLayer()
 	if err != nil {
 		return nil, err
 	}
-
-	return &StatusCommand{
-		CommandDescription: glazedcmds.NewCommandDescription(
-			"status",
-			glazedcmds.WithShort("Show status of supervised services"),
-			glazedcmds.WithFlags(
-				fields.New(
-					"tail-lines",
-					fields.TypeInteger,
-					fields.WithDefault(25),
-					fields.WithHelp("How many stderr lines to include for dead services"),
-				),
-			),
-			glazedcmds.WithSections(repoLayer),
+	return &StatusCommand{CommandDescription: glazedcmds.NewCommandDescription(
+		"status",
+		glazedcmds.WithShort("Show durable service status"),
+		glazedcmds.WithArguments(
+			fields.New("services", fields.TypeStringList, fields.WithHelp("Service names; empty selects all")),
 		),
-	}, nil
+		glazedcmds.WithSections(repoSection),
+	)}, nil
 }
 
-func (c *StatusCommand) RunIntoWriter(ctx context.Context, vals *values.Values, w io.Writer) error {
-	s := StatusSettings{}
-	if err := vals.DecodeSectionInto(schema.DefaultSlug, &s); err != nil {
-		return err
+func (c *StatusCommand) RunIntoGlazeProcessor(
+	ctx context.Context,
+	vals *values.Values,
+	processor middlewares.Processor,
+) error {
+	settings := StatusSettings{}
+	if err := vals.DecodeSectionInto(schema.DefaultSlug, &settings); err != nil {
+		return errors.Wrap(err, "decode status settings")
 	}
-	rc, err := RepoContextFromParsedLayers(vals)
+	repositoryContext, err := RepoContextFromParsedLayers(vals)
 	if err != nil {
 		return err
 	}
-
-	type svc struct {
-		Name   string          `json:"name"`
-		PID    int             `json:"pid"`
-		Alive  bool            `json:"alive"`
-		Stdout string          `json:"stdout_log"`
-		Stderr string          `json:"stderr_log"`
-		Exit   *state.ExitInfo `json:"exit,omitempty"`
-	}
-	st, err := state.Load(rc.RepoRoot)
+	controller, err := newOperatorController(repositoryContext.RepoRoot)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) || errors.Is(err, fs.ErrNotExist) {
-			b, err := json.MarshalIndent(map[string]any{
-				"exists":   false,
-				"profile":  "",
-				"services": []svc{},
-			}, "", "  ")
-			if err != nil {
-				return errors.Wrap(err, "marshal status")
-			}
-			_, _ = fmt.Fprintln(w, string(b))
-			return nil
-		}
 		return err
 	}
-	var services []svc
-
-	for _, svcState := range st.Services {
-		alive := state.ProcessAlive(svcState.PID)
-		var exitInfo *state.ExitInfo
-		if !alive && svcState.ExitInfo != "" {
-			if _, err := os.Stat(svcState.ExitInfo); err == nil {
-				ei, err := state.ReadExitInfo(svcState.ExitInfo)
-				if err == nil {
-					exitInfo = ei
-					if s.TailLines > 0 && len(exitInfo.StderrTail) > s.TailLines {
-						exitInfo.StderrTail = append([]string{}, exitInfo.StderrTail[len(exitInfo.StderrTail)-s.TailLines:]...)
-					}
-					if s.TailLines > 0 && len(exitInfo.StdoutTail) > s.TailLines {
-						exitInfo.StdoutTail = append([]string{}, exitInfo.StdoutTail[len(exitInfo.StdoutTail)-s.TailLines:]...)
-					}
-					if exitInfo.StderrTail == nil && s.TailLines > 0 {
-						if lines, err := state.TailLines(svcState.StderrLog, s.TailLines, 2<<20); err == nil {
-							exitInfo.StderrTail = lines
-						}
-					}
-				}
-			}
-		}
-		if !alive && exitInfo == nil && s.TailLines > 0 {
-			lines, err := state.TailLines(svcState.StderrLog, s.TailLines, 2<<20)
-			if err == nil {
-				exitInfo = &state.ExitInfo{
-					Service:    svcState.Name,
-					PID:        svcState.PID,
-					StartedAt:  st.CreatedAt,
-					ExitedAt:   time.Now(),
-					Error:      "exit info unavailable (older state); stderr tail captured at status time",
-					StderrTail: lines,
-				}
-			}
-		}
-
-		services = append(services, svc{
-			Name:   svcState.Name,
-			PID:    svcState.PID,
-			Alive:  alive,
-			Stdout: svcState.StdoutLog,
-			Stderr: svcState.StderrLog,
-			Exit:   exitInfo,
-		})
-	}
-
-	b, err := json.MarshalIndent(map[string]any{
-		"exists":   true,
-		"profile":  st.Profile,
-		"services": services,
-	}, "", "  ")
+	snapshot, err := controller.Snapshot(ctx, operator.SnapshotRequest{
+		RepoRoot: repositoryContext.RepoRoot, IncludeRuns: true, IncludeHealth: true,
+	})
 	if err != nil {
-		return errors.Wrap(err, "marshal status")
+		return err
 	}
-	_, _ = fmt.Fprintln(w, string(b))
+	if !snapshot.Exists {
+		if len(settings.Services) > 0 {
+			return errors.Errorf("E_SERVICE_UNKNOWN: no environment state contains %q", settings.Services[0])
+		}
+		return processor.AddRow(ctx, types.NewRow(
+			types.MRP("environment", "stopped"),
+			types.MRP("profile", ""),
+			types.MRP("service", ""),
+			types.MRP("desired", "stopped"),
+		))
+	}
+	selected := stringSelection(settings.Services)
+	now := time.Now().UTC()
+	found := map[string]bool{}
+	for _, service := range snapshot.Services {
+		if len(selected) > 0 && !selected[service.Service] {
+			continue
+		}
+		found[service.Service] = true
+		row := types.NewRow(
+			types.MRP("environment", "present"),
+			types.MRP("profile", snapshot.Profile),
+			types.MRP("service", service.Service),
+			types.MRP("desired", string(service.Desired)),
+			types.MRP("phase", string(service.Phase)),
+			types.MRP("run_id", service.RunID),
+			types.MRP("wrapper_pid", processPID(service.Wrapper)),
+			types.MRP("child_pid", processPID(service.Child)),
+			types.MRP("health", healthStatus(service.Health)),
+			types.MRP("started_at", service.CreatedAt),
+			types.MRP("uptime", uptime(now, service).String()),
+			types.MRP("exit_code", exitCode(service.Exit)),
+			types.MRP("signal", exitSignal(service.Exit)),
+			types.MRP("last_error_code", lastErrorCode(service.LastError)),
+			types.MRP("stdout_path", service.StdoutPath),
+			types.MRP("stderr_path", service.StderrPath),
+		)
+		if err := processor.AddRow(ctx, row); err != nil {
+			return err
+		}
+	}
+	for service := range selected {
+		if !found[service] {
+			return errors.Errorf("E_SERVICE_UNKNOWN: service %q is not present in environment state", service)
+		}
+	}
 	return nil
 }
 
-func newStatusCmd() *cobra.Command {
-	c, err := NewStatusCommand()
-	cobra.CheckErr(err)
+func stringSelection(values []string) map[string]bool {
+	selected := make(map[string]bool, len(values))
+	for _, value := range values {
+		selected[value] = true
+	}
+	return selected
+}
 
-	cmd, err := cli.BuildCobraCommand(c, cli.WithParserConfig(cli.CobraParserConfig{AppName: "devctl"}))
+func newStatusCmd() *cobra.Command {
+	command, err := NewStatusCommand()
 	cobra.CheckErr(err)
-	return cmd
+	built, err := cli.BuildCobraCommand(
+		command,
+		cli.WithParserConfig(cli.CobraParserConfig{AppName: "devctl"}),
+	)
+	cobra.CheckErr(err)
+	return built
 }

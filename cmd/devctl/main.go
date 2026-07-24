@@ -14,9 +14,11 @@ import (
 var version = "dev"
 
 var rootCmd = &cobra.Command{
-	Use:     "devctl",
-	Short:   "devctl is a dev environment orchestrator",
-	Version: version,
+	Use:           "devctl",
+	Short:         "devctl is a dev environment orchestrator",
+	Version:       version,
+	SilenceErrors: true,
+	SilenceUsage:  true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		return logging.InitLoggerFromCobra(cmd)
 	},

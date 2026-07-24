@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-go-golems/devctl/pkg/plugincatalog"
+	"github.com/go-go-golems/devctl/pkg/repository"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
@@ -22,6 +24,7 @@ func TestDynamicCommands_RegisterAndRun(t *testing.T) {
 	cfg := []byte("plugins:\n  - id: cmd\n    path: python3\n    args:\n      - \"" + plugin + "\"\n    priority: 10\n")
 	cfgPath := filepath.Join(repoRoot, ".devctl.yaml")
 	require.NoError(t, os.WriteFile(cfgPath, cfg, 0o644))
+	refreshDynamicCatalogForTest(t, repoRoot, cfgPath, "")
 
 	root := &cobra.Command{Use: "devctl"}
 
@@ -107,6 +110,7 @@ func TestDynamicCommands_RespectsProfileFiltering(t *testing.T) {
 	require.False(t, found)
 
 	root = &cobra.Command{Use: "devctl"}
+	refreshDynamicCatalogForTest(t, repoRoot, cfgPath, "commands")
 	err = AddDynamicPluginCommands(root, []string{
 		"devctl",
 		"--repo-root", repoRoot,
@@ -119,6 +123,57 @@ func TestDynamicCommands_RespectsProfileFiltering(t *testing.T) {
 	echoCmd, _, err := root.Find([]string{"echo"})
 	require.NoError(t, err)
 	require.NotNil(t, echoCmd)
+}
+
+func TestDynamicCommands_MissingCatalogDoesNotStartPlugins(t *testing.T) {
+	repoRoot := t.TempDir()
+	devctlRoot := findDevctlRootForTest(t)
+	plugin := filepath.Join(devctlRoot, "testdata", "plugins", "command", "plugin.py")
+	cfgPath := filepath.Join(repoRoot, ".devctl.yaml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(
+		"plugins:\n  - id: cmd\n    path: python3\n    args:\n      - \""+plugin+"\"\n",
+	), 0o600))
+	root := &cobra.Command{Use: "devctl"}
+	err := AddDynamicPluginCommands(root, []string{
+		"devctl", "--repo-root", repoRoot, "--config", cfgPath, "echo",
+	})
+	require.ErrorIs(t, err, plugincatalog.ErrCatalogMissing)
+	_, statErr := os.Stat(plugincatalog.CachePath(repoRoot))
+	require.ErrorIs(t, statErr, os.ErrNotExist)
+}
+
+func TestDynamicCommands_StaticDeclarationNeedsNoRefresh(t *testing.T) {
+	repoRoot := t.TempDir()
+	devctlRoot := findDevctlRootForTest(t)
+	plugin := filepath.Join(devctlRoot, "testdata", "plugins", "command", "plugin.py")
+	cfgPath := filepath.Join(repoRoot, ".devctl.yaml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(
+		"plugins:\n  - id: cmd\n    path: python3\n    args:\n      - \""+plugin+"\"\n    commands:\n      - name: echo\n        help: Echo values\n",
+	), 0o600))
+	root := &cobra.Command{Use: "devctl"}
+	require.NoError(t, AddDynamicPluginCommands(root, []string{
+		"devctl", "--repo-root", repoRoot, "--config", cfgPath, "echo",
+	}))
+	command, _, err := root.Find([]string{"echo"})
+	require.NoError(t, err)
+	require.Equal(t, "echo", command.Name())
+}
+
+func refreshDynamicCatalogForTest(
+	t *testing.T,
+	repoRoot string,
+	configPath string,
+	profile string,
+) {
+	t.Helper()
+	repo, err := repository.Load(repository.Options{
+		RepoRoot: repoRoot, ConfigPath: configPath, ProfileName: profile, Cwd: repoRoot,
+	})
+	require.NoError(t, err)
+	_, err = plugincatalog.Refresh(t.Context(), repo, plugincatalog.RefreshOptions{
+		Reserved: defaultReservedCommandNames(),
+	})
+	require.NoError(t, err)
 }
 
 func TestDynamicCommands_SkipsWrapService(t *testing.T) {

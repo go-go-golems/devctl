@@ -45,6 +45,10 @@ type SnapshotRequest struct {
 }
 
 type DoctorRequest struct {
-	RepoRoot string
-	Plugins  bool
+	RepoRoot   string
+	ConfigPath string
+	Profile    string
+	Cwd        string
+	Timeout    time.Duration
+	Plugins    bool
 }

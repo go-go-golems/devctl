@@ -18,11 +18,10 @@ func AddCommands(root *cobra.Command) error {
 	root.AddCommand(newDownCmd())
 	root.AddCommand(newStatusCmd())
 	root.AddCommand(newLogsCmd())
+	root.AddCommand(newDoctorCmd())
 	root.AddCommand(newStreamCmd())
 	root.AddCommand(newTuiCmd())
 	root.AddCommand(newWrapServiceCmd())
 	root.AddCommand(newRestartCmd())
-	root.AddCommand(newStopServiceCmd())
-	root.AddCommand(newStartServiceCmd())
 	return nil
 }

@@ -74,6 +74,44 @@ func TestReconcileRecordsExitAndReportsUnindexedRun(t *testing.T) {
 	}
 }
 
+func TestDoctorReportsWithoutReconcilingOrMutatingState(t *testing.T) {
+	store, runID := createReconcileFixture(t, runstate.RunPlanned)
+	controller, err := NewController(ControllerOptions{
+		Planner: staticPlanner{},
+		SupervisorFactory: func(string, time.Duration) serviceSupervisor {
+			return &recordingSupervisor{t: t, repoRoot: store.RepoRoot()}
+		},
+	})
+	if err != nil {
+		t.Fatalf("new controller: %v", err)
+	}
+	before, err := store.LoadEnvironment(context.Background())
+	if err != nil {
+		t.Fatalf("load before: %v", err)
+	}
+	report, err := controller.Doctor(context.Background(), DoctorRequest{RepoRoot: store.RepoRoot()})
+	if err != nil {
+		t.Fatalf("doctor: %v", err)
+	}
+	if len(report.Checks) == 0 {
+		t.Fatal("doctor returned no checks")
+	}
+	after, err := store.LoadEnvironment(context.Background())
+	if err != nil {
+		t.Fatalf("load after: %v", err)
+	}
+	if after.Revision != before.Revision || after.Services["web"].CurrentRunID != runID {
+		t.Fatalf("doctor mutated environment: before=%#v after=%#v", before, after)
+	}
+	run, err := store.LoadRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("load run: %v", err)
+	}
+	if run.Phase != runstate.RunPlanned {
+		t.Fatalf("doctor changed run phase to %q", run.Phase)
+	}
+}
+
 func createReconcileFixture(t *testing.T, phase runstate.RunPhase) (*runstate.Store, string) {
 	t.Helper()
 	store, err := runstate.NewStore(t.TempDir())
