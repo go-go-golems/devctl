@@ -13,3 +13,7 @@ func MatchesProcess(_ *ProcessIdentity) (bool, error) {
 func InspectProcess(_ *ProcessIdentity) (ProcessStatus, error) {
 	return ProcessAbsent, ErrProcessIdentityUnsupported
 }
+
+func ReadProcessGroupID(_ int) (int, error) {
+	return 0, ErrProcessGroupUnsupported
+}

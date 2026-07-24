@@ -7,9 +7,21 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 
 	"github.com/pkg/errors"
 )
+
+func ReadProcessGroupID(pid int) (int, error) {
+	if pid <= 0 {
+		return 0, errors.Wrapf(ErrInvalidState, "invalid process PID %d", pid)
+	}
+	pgid, err := syscall.Getpgid(pid)
+	if err != nil {
+		return 0, errors.Wrap(err, "read Linux process group")
+	}
+	return pgid, nil
+}
 
 const bootIDPath = "/proc/sys/kernel/random/boot_id"
 

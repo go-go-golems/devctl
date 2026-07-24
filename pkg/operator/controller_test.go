@@ -3,13 +3,16 @@ package operator
 import (
 	"context"
 	"errors"
+	"os/exec"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/go-go-golems/devctl/pkg/engine"
 	"github.com/go-go-golems/devctl/pkg/runstate"
 	"github.com/go-go-golems/devctl/pkg/state"
+	"github.com/go-go-golems/devctl/pkg/supervise"
 )
 
 type staticPlanner struct {
@@ -24,12 +27,14 @@ func (p staticPlanner) Plan(context.Context, UpRequest) (PlanResult, error) {
 }
 
 type recordingSupervisor struct {
-	t        *testing.T
-	repoRoot string
-	mu       sync.Mutex
-	started  []string
-	stopped  []string
-	stopErr  error
+	t               *testing.T
+	repoRoot        string
+	mu              sync.Mutex
+	started         []string
+	stopped         []string
+	stopErr         error
+	failStopService string
+	processes       map[string]*exec.Cmd
 }
 
 var _ serviceSupervisor = (*recordingSupervisor)(nil)
@@ -58,14 +63,53 @@ func (s *recordingSupervisor) StartPreparedService(
 	if run.Phase != runstate.RunPlanned {
 		s.t.Fatalf("wrapper start observed phase %q, want planned", run.Phase)
 	}
+	cmd := exec.Command("sleep", "60")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		return state.ServiceRecord{}, err
+	}
+	identity, err := runstate.ReadProcessIdentity(cmd.Process.Pid)
+	if err != nil {
+		_ = cmd.Process.Kill()
+		return state.ServiceRecord{}, err
+	}
+	runDir, err := store.RunDir(runID)
+	if err != nil {
+		_ = cmd.Process.Kill()
+		return state.ServiceRecord{}, err
+	}
+	owner := supervise.OwnerRecord{
+		Version: supervise.HandshakeVersion,
+		RunID:   runID, Service: spec.Name, Wrapper: *identity, WrittenAt: time.Now().UTC(),
+	}
+	ready := supervise.ReadyRecord{
+		Version: supervise.HandshakeVersion,
+		RunID:   runID, Service: spec.Name, Wrapper: *identity, Child: *identity,
+		ChildPGID: identity.PID, WrittenAt: time.Now().UTC(),
+	}
+	if err := supervise.WriteOwnerRecord(runDir+"/"+supervise.OwnerRecordName, owner); err != nil {
+		_ = cmd.Process.Kill()
+		return state.ServiceRecord{}, err
+	}
+	if err := supervise.WriteReadyRecord(runDir+"/"+supervise.ReadyRecordName, ready); err != nil {
+		_ = cmd.Process.Kill()
+		return state.ServiceRecord{}, err
+	}
 	if err := store.UpdateRun(ctx, runID, func(run *runstate.RunRecord) error {
 		run.Phase = runstate.RunStarting
+		run.Wrapper = identity
+		run.Child = identity
+		run.ChildPGID = identity.PID
 		return nil
 	}); err != nil {
 		return state.ServiceRecord{}, err
 	}
 	s.mu.Lock()
 	s.started = append(s.started, spec.Name)
+	if s.processes == nil {
+		s.processes = map[string]*exec.Cmd{}
+	}
+	s.processes[runID] = cmd
 	s.mu.Unlock()
 	return state.ServiceRecord{Name: spec.Name}, nil
 }
@@ -93,6 +137,17 @@ func (s *recordingSupervisor) StopPreparedService(ctx context.Context, runID str
 	if err != nil {
 		return err
 	}
+	if run.Service == s.failStopService {
+		return errors.New("injected stop failure")
+	}
+	s.mu.Lock()
+	cmd := s.processes[runID]
+	delete(s.processes, runID)
+	s.mu.Unlock()
+	if cmd != nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		_ = cmd.Wait()
+	}
 	if err := store.UpdateRun(ctx, runID, func(record *runstate.RunRecord) error {
 		record.Phase = runstate.RunExited
 		return nil
@@ -107,6 +162,14 @@ func (s *recordingSupervisor) StopPreparedService(ctx context.Context, runID str
 
 func newTestController(t *testing.T, repoRoot string, planner Planner, supervisor *recordingSupervisor) Controller {
 	t.Helper()
+	t.Cleanup(func() {
+		supervisor.mu.Lock()
+		defer supervisor.mu.Unlock()
+		for _, cmd := range supervisor.processes {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			_ = cmd.Wait()
+		}
+	})
 	controller, err := NewController(ControllerOptions{
 		Planner: planner,
 		SupervisorFactory: func(string, time.Duration) serviceSupervisor {
@@ -236,5 +299,54 @@ func TestRestartPlanningFailureDoesNotStopService(t *testing.T) {
 	}
 	if len(supervisor.stopped) != 0 {
 		t.Fatalf("planning failure stopped services: %v", supervisor.stopped)
+	}
+}
+
+func TestDownReturnsAllOutcomesAndRetainsFailedCurrentRun(t *testing.T) {
+	repoRoot := t.TempDir()
+	supervisor := &recordingSupervisor{t: t, repoRoot: repoRoot}
+	controller := newTestController(t, repoRoot, staticPlanner{result: PlanResult{
+		Plan: engine.LaunchPlan{Services: []engine.ServiceSpec{
+			{Name: "api", Command: []string{"serve"}},
+			{Name: "web", Command: []string{"serve"}},
+		}},
+	}}, supervisor)
+	if _, err := controller.Up(context.Background(), UpRequest{RepoRoot: repoRoot}, nil); err != nil {
+		t.Fatalf("up: %v", err)
+	}
+	before, err := controller.Snapshot(context.Background(), SnapshotRequest{RepoRoot: repoRoot})
+	if err != nil {
+		t.Fatalf("snapshot before down: %v", err)
+	}
+	var failedRunID string
+	for _, service := range before.Services {
+		if service.Service == "web" {
+			failedRunID = service.RunID
+		}
+	}
+	supervisor.failStopService = "web"
+
+	result, err := controller.Down(context.Background(), DownRequest{RepoRoot: repoRoot}, nil)
+	if err == nil {
+		t.Fatal("down unexpectedly succeeded")
+	}
+	if result.Status != "partial" || len(result.Outcomes) != 2 {
+		t.Fatalf("unexpected partial result: %#v", result)
+	}
+	after, snapshotErr := controller.Snapshot(context.Background(), SnapshotRequest{RepoRoot: repoRoot})
+	if snapshotErr != nil {
+		t.Fatalf("snapshot after down: %v", snapshotErr)
+	}
+	for _, service := range after.Services {
+		switch service.Service {
+		case "api":
+			if service.RunID != "" || service.Desired != runstate.DesiredStopped {
+				t.Fatalf("successfully stopped slot not cleared: %#v", service)
+			}
+		case "web":
+			if service.RunID != failedRunID || service.Desired != runstate.DesiredRunning {
+				t.Fatalf("failed stop did not retain ownership: %#v", service)
+			}
+		}
 	}
 }

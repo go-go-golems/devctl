@@ -174,6 +174,9 @@ func (c *controller) upLocked(
 	sink EventSink,
 	result *OperationResult,
 ) error {
+	if _, err := reconcile(ctx, store); err != nil {
+		return newError(CodeStateCorrupt, "reconcile environment before start", err)
+	}
 	current, err := loadEnvironmentOptional(ctx, store)
 	if err != nil {
 		return newError(CodeStateCorrupt, "load environment state", err)
@@ -321,6 +324,9 @@ func (c *controller) downLocked(
 	sink EventSink,
 	result *OperationResult,
 ) error {
+	if _, err := reconcile(ctx, store); err != nil {
+		return newError(CodeStateCorrupt, "reconcile environment before stop", err)
+	}
 	environment, err := loadEnvironmentOptional(ctx, store)
 	if err != nil {
 		return newError(CodeStateCorrupt, "load environment state", err)
@@ -529,11 +535,31 @@ func (c *controller) Snapshot(ctx context.Context, request SnapshotRequest) (Sna
 }
 
 func (c *controller) Doctor(ctx context.Context, request DoctorRequest) (DoctorReport, error) {
-	snapshot, err := c.Snapshot(ctx, SnapshotRequest{RepoRoot: request.RepoRoot, IncludeRuns: true})
+	store, err := runstate.NewStore(request.RepoRoot)
 	if err != nil {
-		return DoctorReport{}, err
+		return DoctorReport{}, newError(CodeUsage, "invalid repository root", err)
 	}
-	report := DoctorReport{Checks: []DoctorCheck{}}
+	locker, err := runstate.NewLocker(store.RepoRoot())
+	if err != nil {
+		return DoctorReport{}, newError(CodeStateCorrupt, "create repository lock", err)
+	}
+	report := DoctorReport{
+		Checks:         []DoctorCheck{},
+		Reconciliation: ReconciliationReport{Actions: []ReconciliationAction{}, UnindexedRuns: []string{}},
+	}
+	if err := locker.WithExclusive(ctx, runstate.LockMetadata{
+		Command: []string{"devctl", "doctor"},
+	}, func(lockContext context.Context) error {
+		reconciliation, reconcileErr := reconcile(lockContext, store)
+		report.Reconciliation = reconciliation
+		return reconcileErr
+	}); err != nil {
+		return report, newError(CodeStateCorrupt, "reconcile environment for doctor", err)
+	}
+	snapshot, err := c.Snapshot(ctx, SnapshotRequest{RepoRoot: store.RepoRoot(), IncludeRuns: true})
+	if err != nil {
+		return report, err
+	}
 	if !snapshot.Exists {
 		report.Checks = append(report.Checks, DoctorCheck{
 			Check:   "state",
@@ -549,6 +575,16 @@ func (c *controller) Doctor(ctx context.Context, request DoctorRequest) (DoctorR
 		Status:  "ok",
 		Summary: "environment state schema and index are valid",
 	})
+	for _, runID := range report.Reconciliation.UnindexedRuns {
+		report.Checks = append(report.Checks, DoctorCheck{
+			Check:       "unindexed-run",
+			Scope:       "repository",
+			Status:      "warning",
+			Summary:     "run directory is not referenced by the environment index",
+			RunID:       runID,
+			Remediation: "inspect the run artifacts; do not signal processes based on directory presence alone",
+		})
+	}
 	for _, service := range snapshot.Services {
 		status := "ok"
 		code := ""

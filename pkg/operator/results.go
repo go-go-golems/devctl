@@ -61,5 +61,20 @@ type DoctorCheck struct {
 }
 
 type DoctorReport struct {
-	Checks []DoctorCheck `json:"checks"`
+	Checks         []DoctorCheck        `json:"checks"`
+	Reconciliation ReconciliationReport `json:"reconciliation"`
+}
+
+type ReconciliationAction struct {
+	Service string            `json:"service"`
+	RunID   string            `json:"run_id"`
+	Before  runstate.RunPhase `json:"before,omitempty"`
+	After   runstate.RunPhase `json:"after,omitempty"`
+	Action  string            `json:"action"`
+	Error   *OperatorError    `json:"error,omitempty"`
+}
+
+type ReconciliationReport struct {
+	Actions       []ReconciliationAction `json:"actions"`
+	UnindexedRuns []string               `json:"unindexed_runs"`
 }
