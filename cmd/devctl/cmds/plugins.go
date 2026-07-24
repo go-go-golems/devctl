@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-go-golems/devctl/pkg/plugincatalog"
 	"github.com/go-go-golems/devctl/pkg/repository"
-	"github.com/go-go-golems/glazed/pkg/cli"
 	glazedcmds "github.com/go-go-golems/glazed/pkg/cmds"
 	"github.com/go-go-golems/glazed/pkg/cmds/values"
 	"github.com/go-go-golems/glazed/pkg/middlewares"
@@ -187,12 +186,7 @@ func addCatalogRows(
 func buildPluginsSubcommand(kind string) *cobra.Command {
 	command, err := NewPluginsCommand(kind)
 	cobra.CheckErr(err)
-	built, err := cli.BuildCobraCommand(
-		command,
-		cli.WithParserConfig(cli.CobraParserConfig{AppName: "devctl"}),
-	)
-	cobra.CheckErr(err)
-	return built
+	return buildGlazedCommand(command)
 }
 
 func newPluginsListCmd() *cobra.Command {

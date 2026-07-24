@@ -2,6 +2,7 @@ package cmds
 
 import (
 	"context"
+	stderrors "errors"
 	"os"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/go-go-golems/glazed/pkg/cmds/schema"
 	"github.com/go-go-golems/glazed/pkg/cmds/values"
 	"github.com/go-go-golems/glazed/pkg/middlewares"
+	glazedsettings "github.com/go-go-golems/glazed/pkg/settings"
 	"github.com/go-go-golems/glazed/pkg/types"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -189,11 +191,40 @@ func newOperatorController(repoRoot string) (operator.Controller, error) {
 }
 
 func buildGlazedCommand(command glazedcmds.GlazeCommand) *cobra.Command {
-	built, err := cli.BuildCobraCommand(
-		command,
-		cli.WithParserConfig(cli.CobraParserConfig{AppName: "devctl"}),
-	)
+	description := command.Description().Clone(true)
+	if _, exists := description.Schema.Get(glazedsettings.GlazedSlug); !exists {
+		glazedSection, err := glazedsettings.NewGlazedSection()
+		cobra.CheckErr(err)
+		description.Schema.Set(glazedsettings.GlazedSlug, glazedSection)
+	}
+	built := &cobra.Command{
+		Use: description.Name, Short: description.Short, Long: description.Long,
+	}
+	parser, err := cli.NewCobraParserFromSections(description.Schema, &cli.CobraParserConfig{
+		SkipCommandSettingsSection: false,
+	})
 	cobra.CheckErr(err)
+	cobra.CheckErr(parser.AddToCobraCommand(built))
+	built.RunE = func(cmd *cobra.Command, args []string) error {
+		parsedValues, err := parser.Parse(cmd, args)
+		if err != nil {
+			return err
+		}
+		glazedValues, exists := parsedValues.Get(glazedsettings.GlazedSlug)
+		if !exists {
+			return errors.New("glazed output settings are unavailable")
+		}
+		processor, err := glazedsettings.SetupTableProcessor(glazedValues)
+		if err != nil {
+			return err
+		}
+		if _, err := glazedsettings.SetupProcessorOutput(processor, glazedValues, cmd.OutOrStdout()); err != nil {
+			return err
+		}
+		runErr := command.RunIntoGlazeProcessor(cmd.Context(), parsedValues, processor)
+		closeErr := processor.Close(cmd.Context())
+		return stderrors.Join(runErr, closeErr)
+	}
 	return built
 }
 

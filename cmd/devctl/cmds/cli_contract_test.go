@@ -31,6 +31,9 @@ func TestBuiltCLIContracts(t *testing.T) {
 		repoRoot := t.TempDir()
 		_, stderr, err := runCLI(binary, "stop-service", "--repo-root", repoRoot, "web")
 		require.Error(t, err)
+		require.Equal(t, 2, processExitCode(t, err))
+		require.Equal(t, 1, strings.Count(stderr, `unknown command "stop-service"`))
+		require.Contains(t, stderr, "E_USAGE:")
 		require.Contains(t, stderr, `unknown command "stop-service"`)
 	})
 
@@ -45,6 +48,7 @@ func TestBuiltCLIContracts(t *testing.T) {
 			"typo-command", "--repo-root", repoRoot, "--config", configPath,
 		)
 		require.Error(t, err)
+		require.Equal(t, 2, processExitCode(t, err))
 		require.Contains(t, stderr, "plugins refresh")
 		require.NoFileExists(t, markerPath)
 	})
@@ -68,6 +72,13 @@ func TestBuiltCLIContracts(t *testing.T) {
 		lines := strings.Fields(string(data))
 		require.Len(t, lines, 1, "dynamic invocation started provider more than once")
 	})
+}
+
+func processExitCode(t *testing.T, err error) int {
+	t.Helper()
+	var exitErr *exec.ExitError
+	require.ErrorAs(t, err, &exitErr)
+	return exitErr.ExitCode()
 }
 
 func buildDevctlForCLIContractTest(t *testing.T) string {

@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/go-go-golems/devctl/pkg/operator"
-	"github.com/go-go-golems/glazed/pkg/cli"
 	glazedcmds "github.com/go-go-golems/glazed/pkg/cmds"
 	"github.com/go-go-golems/glazed/pkg/cmds/fields"
 	"github.com/go-go-golems/glazed/pkg/cmds/schema"
@@ -86,10 +85,5 @@ func (c *DoctorCommand) RunIntoGlazeProcessor(
 func newDoctorCmd() *cobra.Command {
 	command, err := NewDoctorCommand()
 	cobra.CheckErr(err)
-	built, err := cli.BuildCobraCommand(
-		command,
-		cli.WithParserConfig(cli.CobraParserConfig{AppName: "devctl"}),
-	)
-	cobra.CheckErr(err)
-	return built
+	return buildGlazedCommand(command)
 }
