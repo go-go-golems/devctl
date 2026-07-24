@@ -200,12 +200,20 @@ func buildGlazedCommand(command glazedcmds.GlazeCommand) *cobra.Command {
 	built := &cobra.Command{
 		Use: description.Name, Short: description.Short, Long: description.Long,
 	}
+	if configurable, ok := command.(interface{ ConfigureCobra(*cobra.Command) }); ok {
+		configurable.ConfigureCobra(built)
+	}
 	parser, err := cli.NewCobraParserFromSections(description.Schema, &cli.CobraParserConfig{
 		SkipCommandSettingsSection: false,
 	})
 	cobra.CheckErr(err)
 	cobra.CheckErr(parser.AddToCobraCommand(built))
 	built.RunE = func(cmd *cobra.Command, args []string) error {
+		if receiver, ok := command.(interface{ SetCobraArgs([]string) error }); ok {
+			if err := receiver.SetCobraArgs(args); err != nil {
+				return err
+			}
+		}
 		parsedValues, err := parser.Parse(cmd, args)
 		if err != nil {
 			return err

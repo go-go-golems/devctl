@@ -72,6 +72,41 @@ func TestBuiltCLIContracts(t *testing.T) {
 		lines := strings.Fields(string(data))
 		require.Len(t, lines, 1, "dynamic invocation started provider more than once")
 	})
+
+	t.Run("provider-qualified run resolves a catalog collision", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		configPath, alphaMarker, betaMarker := writeConflictingCommandPlugins(t, repoRoot)
+		_, stderr, err := runCLI(binary,
+			"plugins", "refresh", "--repo-root", repoRoot, "--config", configPath,
+			"--output", "json",
+		)
+		require.Error(t, err)
+		require.Contains(t, stderr, "plugin command catalog has conflicts")
+		require.NoError(t, os.Remove(alphaMarker))
+		require.NoError(t, os.Remove(betaMarker))
+
+		stdout, stderr, err := runCLI(binary,
+			"plugins", "inspect", "alpha", "--repo-root", repoRoot,
+			"--config", configPath, "--output", "json",
+		)
+		require.NoError(t, err, stderr)
+		var rows []map[string]any
+		require.NoError(t, json.Unmarshal([]byte(stdout), &rows))
+		require.Len(t, rows, 1)
+		require.Equal(t, "alpha", rows[0]["id"])
+		require.Equal(t, "echo", rows[0]["command"])
+		require.Equal(t, true, rows[0]["conflict"])
+		require.NoFileExists(t, alphaMarker)
+		require.NoFileExists(t, betaMarker)
+
+		_, stderr, err = runCLI(binary,
+			"plugins", "run", "alpha", "echo", "--repo-root", repoRoot,
+			"--config", configPath, "--", "hello",
+		)
+		require.NoError(t, err, stderr)
+		require.FileExists(t, alphaMarker)
+		require.NoFileExists(t, betaMarker)
+	})
 }
 
 func processExitCode(t *testing.T, err error) int {
@@ -146,4 +181,16 @@ for line in sys.stdin:
 		"\n    args:\n      - " + markerPath + "\n"
 	require.NoError(t, os.WriteFile(configPath, []byte(configBody), 0o600))
 	return configPath, markerPath
+}
+
+func writeConflictingCommandPlugins(t *testing.T, repoRoot string) (string, string, string) {
+	t.Helper()
+	configPath, alphaMarker := writeCountingCommandPlugin(t, repoRoot)
+	pluginPath := filepath.Join(repoRoot, "plugin.py")
+	betaMarker := filepath.Join(repoRoot, "beta-starts.txt")
+	configBody := "plugins:\n" +
+		"  - id: alpha\n    path: " + pluginPath + "\n    args: [" + alphaMarker + "]\n" +
+		"  - id: beta\n    path: " + pluginPath + "\n    args: [" + betaMarker + "]\n"
+	require.NoError(t, os.WriteFile(configPath, []byte(configBody), 0o600))
+	return configPath, alphaMarker, betaMarker
 }

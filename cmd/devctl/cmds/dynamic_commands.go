@@ -2,6 +2,7 @@ package cmds
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -19,6 +20,19 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
+
+type PluginCommandExitError struct {
+	Command    string
+	ProviderID string
+	ExitCode   int
+}
+
+func (e *PluginCommandExitError) Error() string {
+	return fmt.Sprintf(
+		"plugin command %q from provider %q failed with exit_code=%d",
+		e.Command, e.ProviderID, e.ExitCode,
+	)
+}
 
 func AddDynamicPluginCommands(root *cobra.Command, args []string) error {
 	repoRoot, configPath, profileName, positionals, err := parseRepoArgs(args)
@@ -86,69 +100,78 @@ func registerDynamicCommand(
 		Short: entry.Help,
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(command *cobra.Command, argv []string) error {
-			options, err := getRootOptions(command)
-			if err != nil {
-				return err
-			}
-			meta, err := requestMetaFromRootOptions(options)
-			if err != nil {
-				return err
-			}
-			factory := runtime.NewFactory(runtime.FactoryOptions{
-				HandshakeTimeout: 2 * time.Second,
-				ShutdownTimeout:  2 * time.Second,
-			})
-			client, err := factory.Start(command.Context(), spec, runtime.StartOptions{Meta: meta})
-			if err != nil {
-				return errors.Wrapf(err, "plugin command provider %q startup", entry.ProviderID)
-			}
-			defer func() {
-				closeContext, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-				defer cancel()
-				_ = client.Close(closeContext)
-			}()
-			if err := validateRuntimeCatalog(client, catalog, entry); err != nil {
-				return err
-			}
-			configuration, err := config.LoadStacked(options.Config, config.DefaultOverridePath(options.RepoRoot))
-			if err != nil {
-				return err
-			}
-			if !options.Strict && configuration.Strictness == "error" {
-				options.Strict = true
-			}
-			pipeline := &engine.Pipeline{
-				Clients: []runtime.Client{client},
-				Opts:    engine.Options{Strict: options.Strict, DryRun: options.DryRun},
-			}
-			operationContext, cancel := context.WithTimeout(command.Context(), options.Timeout)
-			effectiveConfig, err := pipeline.MutateConfig(operationContext, patch.Config{})
-			cancel()
-			if err != nil {
-				return err
-			}
-			var output struct {
-				ExitCode int `json:"exit_code"`
-			}
-			operationContext, cancel = context.WithTimeout(command.Context(), options.Timeout)
-			err = client.Call(operationContext, "command.run", map[string]any{
-				"name": entry.Name, "argv": argv, "config": effectiveConfig,
-			}, &output)
-			cancel()
-			if err != nil {
-				return err
-			}
-			if output.ExitCode != 0 {
-				return errors.Errorf(
-					"plugin command %q from provider %q failed with exit_code=%d",
-					entry.Name, entry.ProviderID, output.ExitCode,
-				)
-			}
-			return nil
+			return executeDynamicCommand(command, catalog, spec, entry, argv)
 		},
 	}
 	AddRepoFlags(dynamicCommand)
 	root.AddCommand(dynamicCommand)
+	return nil
+}
+
+func executeDynamicCommand(
+	command *cobra.Command,
+	catalog *plugincatalog.Catalog,
+	spec runtime.PluginSpec,
+	entry plugincatalog.CommandEntry,
+	argv []string,
+) error {
+	options, err := getRootOptions(command)
+	if err != nil {
+		return err
+	}
+	meta, err := requestMetaFromRootOptions(options)
+	if err != nil {
+		return err
+	}
+	factory := runtime.NewFactory(runtime.FactoryOptions{
+		HandshakeTimeout: 2 * time.Second,
+		ShutdownTimeout:  2 * time.Second,
+	})
+	client, err := factory.Start(command.Context(), spec, runtime.StartOptions{Meta: meta})
+	if err != nil {
+		return errors.Wrapf(err, "plugin command provider %q startup", entry.ProviderID)
+	}
+	defer func() {
+		closeContext, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = client.Close(closeContext)
+	}()
+	if err := validateRuntimeCatalog(client, catalog, entry); err != nil {
+		return err
+	}
+	configuration, err := config.LoadStacked(options.Config, config.DefaultOverridePath(options.RepoRoot))
+	if err != nil {
+		return err
+	}
+	if !options.Strict && configuration.Strictness == "error" {
+		options.Strict = true
+	}
+	pipeline := &engine.Pipeline{
+		Clients: []runtime.Client{client},
+		Opts:    engine.Options{Strict: options.Strict, DryRun: options.DryRun},
+	}
+	operationContext, cancel := context.WithTimeout(command.Context(), options.Timeout)
+	effectiveConfig, err := pipeline.MutateConfig(operationContext, patch.Config{})
+	cancel()
+	if err != nil {
+		return err
+	}
+	var output struct {
+		ExitCode int `json:"exit_code"`
+	}
+	operationContext, cancel = context.WithTimeout(command.Context(), options.Timeout)
+	err = client.Call(operationContext, "command.run", map[string]any{
+		"name": entry.Name, "argv": argv, "config": effectiveConfig,
+	}, &output)
+	cancel()
+	if err != nil {
+		return err
+	}
+	if output.ExitCode != 0 {
+		return &PluginCommandExitError{
+			Command: entry.Name, ProviderID: entry.ProviderID, ExitCode: output.ExitCode,
+		}
+	}
 	return nil
 }
 
@@ -170,6 +193,15 @@ func validateRuntimeCatalog(
 			expected = append(expected, protocol.CommandSpec{
 				Name: entry.Name, Help: entry.Help, ArgsSpec: entry.Args,
 			})
+		}
+	}
+	for _, entries := range catalog.Conflicts {
+		for _, entry := range entries {
+			if entry.ProviderID == selected.ProviderID {
+				expected = append(expected, protocol.CommandSpec{
+					Name: entry.Name, Help: entry.Help, ArgsSpec: entry.Args,
+				})
+			}
 		}
 	}
 	actual := append([]protocol.CommandSpec{}, handshake.Capabilities.Commands...)

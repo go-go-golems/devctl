@@ -76,6 +76,14 @@ func classifyError(err error) (int, string) {
 		return 130, operator.CodeCanceled + ": operation canceled"
 	}
 
+	var pluginExitErr *cmds.PluginCommandExitError
+	if errors.As(err, &pluginExitErr) {
+		if pluginExitErr.ExitCode >= 1 && pluginExitErr.ExitCode <= 125 {
+			return pluginExitErr.ExitCode, pluginExitErr.Error()
+		}
+		return 1, pluginExitErr.Error()
+	}
+
 	var operatorErr *operator.OperatorError
 	if errors.As(err, &operatorErr) {
 		switch operatorErr.Code {

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-go-golems/devctl/cmd/devctl/cmds"
 	"github.com/go-go-golems/devctl/pkg/operator"
 	"github.com/stretchr/testify/require"
 )
@@ -34,6 +35,14 @@ func TestClassifyError(t *testing.T) {
 			err:         &operator.OperatorError{Code: operator.CodePartialFailure, Message: "one failed"},
 			wantCode:    1,
 			wantMessage: "E_PARTIAL_FAILURE: one failed",
+		},
+		{
+			name: "plugin exit",
+			err: &cmds.PluginCommandExitError{
+				Command: "seed", ProviderID: "demo", ExitCode: 42,
+			},
+			wantCode:    42,
+			wantMessage: `plugin command "seed" from provider "demo" failed with exit_code=42`,
 		},
 		{
 			name:        "interrupted",

@@ -69,8 +69,12 @@ func TestRefreshRejectsDeterministicPluginCollision(t *testing.T) {
 	if !errors.Is(err, ErrCatalogConflict) {
 		t.Fatalf("refresh error = %v, want conflict", err)
 	}
-	if _, statErr := os.Stat(CachePath(repoRoot)); !os.IsNotExist(statErr) {
-		t.Fatalf("conflicting catalog was cached: %v", statErr)
+	if _, statErr := os.Stat(CachePath(repoRoot)); statErr != nil {
+		t.Fatalf("conflicting catalog was not cached for diagnostics: %v", statErr)
+	}
+	loaded, loadErr := Load(repo, nil)
+	if !errors.Is(loadErr, ErrCatalogConflict) || loaded == nil {
+		t.Fatalf("load conflicting catalog = (%#v, %v), want catalog and conflict", loaded, loadErr)
 	}
 	staticCatalog, err := Static(repo, nil)
 	if err != nil {
@@ -128,6 +132,54 @@ plugins:
 	beta := loadCatalogRepo(t, repoRoot, configPath, "beta")
 	if _, err := Load(beta, nil); !errors.Is(err, ErrCatalogStale) {
 		t.Fatalf("load beta with alpha cache = %v, want stale", err)
+	}
+}
+
+func TestValidateRejectsMalformedConflictEntries(t *testing.T) {
+	fingerprint := "fingerprint"
+	tests := []struct {
+		name    string
+		entries []CommandEntry
+	}{
+		{
+			name: "wrong command identity",
+			entries: []CommandEntry{
+				{Name: "other", ProviderID: "alpha", Fingerprint: fingerprint},
+			},
+		},
+		{
+			name: "wrong fingerprint",
+			entries: []CommandEntry{
+				{Name: "collide", ProviderID: "alpha", Fingerprint: "other"},
+			},
+		},
+		{
+			name: "duplicate provider",
+			entries: []CommandEntry{
+				{Name: "collide", ProviderID: "alpha", Fingerprint: fingerprint},
+				{Name: "collide", ProviderID: "alpha", Fingerprint: fingerprint},
+			},
+		},
+		{
+			name: "unsorted providers",
+			entries: []CommandEntry{
+				{Name: "collide", ProviderID: "beta", Fingerprint: fingerprint},
+				{Name: "collide", ProviderID: "alpha", Fingerprint: fingerprint},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			catalog := &Catalog{
+				Version: SchemaVersion, ConfigFingerprint: fingerprint,
+				Commands:  map[string]CommandEntry{},
+				Conflicts: map[string][]CommandEntry{"collide": tt.entries},
+			}
+			if err := Validate(catalog, fingerprint, nil); !errors.Is(err, ErrCatalogStale) {
+				t.Fatalf("Validate() error = %v, want stale catalog", err)
+			}
+		})
 	}
 }
 

@@ -196,8 +196,9 @@ func Refresh(
 		}
 	}
 	finalizeConflicts(catalog)
-	if err := Validate(catalog, fingerprint, options.Reserved); err != nil {
-		return nil, err
+	validationErr := Validate(catalog, fingerprint, options.Reserved)
+	if validationErr != nil && !stderrors.Is(validationErr, ErrCatalogConflict) {
+		return nil, validationErr
 	}
 	if err := os.MkdirAll(filepath.Dir(CachePath(repo.Root)), 0o700); err != nil {
 		return nil, errors.Wrap(err, "create plugin catalog cache directory")
@@ -205,7 +206,7 @@ func Refresh(
 	if err := runstate.WriteJSONAtomic(CachePath(repo.Root), catalog, 0o600); err != nil {
 		return nil, errors.Wrap(err, "write plugin command catalog")
 	}
-	return catalog, nil
+	return catalog, validationErr
 }
 
 func Load(repo *repository.Repository, reserved map[string]bool) (*Catalog, error) {
@@ -246,6 +247,24 @@ func Validate(catalog *Catalog, expectedFingerprint string, reserved map[string]
 		}
 		if err := ValidateCommandName(name, reserved); err != nil {
 			return err
+		}
+	}
+	for name, entries := range catalog.Conflicts {
+		if len(entries) == 0 {
+			return errors.Wrap(ErrCatalogStale, "catalog conflict is empty")
+		}
+		previousProvider := ""
+		for _, entry := range entries {
+			if name != entry.Name || entry.ProviderID == "" || entry.Fingerprint != expectedFingerprint {
+				return errors.Wrap(ErrCatalogStale, "catalog conflict identity is invalid")
+			}
+			if !commandNamePattern.MatchString(name) || len(name) > 64 {
+				return errors.Wrap(ErrCatalogStale, "catalog conflict name is invalid")
+			}
+			if entry.ProviderID <= previousProvider {
+				return errors.Wrap(ErrCatalogStale, "catalog conflict providers are not unique and sorted")
+			}
+			previousProvider = entry.ProviderID
 		}
 	}
 	if len(catalog.Conflicts) > 0 {
