@@ -2059,3 +2059,183 @@ first capture error
   -> wait child + capture
   -> write exit.json with capture failure
 ```
+
+## Step 15 — Replace CLI lifecycle policy and bound dynamic command injection
+
+### Prompt
+
+(same as Step 8)
+
+### What I did
+
+- Deleted the old Cobra-local `up`, `down`, and single-service `restart`
+  implementations and replaced them with one Glazed lifecycle command type
+  calling `operator.Controller`.
+- Added positional service lists to `up`, `down`, `restart`, `status`, and
+  `logs`.
+- Deleted `start-service` and `stop-service` without aliases.
+- Replaced status JSON marshaling with one Glazed row per durable service.
+- Replaced CLI-local raw-file tailing with `runlog.Reader` query/follow,
+  cursors, composable filters, time parsing, and ANSI presentation policy.
+- Added a Glazed read-only `doctor` command and expanded controller diagnostics
+  to cover:
+  - configuration/profile validation;
+  - opt-in plugin handshakes;
+  - state/run schema reads;
+  - PID/start-token and PGID checks;
+  - health configuration;
+  - journal continuity and trailing crash fragments;
+  - unindexed run directories;
+  - artifact disk usage.
+- Proved `doctor` does not reconcile or mutate a planned run.
+- Added static plugin command declarations under plugin configuration.
+- Added `pkg/plugincatalog` with:
+  - schema-versioned mode-0600 cache;
+  - profile/config/plugin/executable fingerprinting;
+  - deterministic command entries and conflicts;
+  - reserved root-name validation;
+  - profile isolation;
+  - static declarations that require no discovery process;
+  - explicit handshake discovery in `plugins refresh`.
+- Changed automatic top-level injection to read only a validated cache or
+  trusted static declarations.
+- Made a dynamic invocation start only the recorded provider and reject
+  handshake drift with `PLUGIN_CATALOG_STALE`.
+- Replaced `plugins list` with configuration-only rows and added
+  `plugins commands` and `plugins refresh`.
+- Removed the standalone `cmd/log-parse`, `pkg/logjs`, its examples, and its
+  embedded help topic after the Phase 0 consumer gate found no production
+  imports.
+- Added real-binary CLI contract tests.
+
+### Why
+
+Cobra and the old TUI cannot remain alternate lifecycle implementations. The
+CLI must decode presentation settings, call the controller, and render typed
+results.
+
+Automatic root command injection is useful, but executing every configured
+plugin while handling an unknown word makes typo parsing a repository-code
+execution surface. A fingerprinted cache preserves native root commands while
+making help, completion, built-ins, and typos side-effect bounded.
+
+### What worked
+
+- The full pre-commit test suite and lint passed.
+- Real-binary tests prove:
+  - no-state status emits valid structured JSON with empty stderr;
+  - `stop-service` is an unknown command;
+  - root help in a configured plugin repository creates no provider-start
+    marker;
+  - a typo with no cache creates no provider-start marker and explains
+    `plugins refresh`;
+  - after refresh, one dynamic command invocation starts exactly one provider.
+- Catalog tests prove:
+  - fingerprints are stable across plugin ordering;
+  - plugin/plugin collisions list providers deterministically;
+  - reserved names are rejected;
+  - a cache generated for one profile is stale for another.
+- `go run ./cmd/devctl --help`, `logs --help`, `up --help`, and no-state JSON
+  status all succeeded.
+- The logs-specific Glazed section preserves the required `--stream` filter
+  flag by removing Glazed's conflicting output-stream flag only for that
+  command.
+
+### What didn't work
+
+The first logs command construction failed because Glazed already defines an
+output flag named `--stream`. Renaming the public log filter would violate the
+CLI contract. I constructed a command-specific Glazed section, removed only
+the output formatter's `stream` definition, and retained every other output
+processor flag.
+
+The old dynamic-command tests initially failed because they expected implicit
+handshake discovery during root construction. I changed them to invoke
+explicit catalog refresh and added separate cache-missing/static-declaration
+tests.
+
+Runtime drift validation initially treated nil and empty `ArgsSpec` slices as
+different through `reflect.DeepEqual`. JSON handshake decoding can produce an
+empty slice for semantically empty metadata. I replaced reflection with an
+element-wise semantic comparison.
+
+### What I learned
+
+Glazed command construction clones and injects its output schema. A command
+that intentionally reserves an output flag name must supply a prebuilt Glazed
+section; hiding the duplicate flag happens too late to prevent registration
+collision.
+
+Root command construction can load and fingerprint repository configuration
+without executing repository plugins. The execution boundary is now explicit:
+refresh starts discovery providers; a selected dynamic command starts one
+provider; other parsing starts zero.
+
+### What was tricky to build
+
+The catalog fingerprint must be stable across configuration ordering while
+changing for profile selection, executable identity, arguments, priority,
+working directory, environment, static declarations, schema version, or
+protocol version. The implementation sorts selected plugin specs before
+hashing canonical JSON material.
+
+Dynamic execution must verify the runtime handshake before running
+`config.mutate` or `command.run`. It compares provider identity, operation
+support, and the complete recorded command set, then uses a bounded close
+context.
+
+### What warrants a second pair of eyes
+
+- Review whether static command declarations should require a handshake during
+  `plugins refresh`; the current preferred static path avoids discovery and
+  verifies at actual execution.
+- Review the current Glazed streaming JSON behavior against the strict JSON
+  Lines requirement for `logs --follow`.
+- Review root error rendering because Glazed's builder invokes
+  `cobra.CheckErr` internally for command execution errors.
+- Review whether `doctor --plugins` should attribute plugin IDs in a dedicated
+  field instead of the generic service column.
+
+### What should be done in the future
+
+- Complete centralized exit-code/error rendering and exact help goldens.
+- Add `plugins inspect` and provider-qualified `plugins run` if they remain in
+  MVP scope.
+- Update user/help documentation and remove old command strings outside
+  historical tickets.
+- Replace the legacy TUI so no second lifecycle implementation remains.
+
+### Code review instructions
+
+- Start with `cmd/devctl/cmds/lifecycle.go`, `logs.go`, and `doctor.go`.
+- Inspect `pkg/plugincatalog/catalog.go` and the root injection path in
+  `dynamic_commands.go`.
+- Inspect `cli_contract_test.go` for real-process side-effect assertions.
+- Verify removed commands with
+  `rg 'stop-service|start-service|logs --service' --glob '!ttmp/**'`.
+- Run `go test ./...` and `make lint`.
+
+### Technical details
+
+```text
+root construction
+  -> parse bootstrap repo/config/profile flags
+  -> built-in/help/completion? return without catalog or plugin
+  -> load repository config (no plugin execution)
+  -> load and fingerprint-check cache
+     -> selected dynamic name? register one provider command
+     -> typo? normal error / refresh guidance, zero providers
+
+plugins refresh
+  -> use trusted static declarations where present
+  -> start only providers requiring handshake discovery
+  -> reject reserved and ambiguous names
+  -> atomically persist mode-0600 catalog
+
+dynamic invocation
+  -> start recorded provider only
+  -> verify handshake against catalog
+  -> config.mutate
+  -> command.run
+  -> bounded provider shutdown
+```
