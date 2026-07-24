@@ -81,9 +81,10 @@ type HealthCheckRecord struct {
 }
 
 type HealthResult struct {
-	Healthy   bool      `json:"healthy"`
-	CheckedAt time.Time `json:"checked_at"`
-	Detail    string    `json:"detail,omitempty"`
+	Healthy    bool      `json:"healthy"`
+	CheckedAt  time.Time `json:"checked_at"`
+	DurationMs int64     `json:"duration_ms,omitempty"`
+	Detail     string    `json:"detail,omitempty"`
 }
 
 type ExitSummary struct {

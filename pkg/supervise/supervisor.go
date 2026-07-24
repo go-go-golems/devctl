@@ -63,13 +63,15 @@ func (s *Supervisor) Start(ctx context.Context, plan engine.LaunchPlan) (*state.
 		st.Services = append(st.Services, rec)
 	}
 
-	for _, svc := range plan.Services {
-		if svc.Health == nil {
-			continue
+	for index, svc := range plan.Services {
+		var err error
+		if st.Services[index].RunID != "" {
+			err = s.CompleteHealth(ctx, svc, st.Services[index].RunID)
+		} else if svc.Health != nil {
+			readyCtx, cancel := context.WithTimeout(ctx, s.opts.ReadyTimeout)
+			err = waitReady(readyCtx, svc)
+			cancel()
 		}
-		readyCtx, cancel := context.WithTimeout(ctx, s.opts.ReadyTimeout)
-		err := waitReady(readyCtx, svc)
-		cancel()
 		if err != nil {
 			_ = s.Stop(context.Background(), st)
 			return nil, err
@@ -154,14 +156,17 @@ func (s *Supervisor) StartService(ctx context.Context, st *state.State, spec eng
 		return errors.Wrapf(err, "failed to start service %q", name)
 	}
 
-	if spec.Health != nil {
+	var healthErr error
+	if newRec.RunID != "" {
+		healthErr = s.CompleteHealth(ctx, spec, newRec.RunID)
+	} else if spec.Health != nil {
 		readyCtx, cancel := context.WithTimeout(ctx, s.opts.ReadyTimeout)
-		err := waitReady(readyCtx, spec)
+		healthErr = waitReady(readyCtx, spec)
 		cancel()
-		if err != nil {
-			_ = terminatePIDGroup(context.Background(), newRec.PID, s.opts.ShutdownTimeout)
-			return errors.Wrapf(err, "service %q health check failed", name)
-		}
+	}
+	if healthErr != nil {
+		_ = terminatePIDGroup(context.Background(), newRec.PID, s.opts.ShutdownTimeout)
+		return errors.Wrapf(healthErr, "service %q health check failed", name)
 	}
 
 	rec.PID = newRec.PID
@@ -289,6 +294,58 @@ func (s *Supervisor) startService(ctx context.Context, svc engine.ServiceSpec) (
 	if err := store.CreateRun(ctx, run); err != nil {
 		return state.ServiceRecord{}, errors.Wrap(err, "create planned run")
 	}
+	return s.StartPreparedService(ctx, svc, runID)
+}
+
+// StartPreparedService starts a wrapper for a run record that the controller
+// created before this call. It never creates or selects an environment slot.
+func (s *Supervisor) StartPreparedService(
+	ctx context.Context,
+	svc engine.ServiceSpec,
+	runID string,
+) (state.ServiceRecord, error) {
+	if s.opts.WrapperExe == "" {
+		return state.ServiceRecord{}, errors.New("prepared service start requires WrapperExe")
+	}
+	if svc.Name == "" {
+		return state.ServiceRecord{}, errors.New("service name is required")
+	}
+	if len(svc.Command) == 0 {
+		return state.ServiceRecord{}, errors.Errorf("service %q missing command", svc.Name)
+	}
+	cwd := s.opts.RepoRoot
+	if svc.Cwd != "" {
+		if filepath.IsAbs(svc.Cwd) {
+			cwd = svc.Cwd
+		} else {
+			cwd = filepath.Join(s.opts.RepoRoot, svc.Cwd)
+		}
+	}
+	store, err := runstate.NewStore(s.opts.RepoRoot)
+	if err != nil {
+		return state.ServiceRecord{}, err
+	}
+	prepared, err := store.LoadRun(ctx, runID)
+	if err != nil {
+		return state.ServiceRecord{}, errors.Wrap(err, "load prepared run")
+	}
+	if prepared.Service != svc.Name || prepared.Spec.Name != svc.Name {
+		return state.ServiceRecord{}, errors.Errorf(
+			"prepared run %q belongs to service %q, not %q",
+			runID,
+			prepared.Service,
+			svc.Name,
+		)
+	}
+	if prepared.Phase != runstate.RunPlanned {
+		return state.ServiceRecord{}, errors.Errorf(
+			"prepared run %q has phase %q, expected %q",
+			runID,
+			prepared.Phase,
+			runstate.RunPlanned,
+		)
+	}
+
 	request, err := NewWrapperRequest(store, runID, svc.Name, cwd, svc.Command, svc.Env)
 	if err != nil {
 		markRunFailed(store, runID, "WRAPPER_REQUEST_INVALID", err)
@@ -337,7 +394,7 @@ func (s *Supervisor) startService(ctx context.Context, svc engine.ServiceSpec) (
 		return state.ServiceRecord{}, err
 	}
 	if err := store.UpdateRun(ctx, runID, func(record *runstate.RunRecord) error {
-		record.Phase = runstate.RunReady
+		record.Phase = runstate.RunStarting
 		record.Wrapper = &owner.Wrapper
 		record.Child = &ready.Child
 		record.ChildPGID = ready.ChildPGID
@@ -370,6 +427,154 @@ func (s *Supervisor) startService(ctx context.Context, svc engine.ServiceSpec) (
 		rec.HealthURL = svc.Health.URL
 	}
 	return rec, nil
+}
+
+// CompleteHealth evaluates the service health contract and records the result.
+// A service without a health check transitions immediately to ready.
+func (s *Supervisor) CompleteHealth(ctx context.Context, svc engine.ServiceSpec, runID string) error {
+	store, err := runstate.NewStore(s.opts.RepoRoot)
+	if err != nil {
+		return err
+	}
+	startedAt := time.Now()
+	if svc.Health == nil {
+		return store.UpdateRun(ctx, runID, func(record *runstate.RunRecord) error {
+			record.Phase = runstate.RunReady
+			record.Health = &runstate.HealthResult{
+				Healthy:   true,
+				CheckedAt: time.Now().UTC(),
+				Detail:    "no health check configured",
+			}
+			return nil
+		})
+	}
+
+	timeout := s.opts.ReadyTimeout
+	if svc.Health.TimeoutMs > 0 {
+		timeout = time.Duration(svc.Health.TimeoutMs) * time.Millisecond
+	}
+	healthContext, cancel := context.WithTimeout(ctx, timeout)
+	healthErr := waitReady(healthContext, svc)
+	cancel()
+	checkedAt := time.Now().UTC()
+	duration := time.Since(startedAt)
+	if healthErr != nil {
+		_ = store.UpdateRun(context.Background(), runID, func(record *runstate.RunRecord) error {
+			record.Phase = runstate.RunFailed
+			record.Health = &runstate.HealthResult{
+				Healthy:    false,
+				CheckedAt:  checkedAt,
+				DurationMs: duration.Milliseconds(),
+				Detail:     healthErr.Error(),
+			}
+			record.LastError = &runstate.ErrorRecord{
+				Code:    "E_HEALTH_TIMEOUT",
+				Message: healthErr.Error(),
+			}
+			return nil
+		})
+		return healthErr
+	}
+	return store.UpdateRun(ctx, runID, func(record *runstate.RunRecord) error {
+		record.Phase = runstate.RunReady
+		record.Health = &runstate.HealthResult{
+			Healthy:    true,
+			CheckedAt:  checkedAt,
+			DurationMs: duration.Milliseconds(),
+		}
+		return nil
+	})
+}
+
+// StopPreparedService stops only processes whose PID and start token match the
+// prepared run record. It records exited or unknown and never clears the
+// environment index; the controller owns that mutation.
+func (s *Supervisor) StopPreparedService(ctx context.Context, runID string) error {
+	store, err := runstate.NewStore(s.opts.RepoRoot)
+	if err != nil {
+		return err
+	}
+	run, err := store.LoadRun(ctx, runID)
+	if err != nil {
+		return errors.Wrap(err, "load run for stop")
+	}
+	if run.Wrapper == nil || run.Child == nil || run.ChildPGID <= 0 {
+		return errors.Errorf("run %q has no complete ownership handshake", runID)
+	}
+	wrapperStatus, err := runstate.InspectProcess(run.Wrapper)
+	if err != nil {
+		return errors.Wrap(err, "inspect wrapper before stop")
+	}
+	childStatus, err := runstate.InspectProcess(run.Child)
+	if err != nil {
+		return errors.Wrap(err, "inspect child before stop")
+	}
+	if wrapperStatus == runstate.ProcessMismatch || childStatus == runstate.ProcessMismatch {
+		markRunUnknown(store, runID, "PROCESS_IDENTITY_MISMATCH", "PID start token changed before stop")
+		return errors.Errorf("run %q process identity mismatch", runID)
+	}
+	if err := store.UpdateRun(ctx, runID, func(record *runstate.RunRecord) error {
+		record.Phase = runstate.RunStopping
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "mark run stopping")
+	}
+
+	if wrapperStatus == runstate.ProcessMatches {
+		if err := terminatePIDGroup(ctx, run.Wrapper.PID, s.opts.ShutdownTimeout); err != nil {
+			markRunUnknown(store, runID, "STOP_FAILED", err.Error())
+			return err
+		}
+	} else if childStatus == runstate.ProcessMatches {
+		if err := terminatePIDGroup(ctx, run.Child.PID, s.opts.ShutdownTimeout); err != nil {
+			markRunUnknown(store, runID, "STOP_FAILED", err.Error())
+			return err
+		}
+	}
+
+	wrapperStatus, err = runstate.InspectProcess(run.Wrapper)
+	if err != nil {
+		return errors.Wrap(err, "inspect wrapper after stop")
+	}
+	childStatus, err = runstate.InspectProcess(run.Child)
+	if err != nil {
+		return errors.Wrap(err, "inspect child after stop")
+	}
+	if wrapperStatus != runstate.ProcessAbsent || childStatus != runstate.ProcessAbsent {
+		message := "owned process remains or identity changed after stop"
+		markRunUnknown(store, runID, "STOP_FAILED", message)
+		return errors.Errorf("run %q: %s", runID, message)
+	}
+
+	var exitSummary *runstate.ExitSummary
+	runDir, pathErr := store.RunDir(runID)
+	if pathErr == nil {
+		exitInfo, readErr := state.ReadExitInfo(filepath.Join(runDir, ExitRecordName))
+		if readErr == nil {
+			exitSummary = &runstate.ExitSummary{
+				ExitedAt: exitInfo.ExitedAt,
+				ExitCode: exitInfo.ExitCode,
+				Signal:   exitInfo.Signal,
+				Error:    exitInfo.Error,
+			}
+		}
+	}
+	return store.UpdateRun(ctx, runID, func(record *runstate.RunRecord) error {
+		record.Phase = runstate.RunExited
+		record.Exit = exitSummary
+		return nil
+	})
+}
+
+func markRunUnknown(store *runstate.Store, runID string, code string, message string) {
+	if store == nil || runID == "" {
+		return
+	}
+	_ = store.UpdateRun(context.Background(), runID, func(record *runstate.RunRecord) error {
+		record.Phase = runstate.RunUnknown
+		record.LastError = &runstate.ErrorRecord{Code: code, Message: message}
+		return nil
+	})
 }
 
 func waitWrapperHandshake(

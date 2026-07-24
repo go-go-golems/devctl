@@ -9,3 +9,7 @@ func ReadProcessIdentity(_ int) (*ProcessIdentity, error) {
 func MatchesProcess(_ *ProcessIdentity) (bool, error) {
 	return false, ErrProcessIdentityUnsupported
 }
+
+func InspectProcess(_ *ProcessIdentity) (ProcessStatus, error) {
+	return ProcessAbsent, ErrProcessIdentityUnsupported
+}

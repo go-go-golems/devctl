@@ -37,17 +37,42 @@ func ReadProcessIdentity(pid int) (*ProcessIdentity, error) {
 }
 
 func MatchesProcess(identity *ProcessIdentity) (bool, error) {
+	status, err := InspectProcess(identity)
+	if err != nil {
+		return false, err
+	}
+	return status == ProcessMatches, nil
+}
+
+func InspectProcess(identity *ProcessIdentity) (ProcessStatus, error) {
 	if identity == nil || identity.PID <= 0 || identity.StartToken == "" {
-		return false, errors.Wrap(ErrInvalidState, "incomplete process identity")
+		return ProcessAbsent, errors.Wrap(ErrInvalidState, "incomplete process identity")
 	}
 	current, err := ReadProcessIdentity(identity.PID)
 	if err != nil {
 		if os.IsNotExist(errors.Cause(err)) {
-			return false, nil
+			return ProcessAbsent, nil
 		}
-		return false, err
+		return ProcessAbsent, err
 	}
-	return current.StartToken == identity.StartToken, nil
+	if current.StartToken != identity.StartToken {
+		return ProcessMismatch, nil
+	}
+	stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", identity.PID))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ProcessAbsent, nil
+		}
+		return ProcessAbsent, errors.Wrap(err, "read Linux process state")
+	}
+	state, err := parseProcStatState(stat)
+	if err != nil {
+		return ProcessAbsent, err
+	}
+	if state == 'Z' {
+		return ProcessAbsent, nil
+	}
+	return ProcessMatches, nil
 }
 
 func parseProcStatStartTime(stat []byte) (string, error) {
@@ -67,4 +92,16 @@ func parseProcStatStartTime(stat []byte) (string, error) {
 		return "", errors.New("process stat start time is empty")
 	}
 	return startTime, nil
+}
+
+func parseProcStatState(stat []byte) (byte, error) {
+	closeIndex := bytes.LastIndexByte(stat, ')')
+	if closeIndex < 0 {
+		return 0, errors.New("process stat is missing command terminator")
+	}
+	fields := bytes.Fields(stat[closeIndex+1:])
+	if len(fields) == 0 || len(fields[0]) != 1 {
+		return 0, errors.New("process stat state is missing")
+	}
+	return fields[0][0], nil
 }
