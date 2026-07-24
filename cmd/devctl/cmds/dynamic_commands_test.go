@@ -1,14 +1,17 @@
 package cmds
 
 import (
+	"context"
 	"os"
 	"path/filepath"
-	"runtime"
+	goruntime "runtime"
 	"testing"
 	"time"
 
 	"github.com/go-go-golems/devctl/pkg/plugincatalog"
+	"github.com/go-go-golems/devctl/pkg/protocol"
 	"github.com/go-go-golems/devctl/pkg/repository"
+	devruntime "github.com/go-go-golems/devctl/pkg/runtime"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
@@ -216,7 +219,68 @@ func TestDynamicCommands_SkipsWrapService(t *testing.T) {
 
 func findDevctlRootForTest(t *testing.T) string {
 	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
+	_, thisFile, _, ok := goruntime.Caller(0)
 	require.True(t, ok)
 	return filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", "..", ".."))
+}
+
+func TestValidateRuntimeCatalogRejectsHandshakeDrift(t *testing.T) {
+	entry := plugincatalog.CommandEntry{
+		Name: "echo", Help: "Echo", ProviderID: "provider", PluginName: "plugin",
+	}
+	catalog := &plugincatalog.Catalog{
+		Commands:  map[string]plugincatalog.CommandEntry{"echo": entry},
+		Conflicts: map[string][]plugincatalog.CommandEntry{},
+	}
+	client := &catalogTestClient{handshake: protocol.Handshake{
+		PluginName: "plugin",
+		Capabilities: protocol.Capabilities{
+			Ops: []string{"command.run"},
+			Commands: []protocol.CommandSpec{
+				{Name: "echo", Help: "Changed help"},
+			},
+		},
+	}}
+	err := validateRuntimeCatalog(client, catalog, entry)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "PLUGIN_CATALOG_STALE")
+}
+
+type catalogTestClient struct {
+	handshake protocol.Handshake
+}
+
+var _ devruntime.Client = (*catalogTestClient)(nil)
+
+func (c *catalogTestClient) Spec() devruntime.PluginSpec {
+	return devruntime.PluginSpec{ID: "provider"}
+}
+
+func (c *catalogTestClient) Handshake() protocol.Handshake {
+	return c.handshake
+}
+
+func (c *catalogTestClient) SupportsOp(operation string) bool {
+	for _, supported := range c.handshake.Capabilities.Ops {
+		if supported == operation {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *catalogTestClient) Call(context.Context, string, any, any) error {
+	return nil
+}
+
+func (c *catalogTestClient) StartStream(
+	context.Context,
+	string,
+	any,
+) (string, <-chan protocol.Event, error) {
+	return "", nil, nil
+}
+
+func (c *catalogTestClient) Close(context.Context) error {
+	return nil
 }
