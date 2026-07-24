@@ -1920,3 +1920,142 @@ caller cancellation during start
   -> return canceled operation
   -> next reconciliation fails unowned planned attempts safely
 ```
+
+## Step 14 — Add the run-scoped structured log journal
+
+### Prompt
+
+(same as Step 8)
+
+### What I did
+
+- Implemented a byte-oriented framer with newline handling, CRLF text
+  normalization, final EOF fragments, and bounded partial chunks for logical
+  lines over 1 MiB.
+- Implemented a bounded two-stream capture pipeline:
+  - exact bytes are written to the matching raw stdout/stderr file;
+  - framed records fan into one sequencer;
+  - the sequencer alone assigns run-local sequence numbers and writes
+    `logs.jsonl`;
+  - every complete record is flushed for live readers;
+  - raw files and the journal are synced before capture completion.
+- Changed the wrapper from direct `child.Stdout`/`child.Stderr` files to
+  `StdoutPipe`/`StderrPipe` capture.
+- Made first-stream capture failure cancel capture, close both child pipes, and
+  return promptly even if the peer stream is blocked.
+- Made the wrapper kill the child process group when capture fails and wait for
+  capture completion before writing `exit.json`.
+- Implemented a file-backed reader with:
+  - composable run/service/source/stream/level/time/text filters;
+  - tail applied independently per run before stable merge;
+  - `(time, run ID, sequence)` ordering;
+  - terminated-record corruption errors with byte offsets;
+  - ignored unterminated crash fragments with
+    `E_LOG_TRAILING_PARTIAL`;
+  - cursor-based follow without duplicate emission;
+  - active-file replacement detection;
+  - context-aware polling and terminal-run completion.
+- Extended the real-binary supervisor test to prove journal content and exact
+  raw bytes.
+- Added a Linux `/dev/full` wrapper integration test and a 100,000-record
+  bounded-pipeline test.
+
+### Why
+
+Separate raw files cannot reconstruct stdout/stderr ordering and forced the
+CLI and TUI to implement independent tail logic. A per-run journal gives both
+frontends one immutable identity, one cursor domain, and deterministic record
+ordering.
+
+Capture cannot depend on frontend speed. Frontends read the journal from disk;
+the child-to-disk path has a small bounded channel and no TUI callback.
+
+### What worked
+
+- `go test ./pkg/runlog ./pkg/supervise ./cmd/devctl/cmds` passed.
+- `go test -race ./pkg/runlog` passed.
+- The complete pre-commit suite and lint passed.
+- The real wrapper produced two records with unique sequences across stdout
+  and stderr while preserving `out\r\n` exactly in the raw stdout file and
+  exposing normalized `out` in the journal.
+- A blocked peer pipe no longer delays the first raw/journal write error.
+- `/dev/full` caused prompt wrapper failure, killed the child, and produced an
+  exit record naming log capture failure.
+- 100,000 records completed with the in-process frame queue fixed at 64.
+- Follow cancellation completed within 250 ms, and cursor resume emitted no
+  duplicate.
+
+### What didn't work
+
+The initial writer waited for `errgroup.Wait()` before returning a stream
+failure. If stdout hit disk-full while stderr remained open and silent,
+capture could not return to the wrapper, so the wrapper could not kill the
+child that would close stderr.
+
+I added a first-error channel, canceled the group, and closed every pipe reader
+before waiting for reader goroutines. A regression test uses one failing raw
+writer and one blocking `io.Pipe`; it now returns within 250 ms.
+
+### What I learned
+
+Flushing only at process exit makes a correct journal useless for `logs
+--follow`. Complete JSON records must become visible during the active run.
+The current MVP flushes every record and reserves batched count/time tuning
+for later profiling.
+
+`errgroup` cancellation alone does not interrupt an arbitrary blocking
+`Read`. The owner of pipe readers must close them when another capture
+component fails.
+
+### What was tricky to build
+
+`child.Wait`, pipe EOF, journal sync, and exit metadata have a strict order.
+The wrapper waits for both process completion and capture completion, but if
+capture fails first it kills the child group before waiting. Handshake-failure
+cleanup also waits for capture after killing the child.
+
+An active reader may see a crash fragment or the short interval between an
+append and its newline. The reader ignores only an unterminated final line; a
+terminated invalid line is hard corruption.
+
+### What warrants a second pair of eyes
+
+- Review the per-record flush cost under sustained multi-megabyte output and
+  choose a bounded count/time flush policy without sacrificing live latency.
+- Review whether `unknown` runs should terminate follow or require explicit
+  caller cancellation. The current reader treats only failed and exited as
+  terminal.
+- Confirm whether query diagnostics should remain a non-nil error returned
+  alongside valid records or move to an explicit diagnostic collection.
+
+### What should be done in the future
+
+- Wire the file reader into the Glazed `logs` command and TUI.
+- Add CLI presentation rules for trailing-partial diagnostics.
+- Add optional ANSI stripping only at rendering time; raw bytes and journal
+  text currently retain ANSI content.
+- Measure query allocation for very large retained histories and add streaming
+  iteration if needed.
+
+### Code review instructions
+
+- Start with `pkg/runlog/writer.go`, then `framer.go`.
+- Follow `runWrappedService` from pipe creation through capture/process select
+  and exit writing.
+- Inspect `reader.go` and `follow.go` for corruption and cursor behavior.
+- Run the focused, race, disk-full, and full suite commands above.
+
+### Technical details
+
+```text
+child stdout -> pipe -> exact stdout.log -> framer --\
+                                                        -> sequencer -> logs.jsonl
+child stderr -> pipe -> exact stderr.log -> framer --/
+
+first capture error
+  -> cancel capture
+  -> close both pipe readers
+  -> wrapper kills child process group
+  -> wait child + capture
+  -> write exit.json with capture failure
+```

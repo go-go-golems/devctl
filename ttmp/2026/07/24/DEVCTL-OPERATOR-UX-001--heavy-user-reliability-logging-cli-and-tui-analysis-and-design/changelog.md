@@ -127,3 +127,7 @@ Phase 2 milestone: replaced wrapper argument fan-out with a consumed mode-0600 r
 ## 2026-07-24
 
 Completed Phase 2 acceptance with pre-indexed v2 runs, durable wrapper ownership/ready evidence, conservative crash reconciliation, kernel PID/start-token/PGID validation, failed-attempt retention, and normal/race coverage.
+
+## 2026-07-24
+
+Completed Phase 4: bounded byte framing, exact raw capture, single sequenced logs.jsonl writer, live flush/sync-before-exit ordering, disk-full child termination, deterministic query/tail merge, corruption diagnostics, cursor follow, and 100,000-record/race coverage (78141a2, 1afe2e7).
