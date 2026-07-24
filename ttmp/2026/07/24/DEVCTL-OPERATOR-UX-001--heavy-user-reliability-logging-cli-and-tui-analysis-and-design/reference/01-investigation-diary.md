@@ -2400,6 +2400,42 @@ go test ./cmd/devctl/cmds
   PASS
 ```
 
+## Step 22 — Audit the remaining protocol stream renderer and root help
+
+The direct-output search is now empty for normal finite public commands. The
+only public exception is `stream start`, which transports an open-ended
+protocol event channel. A mechanical Glazed conversion would be incorrect:
+the default table formatter is table-oriented and cannot emit ordinary table
+rows incrementally. Forcing Glazed's streaming switch makes JSON/CSV-style
+row formatters viable, but makes the default human table format unsupported.
+Buffering until the stream ends would violate the operator requirement.
+
+This needs an explicit streaming presentation boundary:
+
+```text
+protocol.Event channel
+  -> canonical event row
+  -> streaming JSONL/CSV formatter when machine output selected
+  -> incremental human event renderer for default output
+```
+
+The human renderer and machine formatter must share the canonical row and
+filter semantics, but they do not need to pretend that a terminal event feed
+is a finite table. I left the existing behavior intact pending this focused
+implementation instead of silently changing the default format or buffering.
+
+I also captured the authoritative root help after the command migrations:
+
+```text
+go run ./cmd/devctl --help
+```
+
+The tree contains the intended lifecycle, plan/phase, profile, plugin,
+stream, and TUI groups and omits removed lifecycle spellings. The output is
+rendered by the embedded Glazed help system with terminal-width wrapping, so
+the golden test should normalize presentation whitespace while comparing the
+exact ordered command names and descriptions.
+
 ## Step 20 — Migrate profile inspection to structured rows
 
 I replaced the `profiles list` tabwriter and the special `profiles active`
