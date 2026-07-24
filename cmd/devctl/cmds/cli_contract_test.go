@@ -37,10 +37,25 @@ func TestBuiltCLIContracts(t *testing.T) {
 		require.Contains(t, stderr, `unknown command "stop-service"`)
 	})
 
+	t.Run("logs flag conflicts are usage errors rendered once", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		_, stderr, err := runCLI(binary,
+			"logs", "--repo-root", repoRoot, "--follow", "--until", "1m",
+		)
+		require.Error(t, err)
+		require.Equal(t, 2, processExitCode(t, err))
+		require.Equal(t, 1, strings.Count(stderr, "--follow and --until"))
+		require.Contains(t, stderr, "E_USAGE:")
+	})
+
 	t.Run("help and typo never start plugin", func(t *testing.T) {
 		repoRoot := t.TempDir()
 		configPath, markerPath := writeCountingCommandPlugin(t, repoRoot)
 		_, stderr, err := runCLIInDir(binary, repoRoot, "--help")
+		require.NoError(t, err, stderr)
+		require.NoFileExists(t, markerPath)
+
+		_, stderr, err = runCLIInDir(binary, repoRoot, "completion", "bash")
 		require.NoError(t, err, stderr)
 		require.NoFileExists(t, markerPath)
 
