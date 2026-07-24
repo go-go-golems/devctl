@@ -24,10 +24,43 @@ WhenToUse: "Read before implementing changes to devctl service lifecycle, state,
 
 ## Executive Summary
 
-This document is under active evidence gathering. Its final form will teach a
-new engineer how devctl works today, identify concrete operator and maintenance
-failures, compare alternative designs, and specify a phased redesign without
-requiring the implementer to make unresolved architectural decisions.
+Devctl's current plugin pipeline is a sound foundation, and the focused
+process-group correction at commit `39ba416` fixes a real recursive-signal
+defect. The wider operator system is not yet reliable enough for heavy daily
+use. Process ownership becomes durable only after every service has started
+and passed readiness; PID reuse is not detected; `down` discards stop errors
+and removes ownership state; log artifacts can collide within one second; and
+health rules differ between startup and the TUI.
+
+The presentation layers multiply those risks. CLI lifecycle syntax and output
+contracts are inconsistent. Three independent file-tail implementations have
+different behavior. The CLI follower loses output after truncation or
+rotation. The 7,757-line TUI contains no TUI tests, duplicates the lifecycle
+controller, differs from CLI restart ordering, turns every poll into an event,
+derives status by parsing prose, and can signal a PID directly.
+
+The proposed redesign retains the plugin pipeline, wrapper, Bubble Tea, and
+Glazed. It introduces:
+
+- a versioned run record created before process startup;
+- atomic state and handshake files under a unique run directory;
+- PID plus process-start identity checks;
+- one controller shared by CLI and TUI;
+- one sequenced run-log journal and reader;
+- conventional `up/down/restart/logs [SERVICE...]` commands with Glazed rows;
+- a three-view Overview, Logs, and Runs TUI using typed messages.
+
+It removes duplicate TUI orchestration, Watermill/JSON message plumbing,
+direct process signaling from models, frontend-specific log readers,
+automatic top-level plugin command injection, old lifecycle spellings, and,
+after a downstream-consumer gate, the unintegrated standalone JavaScript log
+parser. It deliberately does not add a daemon, REST API, scheduler, restart
+policy, state compatibility layer, or automatic repair.
+
+The implementation is divided into seven dependency-ordered phases with exact
+schemas, APIs, pseudocode, file changes, tests, commit boundaries, and
+acceptance gates. A new intern should be able to execute the work without
+choosing core architecture.
 
 ## Problem Statement
 
@@ -41,9 +74,9 @@ repaired, consolidated, or removed.
 
 - Repository and ticket baseline: complete.
 - Supervision and state architecture: complete.
-- Logging, CLI, and TUI architecture: in progress.
-- Comparative operator research: pending.
-- Design decisions and implementation roadmap: pending.
+- Logging, CLI, and TUI architecture: complete.
+- Comparative operator research: complete.
+- Design decisions and implementation roadmap: complete.
 
 ## Audience and reading contract
 
@@ -408,8 +441,8 @@ offset when size decreases (`pkg/tui/models/service_model.go:778-840`), but it
 reopens and reads each stream every 250 ms and still has no inode identity. It
 duplicates the bounded-tail algorithm at `service_model.go:872-922`.
 
-**Required consolidation:** implement one package, tentatively
-`pkg/runlog`, with snapshot and follow APIs. CLI, status diagnostics, and TUI
+**Required consolidation:** implement `pkg/runlog` with snapshot and follow
+APIs. CLI, status diagnostics, and TUI
 must consume it. No frontend may open service log files directly.
 
 ## CLI architecture and ergonomic audit
@@ -892,7 +925,1558 @@ The redesign is conservative in architecture and conventional in interface:
 These conclusions validate the earlier code-based direction without requiring
 devctl to become a clone of any comparison tool.
 
+## Target architecture
+
+The future system has one control plane, one durable run model, and two thin
+frontends.
+
+```text
+                         ┌─────────────────────┐
+                         │ Plugin pipeline     │
+                         │ config/plan/phases  │
+                         └──────────┬──────────┘
+                                    │ ServiceSpec[]
+                                    ▼
+┌──────────────┐           ┌─────────────────────┐          ┌──────────────┐
+│ Glazed CLI   │──────────▶│ pkg/operator        │◀─────────│ Bubble Tea   │
+│ rows/errors  │ requests  │ Controller          │ events   │ TUI          │
+└──────────────┘           └──────┬────────┬─────┘          └──────────────┘
+                                  │        │
+                         lifecycle│        │log query/follow
+                                  ▼        ▼
+                         ┌────────────┐  ┌────────────┐
+                         │supervise   │  │runlog      │
+                         │wrapper     │  │journal     │
+                         └─────┬──────┘  └──────┬─────┘
+                               │                │
+                               ▼                ▼
+                         ┌────────────────────────────┐
+                         │ .devctl/runs/<run_id>/     │
+                         │ owner/ready/log/exit JSON  │
+                         └──────────────┬─────────────┘
+                                        │ indexed by
+                                        ▼
+                              .devctl/state.json v2
+```
+
+The controller is an application service, not a network service. It owns
+validation, locking, planning, state transitions, and structured outcomes.
+The supervisor owns OS processes. `runlog` owns service output. The CLI and TUI
+own rendering and interaction only.
+
+### Proposed package layout
+
+```text
+pkg/
+  operator/
+    controller.go          public application operations
+    events.go              typed operation events
+    errors.go              stable error codes and context
+    requests.go            validated request types
+    snapshot.go            frontend-neutral read model
+  runstate/
+    schema.go              versioned environment/run records
+    store.go               atomic reads/writes and repository lock
+    identity_linux.go      Linux process identity
+    identity_other.go      explicit unsupported/fallback behavior
+    reconcile.go           durable-artifact reconciliation
+  runlog/
+    record.go              LogRecord and Cursor
+    writer.go              stdout/stderr capture and sequenced journal
+    reader.go              snapshot/query/follow
+    follow.go              lifecycle and cancellation
+  supervise/
+    supervisor.go          start/stop primitives
+    wrapper.go             wrapper request and durable handshake
+  tui/
+    app.go                 Bubble Tea wiring
+    model.go               global navigation and typed updates
+    overview.go
+    logs.go
+    runs.go
+cmd/devctl/cmds/
+  up.go
+  down.go
+  restart.go
+  status.go
+  logs.go
+  doctor.go
+  tui.go
+  plugin/                  explicit inspection/command namespace
+  stream/                  explicit protocol stream namespace
+```
+
+Do not create a second `go.mod`. Do not add old-command aliases, state
+migrators, or adapter packages.
+
+## Durable run model
+
+### Directory layout
+
+Every attempt gets a unique run directory before a process starts:
+
+```text
+.devctl/
+  lock
+  state.json
+  runs/
+    01J3...ULID/
+      run.json
+      owner.json
+      ready.json
+      logs.jsonl
+      stdout.log
+      stderr.log
+      exit.json
+```
+
+`state.json` is the environment index. `run.json` is the durable attempt
+record. The wrapper is the sole writer of `owner.json`, `ready.json`,
+`logs.jsonl`, raw output, and `exit.json`. The controller is the sole writer of
+`state.json` and `run.json`. This single-writer rule avoids multi-process JSON
+updates.
+
+Use ULID or UUIDv7 library support already acceptable to the repository. The
+run ID is generated once by the controller. It is never inferred from a
+timestamp or path.
+
+### Environment state schema
+
+```go
+const StateSchemaVersion = 2
+
+type EnvironmentState struct {
+    Version    int                    `json:"version"`
+    RepoRoot   string                 `json:"repo_root"`
+    Profile    string                 `json:"profile,omitempty"`
+    Revision   uint64                 `json:"revision"`
+    CreatedAt  time.Time              `json:"created_at"`
+    UpdatedAt  time.Time              `json:"updated_at"`
+    Services   map[string]ServiceSlot `json:"services"`
+}
+
+type ServiceSlot struct {
+    Name         string `json:"name"`
+    CurrentRunID string `json:"current_run_id,omitempty"`
+    LastRunID    string `json:"last_run_id,omitempty"`
+    Desired      string `json:"desired"` // running | stopped
+}
+```
+
+`Revision` increments on every successful state mutation. Maps are serialized
+deterministically for reviewable fixtures; frontend snapshots sort service
+names. `CurrentRunID` identifies the attempt expected to own a process.
+`LastRunID` retains diagnostics when desired state becomes stopped.
+
+### Run record schema
+
+```go
+type RunPhase string
+
+const (
+    RunPlanned  RunPhase = "planned"
+    RunStarting RunPhase = "starting"
+    RunReady    RunPhase = "ready"
+    RunStopping RunPhase = "stopping"
+    RunExited   RunPhase = "exited"
+    RunFailed   RunPhase = "failed"
+    RunUnknown  RunPhase = "unknown"
+)
+
+type RunRecord struct {
+    Version       int               `json:"version"`
+    RunID         string            `json:"run_id"`
+    Service       string            `json:"service"`
+    Phase         RunPhase          `json:"phase"`
+    Spec          ServiceSpecRecord `json:"spec"`
+    CreatedAt     time.Time         `json:"created_at"`
+    UpdatedAt     time.Time         `json:"updated_at"`
+    Wrapper       *ProcessIdentity  `json:"wrapper,omitempty"`
+    Child         *ProcessIdentity  `json:"child,omitempty"`
+    ChildPGID     int               `json:"child_pgid,omitempty"`
+    Health        *HealthResult     `json:"health,omitempty"`
+    Exit          *ExitSummary      `json:"exit,omitempty"`
+    ArtifactDir   string            `json:"artifact_dir"`
+    LastError     *OperatorError    `json:"last_error,omitempty"`
+}
+
+type ProcessIdentity struct {
+    PID        int    `json:"pid"`
+    StartToken string `json:"start_token"`
+}
+```
+
+`StartToken` is the Linux `/proc/<pid>/stat` start-time field combined with
+boot ID. A PID matches only when both PID and token match. On an unsupported
+platform, process mutation must return `E_PROCESS_IDENTITY_UNSUPPORTED` until a
+platform implementation exists; it must not silently fall back to PID-only
+signaling.
+
+The run record never stores raw environment values. `ServiceSpecRecord`
+contains command, working directory, health configuration, and environment key
+names or redacted values according to the existing sanitization policy.
+
+### Wrapper-owned handshake files
+
+```go
+type OwnerRecord struct {
+    Version   int             `json:"version"`
+    RunID     string          `json:"run_id"`
+    Service   string          `json:"service"`
+    Wrapper   ProcessIdentity `json:"wrapper"`
+    WrittenAt time.Time       `json:"written_at"`
+}
+
+type ReadyRecord struct {
+    Version   int             `json:"version"`
+    RunID     string          `json:"run_id"`
+    Service   string          `json:"service"`
+    Wrapper   ProcessIdentity `json:"wrapper"`
+    Child     ProcessIdentity `json:"child"`
+    ChildPGID int             `json:"child_pgid"`
+    WrittenAt time.Time       `json:"written_at"`
+}
+```
+
+The wrapper writes `owner.json` atomically before starting the child. It writes
+`ready.json` atomically only after the child starts and its process identity is
+read. The controller validates version, run ID, service, wrapper identity,
+child identity, and process group. File existence alone is never readiness.
+
+### Atomic write algorithm
+
+Every replaceable JSON artifact uses a same-directory temporary file:
+
+```text
+function atomicWriteJSON(path, value):
+    bytes = marshal(value) + newline
+    temp = createExclusive(path.directory, "." + path.base + ".tmp-*", 0600)
+    writeAll(temp, bytes)
+    fsync(temp)
+    close(temp)
+    rename(temp.name, path)
+    fsync(path.directory)
+```
+
+Use `github.com/pkg/errors` to wrap every filesystem operation with artifact
+and run context. Cleanup of a known temporary path is best effort. Unit tests
+must inject failures at write, sync, rename, and directory-sync boundaries.
+
+### Repository mutation lock
+
+All lifecycle mutations take an exclusive advisory lock on `.devctl/lock`.
+Read-only snapshots do not take the lock because JSON replacement is atomic.
+The lock metadata includes PID, process identity, operation ID, command, and
+acquisition time for diagnostics.
+
+```go
+type Locker interface {
+    WithExclusive(
+        ctx context.Context,
+        metadata LockMetadata,
+        fn func(context.Context) error,
+    ) error
+}
+```
+
+Lock acquisition honors context cancellation and returns
+`E_OPERATION_BUSY` with current lock metadata. Do not “steal” a lock based only
+on age. A `doctor` check may classify an owner identity as dead and recommend
+removing the stale lock, but mutation remains explicit.
+
+## Lifecycle state machine
+
+The state machine is per run. Desired service state is maintained separately
+in the environment index.
+
+```text
+                    wrapper/child start
+   planned ───────────────▶ starting ───────────────▶ ready
+      │                         │                       │
+      │ setup failure           │ start/health failure │ stop requested
+      ▼                         ▼                       ▼
+    failed ◀──────────────── failed                 stopping
+                                                        │
+                                      graceful/forced exit
+                                                        ▼
+                                                     exited
+
+Any phase ── identity/artifact contradiction ──▶ unknown
+```
+
+`failed` means devctl has authoritative evidence of a failed attempt and no
+matching live child. `unknown` means devctl cannot prove ownership or
+termination. Unknown is never treated as stopped.
+
+### Start transaction
+
+```text
+function startService(ctx, spec):
+    validate spec and health contract
+    acquire repository mutation lock
+    reconcile durable artifacts
+    reject a matching live current run
+
+    runID = newRunID()
+    create run directory (0700)
+    atomically write run.json phase=planned
+    atomically update state slot:
+        desired=running, current_run_id=runID
+
+    start wrapper with one request file/path
+    atomically update run.json phase=starting
+
+    wait for validated owner.json
+    wait for validated ready.json
+    wait for health using per-service timeout
+
+    atomically update run.json phase=ready with identities and health
+    emit typed ServiceReady event
+```
+
+The pre-start state record closes the current orphan window. If the controller
+dies, reconciliation finds the current run directory. If the wrapper started,
+its `owner.json` identifies it. If no owner exists, the attempt is failed and
+safe to clear.
+
+The wrapper should receive a single `--request PATH` argument. The request is a
+versioned JSON object containing run ID, service, cwd, command, environment,
+artifact directory, and log settings. The request file is mode `0600` and is
+removed by the wrapper after loading. This reduces hidden command complexity
+and prevents environment values from appearing in process arguments.
+
+### Health contract
+
+```go
+type HealthCheck struct {
+    Type             string        `json:"type"` // tcp | http
+    Address          string        `json:"address,omitempty"`
+    URL              string        `json:"url,omitempty"`
+    Timeout          time.Duration `json:"timeout"`
+    Interval         time.Duration `json:"interval"`
+    ExpectedStatuses []int         `json:"expected_statuses,omitempty"`
+}
+```
+
+Rules:
+
+- `Timeout` is per service and required after defaulting.
+- TCP succeeds on a completed connection.
+- HTTP defaults to status `200..399`.
+- `ExpectedStatuses`, when non-empty, replaces the default range.
+- Every attempt records time, duration, and a bounded last error.
+- Startup and observation call the same health evaluator.
+- An HTTP body is closed; response content is not retained.
+
+### Stop transaction
+
+```text
+function stopServices(ctx, names):
+    acquire repository mutation lock
+    reconcile durable artifacts
+    for each selected service in deterministic order:
+        mark desired=stopped
+        if no current run:
+            record no-op result
+            continue
+        validate wrapper and child identities
+        mark run phase=stopping
+        signal wrapper; wrapper forwards to child PGID
+        wait shutdown timeout
+        if still matching: SIGKILL child PGID
+        wait and read exit.json
+        if matching process remains:
+            mark run unknown
+            retain current_run_id
+            record failure
+        else:
+            mark run exited
+            clear current_run_id
+            retain last_run_id
+    persist every result
+    return all service outcomes and aggregate error
+```
+
+Do not remove `state.json` during normal `down`. A stopped environment is
+useful durable state. Retention cleanup is a separate operation and never
+changes process ownership.
+
+### Restart transaction
+
+Restart resolves and validates the new plan before stopping any current
+service. For environment restart, build/prepare/validate policy must be the
+same as `up`; for selected-service restart, resolve the plan and validate the
+selected specifications before the first stop.
+
+```text
+resolve -> build/prepare/validate as policy requires -> acquire lock
+        -> stop selected services -> start selected services
+```
+
+If start fails after a successful stop, the operation returns partial failure
+and preserves the stopped run plus the failed new run. It never rewrites
+history to look atomic.
+
+### Reconciliation
+
+Reconciliation runs before every mutation and in `doctor`:
+
+1. load versioned environment state;
+2. for every current run, load run/owner/ready/exit artifacts;
+3. verify run IDs and process identities;
+4. advance a stale `starting` run to ready only if handshake and health prove
+   it;
+5. advance a run to exited only if exit data exists and identities are no
+   longer alive;
+6. mark contradictions unknown;
+7. scan run directories referenced by no state slot and report them as
+   unindexed attempts; do not signal automatically.
+
+Reconciliation is deterministic and returns a structured report. It does not
+guess ownership from command strings.
+
+## Target log architecture
+
+### Capture requirements
+
+The wrapper owns child stdout and stderr pipes. It starts one goroutine per
+pipe with `errgroup.WithContext`, frames records without `bufio.Scanner`, and
+submits them to one sequencer. The sequencer is the only writer of
+`logs.jsonl`, so record order and sequence values are deterministic within a
+run.
+
+Raw output files remain useful for exact bytes and external tools:
+
+```text
+child stdout ─▶ raw stdout writer ─┐
+                                  ├─▶ line framer ─▶ sequencer ─▶ logs.jsonl
+child stderr ─▶ raw stderr writer ─┘
+```
+
+Each pipe reader writes the bytes it received to the matching raw file before
+framing. The record journal represents observed read order, not an assertion
+about nanosecond ordering inside the child process.
+
+Do not use a scanner token limit. Implement a byte-oriented framer with:
+
+- newline delimiter support;
+- CRLF normalization only in the `Text` field, never in raw bytes;
+- a default 1 MiB record-text limit;
+- `Partial=true` chunks for longer logical lines;
+- a final partial record at EOF;
+- ANSI bytes retained in `RawText` or the raw file and optionally stripped in
+  rendered text.
+
+### Record and cursor API
+
+```go
+type SourceKind string
+type StreamKind string
+
+const (
+    SourceService  SourceKind = "service"
+    SourcePipeline SourceKind = "pipeline"
+    SourcePlugin   SourceKind = "plugin"
+    SourceSystem   SourceKind = "system"
+
+    StreamStdout StreamKind = "stdout"
+    StreamStderr StreamKind = "stderr"
+    StreamEvent  StreamKind = "event"
+)
+
+type LogRecord struct {
+    Version   int            `json:"version"`
+    RunID     string         `json:"run_id"`
+    Sequence  uint64         `json:"sequence"`
+    Time      time.Time      `json:"time"`
+    Source    SourceKind     `json:"source"`
+    Service   string         `json:"service,omitempty"`
+    Stream    StreamKind     `json:"stream"`
+    Level     string         `json:"level,omitempty"`
+    Text      string         `json:"text"`
+    Partial   bool           `json:"partial,omitempty"`
+    Fields    map[string]any `json:"fields,omitempty"`
+}
+
+type Cursor struct {
+    RunID    string `json:"run_id"`
+    Sequence uint64 `json:"sequence"`
+}
+```
+
+The journal contains one JSON object plus newline per record. A reader ignores
+only an unterminated final line after a crash and reports
+`E_LOG_TRAILING_PARTIAL` as a diagnostic. It rejects an invalid terminated
+record with run ID and byte offset.
+
+### Query and follow API
+
+```go
+type Query struct {
+    RunIDs    []string
+    Services  []string
+    Sources   []SourceKind
+    Streams   []StreamKind
+    Levels    []string
+    Since     *time.Time
+    Until     *time.Time
+    Tail      int
+    Contains  string
+}
+
+type FollowRequest struct {
+    Query  Query
+    After  map[string]Cursor // one cursor per selected run
+}
+
+type Reader interface {
+    Query(ctx context.Context, query Query) ([]LogRecord, error)
+    Follow(ctx context.Context, request FollowRequest, sink LogSink) error
+}
+
+type LogSink interface {
+    Add(ctx context.Context, record LogRecord) error
+}
+```
+
+Query ordering is `(Time, RunID, Sequence)`. Ties use run ID then sequence, so
+output is stable. `Tail` applies per service/run first and the combined set is
+then merged. This prevents a noisy service from consuming every tail slot.
+
+Follow behavior:
+
+- opens each selected immutable run journal;
+- resumes after the supplied sequence;
+- detects file replacement by identity and returns corruption rather than
+  silently switching;
+- polls with a context-aware ticker in the first implementation;
+- flushes every record to the sink;
+- exits when every selected run has a terminal record;
+- continues across restarts only when `FollowCurrent=true` is explicitly
+  requested in a later API extension.
+
+Active run files are not rotated. Retention applies only after a run is
+terminal. This removes the current rotation problem rather than making every
+reader emulate a general-purpose rotating-file tailer.
+
+### Backpressure
+
+The wrapper must not deadlock a child because a TUI is slow. Frontends read
+from disk; they are not on the capture path. Within the wrapper:
+
+- stdout and stderr readers have bounded channels;
+- the sequencer drains continuously to local files;
+- filesystem write failure terminates the child and writes the best possible
+  exit error because continuing without logs violates the supervision
+  contract;
+- no record is dropped silently;
+- journal flush policy is configurable by record count/time but `exit.json`
+  is written only after all pipe readers and journal sync complete.
+
+The TUI maintains a bounded presentation buffer, defaulting to 2,000 records
+and 8 MiB, whichever is reached first. It drops oldest displayed records and
+shows a dropped-display count. Disk history remains queryable.
+
+### Retention
+
+Retention is not part of `down`. A later `devctl prune` command may delete
+terminal runs by age/count after proving that:
+
+- the run is not current;
+- no matching process identity is alive;
+- the run is terminal;
+- the user-selected retention rule matches.
+
+The MVP only reports disk usage in `doctor`; it does not auto-delete.
+
+## Operator controller API
+
+### Requests
+
+```go
+type Selection struct {
+    Services []string
+}
+
+type UpRequest struct {
+    RepoRoot string
+    Profile  string
+    Select   Selection
+    Policy   PipelinePolicy
+}
+
+type DownRequest struct {
+    RepoRoot string
+    Select   Selection
+}
+
+type RestartRequest struct {
+    RepoRoot string
+    Profile  string
+    Select   Selection
+    Policy   PipelinePolicy
+}
+
+type SnapshotRequest struct {
+    RepoRoot      string
+    IncludeRuns   bool
+    IncludeHealth bool
+}
+```
+
+Empty selection means all configured services for `up` and all current
+services for `down`/`restart`. Unknown explicit services are errors before
+mutation.
+
+### Typed events
+
+```go
+type OperatorEvent struct {
+    Version     int
+    OperationID string
+    At          time.Time
+    Kind        EventKind
+    Phase       string
+    Service     string
+    Status      string
+    Message     string
+    Error       *OperatorError
+    Fields      map[string]any
+}
+
+type EventSink interface {
+    Send(context.Context, OperatorEvent) error
+}
+```
+
+`Message` is display text. `Kind`, `Phase`, `Status`, and `Error.Code` are the
+control contract. Frontends may render `Message` but never parse it.
+
+Required event kinds:
+
+```text
+operation.started
+operation.finished
+phase.started
+phase.finished
+service.planned
+service.starting
+service.ready
+service.unhealthy
+service.stopping
+service.exited
+service.failed
+service.unknown
+diagnostic
+```
+
+### Results and errors
+
+```go
+type ServiceOutcome struct {
+    Service  string
+    RunID    string
+    Before   RunPhase
+    After    RunPhase
+    Changed  bool
+    Exit     *ExitSummary
+    Error    *OperatorError
+}
+
+type OperationResult struct {
+    OperationID string
+    Kind        string
+    StartedAt   time.Time
+    FinishedAt  time.Time
+    Status      string // succeeded | failed | partial | canceled
+    Outcomes    []ServiceOutcome
+}
+
+type OperatorError struct {
+    Code      string         `json:"code"`
+    Message   string         `json:"message"`
+    Operation string         `json:"operation,omitempty"`
+    Service   string         `json:"service,omitempty"`
+    RunID     string         `json:"run_id,omitempty"`
+    Path      string         `json:"path,omitempty"`
+    Details   map[string]any `json:"details,omitempty"`
+}
+```
+
+Stable initial error codes:
+
+```text
+E_USAGE
+E_CONFIG_MISSING
+E_CONFIG_INVALID
+E_STATE_VERSION
+E_STATE_CORRUPT
+E_OPERATION_BUSY
+E_SERVICE_UNKNOWN
+E_SERVICE_ALREADY_RUNNING
+E_PROCESS_IDENTITY_UNSUPPORTED
+E_PROCESS_IDENTITY_MISMATCH
+E_WRAPPER_START
+E_WRAPPER_HANDSHAKE
+E_HEALTH_TIMEOUT
+E_STOP_FAILED
+E_PARTIAL_FAILURE
+E_LOG_CORRUPT
+E_CANCELED
+```
+
+Wrap implementation causes with `github.com/pkg/errors`, but serialize only
+the stable operator error and safe context. Do not place raw environment
+values in errors, events, state, or logs.
+
+### Controller interface
+
+```go
+type Controller interface {
+    Up(
+        ctx context.Context,
+        request UpRequest,
+        sink EventSink,
+    ) (OperationResult, error)
+    Down(
+        ctx context.Context,
+        request DownRequest,
+        sink EventSink,
+    ) (OperationResult, error)
+    Restart(
+        ctx context.Context,
+        request RestartRequest,
+        sink EventSink,
+    ) (OperationResult, error)
+    Snapshot(
+        ctx context.Context,
+        request SnapshotRequest,
+    ) (Snapshot, error)
+    Logs() runlog.Reader
+    Doctor(
+        ctx context.Context,
+        request DoctorRequest,
+    ) (DoctorReport, error)
+}
+```
+
+Every implementation includes:
+
+```go
+var _ operator.Controller = (*controller)(nil)
+```
+
+Long-running goroutines use `errgroup`. Every blocking operation accepts a
+context. Cleanup that must outlive cancellation uses a new bounded context and
+records cleanup failure.
+
+## CLI specification
+
+### Command tree
+
+```text
+devctl
+  up [SERVICE...]
+  down [SERVICE...]
+  restart [SERVICE...]
+  status [SERVICE...]
+  logs [SERVICE...]
+  doctor
+  plan
+  build
+  prepare
+  validate
+  profiles ...
+  plugin
+    list
+    command list
+    command run PLUGIN COMMAND -- ARGS...
+  stream
+    start ...
+  tui
+  dev ...                         hidden
+  __wrap-service --request PATH   hidden
+```
+
+Remove `start`, `stop-service`, automatic top-level plugin commands, and the
+standalone log parser from the core command tree according to the consumer
+gate. No aliases remain.
+
+### Logs flags
+
+```text
+devctl logs [SERVICE...]
+  -f, --follow
+  -n, --tail N                  default 100 per service/run; -1 means all
+      --since TIME_OR_DURATION
+      --until TIME_OR_DURATION
+      --source service|pipeline|plugin|system   repeatable
+      --stream stdout|stderr|event              repeatable
+      --level LEVEL                           repeatable
+      --contains TEXT
+      --run RUN_ID                            repeatable
+      --timestamps                            default true in combined mode
+      --no-prefix
+      --ansi auto|always|never
+      --output text|json|yaml|csv|...
+```
+
+Rules:
+
+- no service arguments selects all services;
+- text prefixes are enabled whenever more than one service or stream is
+  selected;
+- `--output json` is JSON Lines during follow;
+- `--until` and `--follow` are mutually exclusive;
+- `--tail -1` means all, `0` means no historical records before follow;
+- time accepts RFC3339/RFC3339Nano or a Go duration relative to now;
+- unknown services and runs are usage errors before reading;
+- cancellation exits zero for an interactive Ctrl-C after records were
+  emitted, but an already-canceled input context returns `E_CANCELED`.
+
+### Status rows
+
+One row per selected service:
+
+```text
+service
+desired
+phase
+run_id
+wrapper_pid
+child_pid
+health
+started_at
+uptime
+exit_code
+signal
+last_error_code
+stdout_path
+stderr_path
+```
+
+Human default selects a concise field subset. Glazed `--fields` can expose the
+rest. With no state, status emits one environment summary row indicating
+`stopped`; it does not fabricate a service row.
+
+### Doctor
+
+`devctl doctor` is read-only by default and checks:
+
+- configuration parse and selected profile;
+- plugin executables and handshake, only when `--plugins` is supplied;
+- state and run schema versions;
+- atomic-artifact parse validity;
+- current-run index consistency;
+- wrapper and child process identities;
+- process groups;
+- health configuration;
+- log journal continuity and trailing partial record;
+- disk use and count of terminal runs;
+- stale/unindexed run directories and lock metadata.
+
+It emits one Glazed row per check:
+
+```text
+check, scope, status, code, summary, path, service, run_id, remediation
+```
+
+No check repairs state or signals a process. Repair commands require a
+separate design because automatic repair is destructive.
+
+### Exit codes and rendering
+
+The root sets `SilenceErrors=true` and `SilenceUsage=true`. One centralized
+handler renders an error once. Usage is shown only for `E_USAGE`. Exit codes:
+
+```text
+0  success or explicit no-op
+1  runtime failure or partial service failure
+2  usage/configuration/schema incompatibility
+130 user interruption before a normal streaming shutdown
+```
+
+Glazed output and logging are initialized once at the root. Public commands do
+not call `json.MarshalIndent` directly for result output.
+
+## TUI specification
+
+### Global layout
+
+```text
+┌ devctl  PROFILE  ENVIRONMENT-STATUS ───────────── operation/status ┐
+│ [1] Overview   [2] Logs   [3] Runs                  [:] Commands   │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│                         active view                                │
+│                                                                    │
+├────────────────────────────────────────────────────────────────────┤
+│ contextual keys                                      [?] [q]      │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+Number keys switch directly. `Tab` cycles. `Esc` closes a modal or returns to
+the parent state. `q` quits only when no confirmation modal is active.
+
+### Overview
+
+```text
+Services
+NAME       DESIRED   STATE      HEALTH      PID      AGE       LAST ERROR
+api        running   ready      healthy     1234     08m       -
+worker     running   failed     unknown     -        12s       E_EXIT
+web        stopped   exited     -           -        04m       -
+
+Selected: worker
+Run: 01J...   exit=1   finished 12s ago
+Last error: process exited before readiness
+[enter] logs  [r] restart  [d] down  [u] up
+```
+
+The service table is the primary selection surface. Health and resource
+sampling update fields but do not create event-history lines. Destructive
+actions show a confirmation with exact service names.
+
+### Logs
+
+```text
+Filters: services=api,worker  streams=stdout,stderr  follow=on  dropped=0
+13:44:01.120 api    stdout  listening on :8080
+13:44:01.381 worker stderr  connection refused
+13:44:02.009 api    stdout  GET /health 200
+
+[/] search  [s] services  [o] streams  [f] follow  [w] wrap  [p] pause
+```
+
+The view consumes `runlog.Reader`; it does not open files. Pausing stops
+viewport advancement, not disk capture. Search filters already buffered
+records. The header always shows run selection and whether history was
+truncated for display.
+
+### Runs
+
+```text
+Operation restart  op=01J...  partial  3.42s
+✓ resolve plan             120ms
+✓ validate                  48ms
+✓ stop api                 410ms
+✗ start api               2.84s  E_HEALTH_TIMEOUT
+
+Service api / run 01J...
+Health: timeout after 2.5s; last error: GET http://... connection refused
+[enter] details  [l] related logs  [c] copy error
+```
+
+Runs presents typed phases and outcomes from the shared controller. It does not
+infer completion from strings. The current operation is in memory; completed
+service attempts come from durable run records.
+
+### Command palette
+
+The palette contains actions that do not deserve permanent navigation:
+
+```text
+Start selected services
+Stop selected services
+Restart selected services
+Open logs for selected service
+Run doctor
+Refresh snapshot
+Inspect plugins (opens/prints CLI command guidance)
+Start protocol stream (opens/prints CLI command guidance)
+```
+
+Plugin inspection and arbitrary stream construction do not run inside the MVP
+TUI. The palette entry may display the exact CLI command.
+
+### TUI update architecture
+
+```go
+type SnapshotMsg struct{ Snapshot operator.Snapshot }
+type EventMsg struct{ Event operator.OperatorEvent }
+type LogMsg struct{ Record runlog.LogRecord }
+type OperationDoneMsg struct {
+    Result operator.OperationResult
+    Err    error
+}
+```
+
+Bubble Tea commands call the controller and send typed messages. A background
+snapshot watcher compares revisions before sending. No Watermill dependency,
+JSON envelope, prefix parser, direct syscall, file tailer, or plugin
+introspection remains under `pkg/tui`.
+
+## Security and privacy requirements
+
+Devctl executes repository-controlled plugins and services. The redesign does
+not make those inputs trusted.
+
+- Plugin stdout remains protocol-only. Diagnostics remain on stderr.
+- Service commands are executed directly from `[]string`; do not add implicit
+  shell evaluation.
+- Raw environment values may exist only in the mode-0600 wrapper request and
+  child environment. The wrapper removes the request after decoding.
+- State, events, error details, diagnostic rows, and run records contain
+  sanitized environment data only.
+- Run directories are mode `0700`; files containing output or process metadata
+  are `0600`.
+- Service names are validated identifiers and never used unescaped as path
+  components.
+- Run IDs are generated, never accepted as arbitrary relative paths.
+- All artifact paths are joined beneath a validated `.devctl/runs` root and
+  checked against traversal.
+- Log rendering treats ANSI as untrusted. `auto` preserves color only to a TTY
+  and strips control sequences that can alter the terminal outside normal SGR
+  color/style codes.
+- TUI copy/export actions are explicit. No log content is sent over a network.
+- `doctor` reports paths and identifiers but not secret values.
+
+Add gosec coverage for command execution and path construction. Comments
+justifying `#nosec G204` must state that the command comes from the validated
+repository plan.
+
+## Decisions
+
+### D1: Keep the wrapper
+
+**Decision:** Keep a detached wrapper per service run.
+
+**Reason:** It survives the initiating CLI, forwards signals to the child
+group, drains logs, and writes exit metadata. Removing it would require a
+daemon or would lose durable exit observation.
+
+### D2: Durable files, not a daemon
+
+**Decision:** Use atomic versioned files and a repository lock.
+
+**Reason:** Current workflows are repository-local and do not prove a need for
+independent remote clients. A daemon increases lifecycle, security, port, and
+upgrade complexity.
+
+### D3: One shared controller
+
+**Decision:** CLI and TUI call `pkg/operator.Controller`.
+
+**Reason:** Current duplicate lifecycle logic already diverges. A controller
+provides one semantic boundary without network transport.
+
+### D4: Run-scoped sequenced log journal
+
+**Decision:** The wrapper writes raw stream files plus `logs.jsonl`.
+
+**Reason:** Raw files preserve exact bytes. Structured records provide source,
+time, sequence, cursors, combined display, and stable machine output.
+
+### D5: Breaking CLI cleanup
+
+**Decision:** Replace `start`/`stop-service` with service arguments on
+`up`/`down`, make logs positional, and remove automatic top-level plugin
+commands.
+
+**Reason:** One vocabulary is easier to learn and script. The project
+explicitly does not require backward-compatibility adapters.
+
+### D6: Three-view TUI
+
+**Decision:** Ship Overview, Logs, and Runs.
+
+**Reason:** These views answer daily operator questions. Plugin and stream
+views expose implementation/developer surfaces and remain available through
+explicit CLI commands.
+
+### D7: Remove standalone log parsing from devctl
+
+**Decision:** Remove the Goja parser subsystem if the one-time downstream
+consumer check is empty; otherwise extract it under a separate ticket.
+
+**Reason:** It is a separate 1,668-line product with no current operator-path
+integration. Integrating it would delay reliable raw logs and enlarge the
+failure surface.
+
+### D8: No state compatibility layer
+
+**Decision:** State schema v2 refuses unversioned/v1 state.
+
+**Reason:** `.devctl` state is ephemeral process ownership data. Guessing or
+migrating live ownership is unsafe. Release instructions require users to stop
+the old environment with the old binary before upgrading. No adapter or
+automatic migration is added.
+
+## Implementation guide
+
+The phases are ordered by safety dependency. An intern should not start with
+TUI rendering because every view depends on the durable model and controller.
+Each phase ends in a commit that independently builds and passes its gate.
+
+### Phase 0: Baseline and destructive-change gate
+
+Goal: establish test fixtures and confirm removal scope before changing public
+behavior.
+
+Tasks:
+
+1. Run and archive:
+   - `go test ./...`
+   - `go build ./...`
+   - `make lint`
+   - the four ticket probe scripts.
+2. Add fixture helpers that create repository-local temporary `.devctl`
+   directories. Tests must never use a developer's actual `.devctl`.
+3. Search known go-go-golems repositories and `go.work` files for:
+   - imports of `devctl/pkg/logjs`;
+   - invocations of `log-parse`;
+   - invocations of `devctl start`, `stop-service`, or
+     `logs --service`.
+4. Record results in the implementation ticket.
+5. If external logjs consumers exist, open the extraction ticket and exclude
+   parser deletion from this project. Do not write a compatibility adapter.
+
+Acceptance:
+
+- baseline commands and probe outputs are committed to the implementation
+  diary;
+- no production behavior changes;
+- removal gate has an explicit pass/extract outcome.
+
+### Phase 1: Versioned atomic run state
+
+Goal: introduce `pkg/runstate` without changing process startup.
+
+Files:
+
+- add `pkg/runstate/schema.go`;
+- add `pkg/runstate/store.go`;
+- add `pkg/runstate/lock.go`;
+- add `pkg/runstate/identity_linux.go`;
+- add `pkg/runstate/identity_other.go`;
+- add table-driven tests and golden JSON fixtures.
+
+Implementation order:
+
+1. Define schema constants and types.
+2. Implement path validation and run-directory creation.
+3. Implement atomic JSON write/read.
+4. Implement revision-checked environment update:
+
+   ```go
+   func (s *Store) Update(
+       ctx context.Context,
+       expectedRevision uint64,
+       fn func(*EnvironmentState) error,
+   ) error
+   ```
+
+5. Implement the advisory lock with context cancellation.
+6. Implement Linux boot ID plus `/proc/<pid>/stat` start token parsing. Parse
+   the command name by locating the final `)` as current zombie code does.
+7. Implement process identity comparison without signaling.
+
+Tests:
+
+- JSON round trip and deterministic fixture;
+- interrupted write leaves old file valid;
+- rename failure preserves old file;
+- concurrent readers observe only old or new revision;
+- stale expected revision returns conflict;
+- lock contention cancels promptly;
+- PID with wrong token is not a match;
+- process stat names containing spaces and `)` parse correctly;
+- unsupported platform does not claim PID-only safety.
+
+Acceptance:
+
+- no direct `os.WriteFile` remains for mutable state/exit JSON;
+- `go test ./pkg/runstate/... -race` passes;
+- repository paths cannot escape `.devctl`.
+
+Commit: `feat(runstate): add versioned atomic run records`
+
+### Phase 2: Wrapper request and durable handshake
+
+Goal: close the startup ownership gap while retaining current log files.
+
+Files:
+
+- add `pkg/supervise/wrapper_request.go`;
+- refactor `cmd/devctl/cmds/wrap_service.go`;
+- refactor `pkg/supervise/supervisor.go`;
+- extend wrapper integration tests.
+
+Implementation order:
+
+1. Define versioned `WrapperRequest`, `OwnerRecord`, and `ReadyRecord`.
+2. Make the hidden command accept only `--request PATH`.
+3. Load and validate the request, then remove it.
+4. Atomically write `owner.json`.
+5. start the child in a separate group;
+6. acquire child identity and atomically write `ready.json`;
+7. preserve the fixed signal-forwarding topology;
+8. make supervisor validate full handshake records.
+9. Pre-create planned state and run records before wrapper start.
+10. Record failed start attempts rather than deleting them.
+
+Tests:
+
+- owner record exists before child fixture reports execution;
+- request file is removed and mode is 0600;
+- wrong run ID, service, wrapper PID/token, child PID/token, or PGID is rejected;
+- missing owner and missing ready yield distinct error codes;
+- controller crash simulation leaves a reconcilable run;
+- child and grandchild receive one termination signal;
+- wrapper does not signal itself recursively;
+- failed child start produces terminal exit/failed data.
+
+Use tmux only for manual long-running validation. Kill test web servers with
+`lsof-who -p $PORT -k`.
+
+Acceptance:
+
+- no window exists where a started child lacks a pre-created run reference;
+- ready-file existence is not used as proof;
+- wrapper regression test from `39ba416` remains green.
+
+Commit: `feat(supervise): persist wrapper ownership handshake`
+
+### Phase 3: Shared lifecycle controller
+
+Goal: make one application service authoritative for CLI and future TUI.
+
+Files:
+
+- add `pkg/operator/*`;
+- move pipeline/lifecycle policy out of `up.go` and `action_runner.go`;
+- add reconciliation;
+- leave old frontends temporarily calling the controller in the same commit
+  series, not through adapters.
+
+Implementation order:
+
+1. Define requests, events, results, stable errors, and interfaces.
+2. Implement `Snapshot` and `Doctor` read paths first.
+3. Implement reconciliation.
+4. Implement `Up` under the mutation lock.
+5. Implement `Down` with per-service outcomes and retained state.
+6. Implement `Restart` with resolve/validate-before-stop ordering.
+7. Make all event emissions typed and best-effort only where losing a
+   presentation event cannot alter lifecycle safety.
+8. Delete duplicated lifecycle functions from `pkg/tui/action_runner.go` when
+   the TUI switches; do not leave a second implementation.
+
+Tests:
+
+- no-state down is a successful no-op;
+- unknown explicit selection fails before mutation;
+- multi-service stop returns every outcome;
+- one failed stop retains its current run ID and yields partial status;
+- restart resolve failure leaves current process running;
+- restart start failure retains stopped and failed run history;
+- cancellation at every phase leaves a reconcilable state;
+- health startup and snapshot share status rules;
+- raw environment values do not appear in artifacts/events/errors;
+- race test covers simultaneous snapshot and mutation.
+
+Acceptance:
+
+- all public lifecycle behavior can be exercised through a fake `EventSink`;
+- no lifecycle policy remains in Cobra or Bubble Tea packages;
+- stop errors are never discarded.
+
+Commit: `feat(operator): centralize lifecycle operations`
+
+### Phase 4: Sequenced run logs
+
+Goal: implement `pkg/runlog` and make the wrapper the only capture writer.
+
+Files:
+
+- add `pkg/runlog/record.go`, `writer.go`, `framer.go`, `reader.go`,
+  `follow.go`;
+- update wrapper;
+- add high-volume and lifecycle tests.
+
+Implementation order:
+
+1. Implement the byte framer independently with fuzz tests.
+2. Implement the sequencer and single-write JSONL encoder.
+3. fan in stdout/stderr using `errgroup`;
+4. write exact raw bytes plus structured records;
+5. sync the journal before exit metadata;
+6. implement query filters and stable merge;
+7. implement context-aware follow and cursor resume.
+
+Tests:
+
+- stdout/stderr records have unique increasing sequence numbers;
+- CRLF, no-final-newline, empty lines, invalid UTF-8, ANSI, and >1 MiB lines;
+- final partial record after simulated crash is ignored and diagnosed;
+- terminated invalid JSON record is a hard error;
+- tail is applied per run/service;
+- time/source/stream/level/text filters compose;
+- cursor resume emits no duplicate;
+- follow cancellation completes within 250 ms;
+- 100,000-record fixture remains within documented memory bounds;
+- slow reader does not block service capture because it reads disk separately;
+- disk-full/write failure terminates the child and records failure if possible.
+
+Acceptance:
+
+- ticket log lifecycle probe is replaced by package tests that pass for append
+  and immutable active run files;
+- CLI and TUI no longer need separate tail implementations after their phases.
+
+Commit: `feat(runlog): add run-scoped structured log journal`
+
+### Phase 5: Glazed CLI replacement
+
+Goal: ship the new command and output contract as a deliberate breaking
+change.
+
+Files:
+
+- refactor `cmd/devctl/cmds/{up,down,restart,status,logs}.go`;
+- add `doctor.go`;
+- reorganize explicit `plugin/` and `stream/` groups;
+- update root error handling and embedded help.
+
+For each command:
+
+1. create a struct embedding `*cmds.CommandDescription`;
+2. create a settings struct with `glazed` tags;
+3. compose repository, Glazed output, and command-settings sections;
+4. define service positionals with `TypeStringList`;
+5. decode with `values.Values`;
+6. call `operator.Controller`;
+7. emit Glazed rows;
+8. document examples and failure behavior.
+
+Delete:
+
+- `newStartServiceCmd`;
+- `newStopServiceCmd`;
+- automatic dynamic top-level command registration;
+- CLI-local `readTailLines`, `followFile`, and raw JSON marshaling;
+- log-parser subsystem if Phase 0 gate passed.
+
+Tests:
+
+- golden `--help` command tree;
+- human and JSON output for every no-state/success/partial/error case;
+- stdout contains only data;
+- each error appears once;
+- services are valid before mutation;
+- logs flag conflict matrix;
+- JSON follow produces one object per line and flushes;
+- exit codes match the specification;
+- built-in command help never starts a plugin;
+- root initialization includes logging and embedded Glazed help.
+
+Acceptance:
+
+- `rg 'stop-service|logs --service'` finds only release notes/historical
+  tickets;
+- every snapshot/list/outcome public command uses Glazed processors;
+- old command spellings fail as unknown commands, with no aliases.
+
+Commit: `feat(cli): unify lifecycle and log commands`
+
+### Phase 6: TUI replacement
+
+Goal: replace rather than incrementally adapt the six-view TUI.
+
+Build a new typed model alongside current code only within the feature branch.
+Delete the old path before merge.
+
+Implementation order:
+
+1. add pure Overview model/update/view tests;
+2. add pure Logs model with bounded buffer tests;
+3. add pure Runs model with typed phase tests;
+4. add Root model and direct navigation;
+5. wire controller actions through `tea.Cmd`;
+6. wire revision-aware snapshots and runlog follow;
+7. add confirmations and command palette;
+8. delete Watermill bus, envelopes, transformer, forwarder, action runner,
+   stream runner/view, plugin view, and model-local file/syscall code.
+
+Tests:
+
+- every update branch is table tested;
+- snapshot with same revision emits no history event;
+- health sample changes fields without adding run history;
+- partial operation renders service-specific failure;
+- status never depends on message text;
+- paused logs remain bounded and report display drops;
+- filter/follow/wrap state survives view switches;
+- confirmation names exact target services;
+- quitting cancels watchers and actions with no goroutine leak;
+- 80x24, 120x30, and narrow-terminal golden views;
+- keyboard navigation and modal precedence;
+- no TUI test starts plugins or signals real PIDs.
+
+Manual tmux matrix:
+
+```text
+no config
+configured but stopped
+two healthy services
+one startup health failure
+one service exits non-zero
+partial stop failure fixture
+high-volume mixed stdout/stderr
+long line and ANSI output
+restart while Logs view follows old run
+Ctrl-C during up and restart
+```
+
+Acceptance:
+
+- three primary views only;
+- no JSON serialization inside TUI message routing;
+- no `syscall.Kill`, `os.Open` for logs, or `state.Save` under `pkg/tui`;
+- `go test ./pkg/tui/... -race` has meaningful coverage.
+
+Commit: `feat(tui): replace operator interface with typed three-view model`
+
+### Phase 7: Cleanup, documentation, and release
+
+Tasks:
+
+1. Remove dead dependencies, including Watermill if no non-TUI consumer
+   remains.
+2. Run `go mod tidy`.
+3. Update README, embedded help, architecture docs, and screenshot playbook.
+4. Add an upgrade note:
+   - stop environments with the old devctl before upgrade;
+   - v2 refuses old state;
+   - list removed commands and replacements;
+   - explain run retention and disk paths.
+5. Add superseded notes to old tickets without rewriting their history.
+6. Run the full verification matrix.
+
+Acceptance:
+
+- `go build ./...`
+- `go test ./...`
+- `go test -race ./pkg/operator/... ./pkg/runstate/... ./pkg/runlog/... ./pkg/tui/...`
+- `make lint`
+- `make gosec` if available in the repository Makefile;
+- all smoke tests and tmux matrix pass;
+- no old path remains reachable.
+
+Commits should separate mechanical deletion/documentation from behavior where
+review would otherwise be obscured.
+
+## File-by-file review map
+
+| Current file/area | Future action |
+|---|---|
+| `pkg/supervise/supervisor.go` | retain OS primitives; remove state policy and duplicated log tail assumptions |
+| `cmd/devctl/cmds/wrap_service.go` | reduce to versioned request loader and wrapper runner |
+| `pkg/state/state.go` | replace with `pkg/runstate`; delete PID-only liveness |
+| `pkg/state/exit_info.go` | move versioned exit schema under runstate/supervise |
+| `pkg/state/tail.go` | delete after runlog consumers migrate |
+| `cmd/devctl/cmds/logs.go` | replace with Glazed query/follow adapter |
+| `cmd/devctl/cmds/status.go` | emit Glazed service rows from controller snapshot |
+| `cmd/devctl/cmds/up.go` | retain command settings only; move operation into controller |
+| `cmd/devctl/cmds/down.go` | retain command settings only; remove state deletion |
+| `cmd/devctl/cmds/restart.go` | retain command settings only; call controller |
+| `cmd/devctl/cmds/start_service.go` | delete |
+| `cmd/devctl/cmds/stop_service.go` | delete |
+| `cmd/devctl/cmds/dynamic_commands.go` | replace automatic injection with explicit plugin group |
+| `pkg/tui/action_runner.go` | delete after controller wiring |
+| `pkg/tui/bus.go`, `envelope.go`, `transform.go`, `forward.go` | delete |
+| `pkg/tui/state_watcher.go` | replace with revision-aware controller snapshot watcher |
+| `pkg/tui/models/service_model.go` | replace file tail/detail screen with Logs selection state |
+| `pkg/tui/models/eventlog_model.go` | fold typed transitions into Runs/System Logs |
+| `pkg/tui/models/pipeline_model.go` | replace with Runs model |
+| `pkg/tui/models/plugin_model.go` | delete from TUI |
+| `pkg/tui/models/streams_model.go`, `stream_runner.go` | delete from TUI; retain explicit stream CLI |
+| `pkg/logjs`, `cmd/log-parse`, examples/help | remove when consumer gate passes |
+
+## Intern onboarding sequence
+
+Before editing:
+
+1. Read this document through “Lifecycle state machine.”
+2. Run all ticket scripts and compare output with the diary.
+3. Read the wrapper regression test and draw the wrapper/child process groups.
+4. Trace one `up` request from Cobra through plugins into the current
+   supervisor.
+5. Trace one TUI restart and identify where it differs from CLI restart.
+6. Explain why PID alone is not process identity.
+7. Explain why state must be durable before process ownership.
+8. Explain why frontend log readers must not own capture semantics.
+
+The mentor should approve those explanations before Phase 1. The intern is not
+expected to choose schemas, command names, or TUI views; those are decisions in
+this guide.
+
+## Verification matrix
+
+| Requirement | Unit | Integration | Manual |
+|---|---|---|---|
+| Atomic state | injected filesystem failures | crash/reload fixture | inspect artifacts |
+| Process identity | parser/token tests | live short process/PID mismatch | `doctor` output |
+| Wrapper groups | signal fixture | child+grandchild test | tmux stop |
+| Startup durability | state transition tests | kill controller at each boundary | reconcile with `doctor` |
+| Health consistency | evaluator table | HTTP/TCP fixtures | Overview status |
+| Multi-service stop | outcome aggregation | one resistant fixture | partial result UX |
+| Structured logs | framer/query tests | mixed stream service | Logs view |
+| Cursor resume | reader tests | cancel/restart follower | CLI JSON Lines |
+| Glazed output | row/golden tests | subprocess exit codes | shell pipelines |
+| Typed TUI | model tests | fake controller | tmux matrix |
+| Secret handling | redaction tests | artifact scan | inspect doctor/error |
+| Shutdown cleanup | context tests | goroutine/process leak check | quit during operation |
+
+No single green smoke test proves the redesign. Completion requires every row
+appropriate to the changed phase.
+
+## Out of scope
+
+The following are explicitly deferred:
+
+- a devctl daemon, REST API, or remote attach;
+- production deployment supervision;
+- automatic restart policies;
+- service dependency scheduling and replicas;
+- PTY/interactive child attachment;
+- log parsing DSLs or JavaScript transforms;
+- automatic log retention deletion;
+- state v1 migration or command compatibility aliases;
+- TUI configuration editing;
+- automatic repair of unknown process ownership.
+
+Deferral prevents reliability work from becoming a general scheduler rewrite.
+
+## Definition of done
+
+The future implementation ticket is complete only when:
+
+- a run record exists before every possible live child;
+- process mutation validates PID plus start identity;
+- stop failures retain ownership and are visible per service;
+- state and handshake JSON use atomic replacement;
+- startup and observation share one health contract;
+- CLI and TUI call one controller;
+- all service logs use one run-aware reader API;
+- multi-service logs support structured streaming and time/source filters;
+- the CLI has one lifecycle vocabulary and one error renderer;
+- the TUI has Overview, Logs, and Runs with typed updates;
+- duplicate TUI orchestration, Watermill envelopes, direct kill, and direct
+  file tailing are deleted;
+- removal gates have been resolved without compatibility adapters;
+- full build, test, race, lint, security, smoke, and tmux gates pass;
+- help, release notes, and ticket supersession records match shipped behavior.
+
+Anything less is partial implementation, even if individual commands appear to
+work.
+
 ## References
 
 - [Investigation Diary](../reference/01-investigation-diary.md)
 - [Ticket Tasks](../tasks.md)
+- [External Source Register](../sources/README.md)
+- [Architecture Inventory Probe](../scripts/01-architecture-inventory.sh)
+- [CLI Contract Probe](../scripts/02-cli-contract-probe.sh)
+- [Log Follow Lifecycle Probe](../scripts/03-log-follow-lifecycle-probe.sh)
+- [TUI State Event Probe](../scripts/04-tui-state-event-probe.sh)

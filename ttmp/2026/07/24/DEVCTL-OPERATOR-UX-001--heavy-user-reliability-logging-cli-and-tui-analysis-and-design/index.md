@@ -43,7 +43,7 @@ case study. All other changes remain proposed until reviewed.
 
 ## Status
 
-Current status: **active research**
+Current status: **design complete; validation and delivery in progress**
 
 ## Topics
 

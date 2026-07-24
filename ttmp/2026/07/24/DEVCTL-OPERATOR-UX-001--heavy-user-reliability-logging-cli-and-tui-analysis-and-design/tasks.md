@@ -10,6 +10,6 @@
 - [x] Reconcile prior devctl tickets against current implementation <!-- t:8qz7 -->
 - [x] Research comparable supervisor and logging interfaces <!-- t:6lar -->
 - [x] Run and store reproducible read-only architecture and UX probes <!-- t:wslm -->
-- [ ] Write evidence-based redesign decisions, APIs, diagrams, and pseudocode <!-- t:k3kw -->
-- [ ] Write phased intern implementation and testing guide <!-- t:1v87 -->
+- [x] Write evidence-based redesign decisions, APIs, diagrams, and pseudocode <!-- t:k3kw -->
+- [x] Write phased intern implementation and testing guide <!-- t:1v87 -->
 - [ ] Complete docmgr relations, changelog, validation, commits, and reMarkable upload <!-- t:eoh0 -->

@@ -722,3 +722,154 @@ resource selection
   + action discoverability
   + process ownership model
 ```
+
+## Step 5: Convert evidence into a decision-complete implementation contract
+
+This step wrote the target architecture and the phased guide a new intern will
+follow. It resolves schemas, state transitions, package boundaries, log
+capture, public commands, TUI views, removals, security rules, tests, and
+commit gates.
+
+### Prompt Context
+
+**User prompt (verbatim):**
+
+> Create a detailed analysis / design / implementation guide that is for a new
+> intern, explaining all the parts of the system needed to understand what it
+> is, with prose paragraphs and bullet point sand pseudocode and diagrams and
+> api references and file references. It should be very clear and technical.
+
+**Assistant interpretation:** The document must teach current behavior and
+also be sufficiently specific that implementation does not require the intern
+to make unreviewed product or architecture decisions.
+
+**Inferred user intent:** Make the next implementation session systematic,
+reviewable, and safe instead of another sequence of local fixes.
+
+### What I did
+
+- Replaced the provisional executive summary with measured findings and the
+  complete recommendation.
+- Defined the target `operator`, `runstate`, `runlog`, `supervise`, CLI, and
+  TUI boundaries.
+- Specified versioned environment, run, owner, ready, exit, log-record, cursor,
+  request, event, result, and error APIs.
+- Designed the pre-start durable transaction that closes the current orphan
+  window.
+- Specified atomic JSON replacement, repository locking, Linux process
+  identity, lifecycle phases, reconciliation, health, stop, and restart.
+- Designed wrapper-owned raw logs plus a sequenced structured journal.
+- Specified exact public CLI commands, log flags, status rows, doctor checks,
+  output rules, and exit codes.
+- Reduced the TUI to Overview, Logs, and Runs and supplied ASCII wireframes and
+  typed Bubble Tea messages.
+- Recorded eight explicit design decisions, including removals and the absence
+  of compatibility layers.
+- Wrote seven implementation phases with file lists, order, tests, acceptance
+  gates, and suggested commit messages.
+- Added a file-by-file review map, onboarding sequence, verification matrix,
+  out-of-scope list, and definition of done.
+- Applied the Glazed command-authoring conventions: command descriptions,
+  typed settings, shared sections, variadic positional arguments, processors,
+  centralized logging/help, and stdout-as-data.
+- Checked tasks `k3kw` and `1v87`.
+
+### Why
+
+The evidence identifies interacting failures. Fixing only log rendering would
+leave process ownership unsafe; rewriting only the TUI would preserve
+duplicated lifecycle semantics. The dependency-ordered design starts with
+durability, then unifies control, then builds logs and frontends.
+
+### What worked
+
+- Current source and external precedents converged on one shared controller,
+  positional service selection, structured streaming logs, and a smaller TUI.
+- A per-run directory provides a stable namespace for state, handshake, logs,
+  and exit data without timestamp collisions.
+- Wrapper-owned `owner.json` written before child start makes an interrupted
+  controller reconcilable without introducing a daemon.
+- PID plus process-start token makes signaling decisions explicit and testable.
+- Keeping raw stream bytes alongside structured records preserves debugging
+  fidelity while providing stable frontend APIs.
+- The implementation phases allow meaningful commits instead of one
+  unreviewable replacement.
+
+### What didn't work
+
+No tool or edit failed during the design-writing step. Earlier failures and
+their corrections remain in the steps where they occurred.
+
+### What I learned
+
+- The state index and per-run record serve different purposes. The index
+  answers desired/current ownership; the run record preserves an attempt.
+- A wrapper can remain a small durable supervision agent without becoming a
+  central daemon.
+- Active-run rotation is unnecessary when every attempt has its own immutable
+  directory. Retention can operate only on terminal runs.
+- A TUI does not need a message broker to be typed and asynchronous; Bubble
+  Tea messages plus controller events are sufficient.
+- Compatibility migration is especially dangerous for live process ownership.
+  Explicit refusal is safer than guessing.
+
+### What was tricky to build
+
+- The startup gap cannot be closed merely by saving state immediately after
+  `cmd.Start`: the controller can die between those operations. Pre-creating
+  the run reference and having the wrapper persist its own identity before
+  starting the child closes both sides of the boundary.
+- Combining stdout and stderr requires defining what ordering means. The
+  journal records wrapper-observed sequencing and does not claim to reproduce
+  simultaneous child writes at a finer resolution.
+- Stop is not an all-or-nothing operation. The API must return per-service
+  outcomes and preserve unknown ownership instead of hiding partial failure.
+
+### What warrants a second pair of eyes
+
+- Review state/run schemas before implementation because they are the most
+  expensive contract to change after shipping.
+- Review the decision to fail closed on non-Linux process identity until a
+  supported implementation exists.
+- Validate that holding the repository mutation lock through startup health
+  waits is acceptable; it intentionally serializes lifecycle changes while
+  allowing read-only snapshots.
+- Confirm the one-time downstream logjs consumer gate and breaking CLI release
+  plan.
+
+### What should be done in the future
+
+- Create a separate implementation ticket after this design is accepted.
+- Preserve this ticket as the architectural source and write implementation
+  deviations as explicit decisions in the execution diary.
+- Do not begin Phase 6 TUI work before Phases 1–5 satisfy their acceptance
+  gates.
+
+### Code review instructions
+
+- Start at the design Executive Summary and ensure every claim has a detailed
+  evidence section.
+- Review “Durable run model” and “Lifecycle state machine” before frontend
+  sections.
+- Verify every removed surface has an explicit replacement or an explicit
+  out-of-scope disposition.
+- Compare the Definition of Done with the seven phase acceptance gates.
+- Confirm tasks `k3kw` and `1v87` are checked while delivery task `eoh0`
+  remains open.
+
+### Technical details
+
+The dependency order is:
+
+```text
+atomic run state
+  -> durable wrapper handshake
+    -> shared lifecycle controller
+      -> sequenced run logs
+        -> Glazed CLI
+          -> typed three-view TUI
+            -> cleanup, docs, release
+```
+
+Reordering frontend work before the controller would recreate the duplicated
+semantics this design removes.

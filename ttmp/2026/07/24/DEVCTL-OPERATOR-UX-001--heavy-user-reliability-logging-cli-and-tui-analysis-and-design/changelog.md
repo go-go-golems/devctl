@@ -51,3 +51,14 @@ Step 4: compared official Process Compose, Docker Compose, Tilt, and journalctl 
 - ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/sources/web/01-process-compose-tui.md — Status/log/action TUI precedent
 - ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/sources/web/04-docker-compose-logs.md — Multi-service log CLI precedent
 - ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/sources/web/06-tilt-logs.md — Structured development-log CLI precedent
+
+## 2026-07-24
+
+Step 5: completed the target state/run/log/controller architecture, breaking CLI and reduced TUI specifications, and seven-phase intern implementation and verification guide
+
+### Related Files
+
+- pkg/state/state.go — Current state implementation mapped to the proposed runstate replacement
+- pkg/supervise/supervisor.go — Current lifecycle implementation mapped to proposed supervisor primitives
+- cmd/devctl/cmds/common.go — Existing shared Glazed repository section retained in the design
+- pkg/tui/models/root_model.go — Current six-view root mapped to the proposed three-view typed model
