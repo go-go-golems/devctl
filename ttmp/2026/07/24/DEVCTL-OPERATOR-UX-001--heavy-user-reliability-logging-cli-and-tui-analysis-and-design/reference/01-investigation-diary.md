@@ -1,7 +1,7 @@
 ---
 Title: Investigation Diary
 Ticket: DEVCTL-OPERATOR-UX-001
-Status: complete
+Status: active
 Topics:
     - devctl
     - tui
@@ -13,24 +13,28 @@ DocType: reference
 Intent: long-term
 Owners: []
 RelatedFiles:
-    - Path: repo://.ttmp.yaml
-      Note: Repository-local docmgr ownership boundary discovered during Step 1
-    - Path: repo://cmd/devctl/cmds/wrap_service.go
-      Note: Existing supervision correction that anchors the reliability case study
-    - Path: repo://cmd/devctl/cmds/wrap_service_test.go
-      Note: Regression evidence for the committed process-group fix
     - Path: repo://internal/testrepo/repository.go
       Note: Safe isolated repository fixture introduced in Phase 0
+    - Path: repo://pkg/runstate/identity_linux.go
+      Note: Linux boot ID and process-start identity implementation added in Phase 1
+    - Path: repo://pkg/runstate/lock.go
+      Note: Repository mutation lock contract and diagnostic metadata added in Phase 1
+    - Path: repo://pkg/runstate/schema.go
+      Note: Versioned environment run and process identity schemas added in Phase 1
+    - Path: repo://pkg/runstate/store.go
+      Note: Atomic revision-checked environment and run store added in Phase 1
     - Path: repo://ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/scripts/05-phase0-baseline.sh
       Note: Reproducible build test lint and UX baseline
     - Path: repo://ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/scripts/06-phase0-consumer-gate.sh
       Note: Downstream removal and migration inventory
 ExternalSources: []
 Summary: Chronological evidence, experiments, failures, and decisions for the devctl operator-experience research ticket.
-LastUpdated: 2026-07-24T13:52:07.56808914-04:00
+LastUpdated: 2026-07-24T14:33:16.81503865-04:00
 WhatFor: Preserve how the architecture findings and redesign recommendations were derived.
 WhenToUse: Read when reviewing the design, reproducing an observation, or resuming the investigation.
 ---
+
+
 
 
 
@@ -1245,4 +1249,174 @@ Consumer gate:
 external_logjs_import_lines    0
 external_legacy_cli_lines      42
 go_work_files                  1
+```
+
+## Step 9: Implement versioned atomic run state and process identity
+
+Phase 1 established the durable storage and ownership primitives required by
+every later lifecycle change. The new `pkg/runstate` package owns v2
+environment indexes, versioned run records, UUIDv7 attempt IDs, private run
+directories, atomic JSON replacement, optimistic revisions, a repository
+mutation lock, and platform-specific process identities.
+
+The existing state and exit-info writers now use the same atomic JSON
+primitive. Process startup behavior remains unchanged in this phase, but
+mutable JSON can no longer be exposed as a partial truncate-and-rewrite
+document.
+
+### Prompt Context
+
+**User prompt (verbatim):** (same as Step 8)
+
+**Assistant interpretation:** Implement Phase 1 exactly as the approved
+dependency foundation, prove filesystem and concurrency invariants, and
+commit it independently before wrapper changes.
+
+**Inferred user intent:** Make later supervision and UI work rest on durable,
+testable ownership facts instead of PID-only and non-atomic state.
+
+**Commit (code):** `49513bf` — `feat(runstate): add versioned atomic run records`
+
+### What I did
+
+- Added the v2 `EnvironmentState`, `ServiceSlot`, `RunRecord`,
+  `ProcessIdentity`, health, exit, error, and redacted service-spec schemas.
+- Added UUIDv7 run ID generation and strict identifier validation.
+- Added `Store.CreateEnvironment`, `LoadEnvironment`, revision-checked
+  `Update`, `CreateRun`, `LoadRun`, and `UpdateRun`.
+- Added mode-0700 `.devctl/runs/<run-id>` directories and mode-0600 JSON
+  artifacts.
+- Added same-directory temporary writes with full write, file sync, close,
+  rename, and directory sync.
+- Added injected write, short-write, file-sync, rename, and directory-sync
+  tests.
+- Added a context-aware advisory repository lock with persisted owner PID,
+  process identity, operation ID, command, and acquisition time.
+- Added Linux boot ID plus `/proc/<pid>/stat` field-22 process identities.
+- Added an explicit unsupported-platform implementation that never claims
+  PID-only safety.
+- Migrated legacy `state.Save` and `WriteExitInfo` to atomic mode-0600 writes.
+- Added deterministic golden JSON, atomic concurrent-reader tests, revision
+  conflicts, path escape rejection, lock contention, and process-token tests.
+
+### Why
+
+- A controller cannot safely reconcile or mutate a process using a reusable
+  PID alone.
+- State readers must always observe the complete old or complete new
+  document.
+- A repository-wide mutation lock and optimistic state revision solve
+  different races and are both required.
+- Run directories must exist before wrapper startup in Phase 2, which requires
+  validated run IDs and artifact paths first.
+
+### What worked
+
+- `go test -race ./pkg/runstate/... -count=1` passed.
+- The full uncached `go test ./... -count=1` suite passed.
+- `make lint` passed with zero issues.
+- The pre-commit hook independently reran lint and the full suite successfully.
+- A Windows cross-build of `pkg/runstate` passed, proving the explicit
+  unsupported identity/lock path compiles without Linux APIs.
+- `rg 'os\.WriteFile' pkg/state pkg/runstate --glob '*.go'` now finds only an
+  old-state fixture write in `pkg/state/state_test.go`.
+
+### What didn't work
+
+The first focused test command inside the restricted sandbox could not read
+the configured Go cache:
+
+```text
+open /home/manuel/.cache/go-build/39/391a4965a71a7e4405d85c28500dafd60bcba016b53ae7cf0d3672a1aa299ffe-d: read-only file system
+```
+
+It was rerun with normal cache access.
+
+The first formatted test run then found a missing closing brace in the
+concurrent-reader goroutine:
+
+```text
+pkg/runstate/store_test.go:106:4: expected ';', found '('
+pkg/runstate/store_test.go:122:2: expression in go must be function call
+pkg/runstate/store_test.go:124:6: expected '(', found TestCreateAndUpdateRun
+pkg/runstate/store_test.go:156:6: expected '(', found TestPathsRejectEscapesAndInvalidIdentifiers
+pkg/runstate/store_test.go:172:3: expected '}', found 'EOF'
+```
+
+The goroutine, loop, and select scopes were corrected, formatted, and the same
+focused test passed on the second software attempt.
+
+### What I learned
+
+- Go's JSON encoder already sorts string map keys, so the environment map has
+  deterministic fixture output without an ordered-map dependency.
+- Linux process stat parsing must locate the final `)` before counting from
+  field 3; splitting the whole line cannot support valid command names.
+- A directory-sync error occurs after the rename and must be reported even
+  though the new file is already visible. The test asserts that exact
+  durability ambiguity.
+- Repository locks and state revisions cannot substitute for one another:
+  flock serializes lifecycle operations, while revisions reject stale
+  in-memory snapshots.
+
+### What was tricky to build
+
+Atomic replacement has different failure semantics before and after rename.
+Write, short-write, file-sync, and rename failures preserve the old document
+and remove the temporary file. Directory-sync failure is later: the
+replacement is visible, but its survival across a crash is not proven, so the
+operation returns an error while readers see the new revision.
+
+The lock file is both a kernel lock target and a diagnostic artifact. Metadata
+is written only after flock succeeds, and a contender reads it only after its
+nonblocking lock attempt fails. Cancellation returns both
+`ErrOperationBusy` and the context cause, allowing callers to classify the
+operation while still showing the owner.
+
+### What warrants a second pair of eyes
+
+- Review whether controller-facing errors should wrap the runstate sentinel
+  errors directly or translate them once into operator error codes.
+- Confirm UUIDv7 is the desired stable run ID over ULID; both satisfy the
+  approved design, and UUIDv7 support was already available through the
+  repository dependency graph.
+- Review directory-sync behavior on non-Linux Unix filesystems before claiming
+  identical crash guarantees there.
+
+### What should be done in the future
+
+- Phase 2 must pre-create `RunRecord` and the environment slot before wrapper
+  execution.
+- The future controller must acquire `RepositoryLocker` around every
+  lifecycle mutation rather than embedding lock acquisition inside `Store`.
+- `doctor` must expose lock owner identity and stale-owner diagnostics without
+  automatically stealing a lock.
+
+### Code review instructions
+
+- Start with `pkg/runstate/schema.go`, then read `store.go`, `atomic.go`,
+  `lock_unix.go`, and `identity_linux.go`.
+- Inspect `atomic_test.go` for the old/new visibility boundary.
+- Inspect `lock_test.go` for cancellation and owner reporting.
+- Run `go test -race ./pkg/runstate/... -count=1`.
+- Run `go test ./... -count=1` and `make lint`.
+
+### Technical details
+
+The single-writer boundary after this phase is:
+
+```text
+controller (future) -> state.json, run.json via runstate.Store
+wrapper (future)    -> owner.json, ready.json, exit.json via atomic JSON
+lock holder         -> .devctl/lock through its locked file descriptor
+```
+
+State mutation:
+
+```text
+read + validate revision N
+clone
+apply mutation
+set revision N+1 and updated_at
+write temp -> fsync -> rename -> fsync directory
 ```

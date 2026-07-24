@@ -105,3 +105,12 @@ Phase 0: archived green build test lint and UX baselines; added isolated reposit
 
 - /home/manuel/workspaces/2026-07-07/prod-tiny-idp/devctl/internal/testrepo/repository.go — Safe repository-local test fixture
 - /home/manuel/workspaces/2026-07-07/prod-tiny-idp/devctl/ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/sources/local/phase0/README.md — Baseline and removal-gate evidence index
+
+## 2026-07-24
+
+Phase 1: added versioned atomic environment/run records, UUIDv7 run directories, revision conflicts, repository locking, and platform-safe process identity; migrated legacy mutable JSON writes (commit 49513bf)
+
+### Related Files
+
+- /home/manuel/workspaces/2026-07-07/prod-tiny-idp/devctl/pkg/runstate/atomic_test.go — Injected filesystem-failure and replacement semantics tests
+- /home/manuel/workspaces/2026-07-07/prod-tiny-idp/devctl/pkg/runstate/store.go — Phase 1 durable state implementation
