@@ -1574,3 +1574,123 @@ wrapper:
   wait and forward signals
   write exit.json
 ```
+
+## Step 11 — Establish the typed operator lifecycle boundary
+
+### Prompt
+
+(same as Step 8)
+
+### What I did
+
+- Added typed request, result, event, error, planner, and controller contracts
+  in `pkg/operator`.
+- Added the initial `pkg/runlog` contracts so the controller owns a stable log
+  reader boundary before any CLI or TUI migration.
+- Split supervisor process primitives into prepared-start, health-completion,
+  and prepared-stop methods.
+- Implemented `up`, `down`, `restart`, `snapshot`, and initial `doctor`
+  controller operations.
+- Made `up` create every planned run record and atomically index every current
+  run in the version-2 environment document before starting the first wrapper.
+- Made `down` retain the environment document and run history, clearing a
+  current-run pointer only after termination is proven.
+- Changed `restart` to resolve and validate the complete launch plan before
+  acquiring the lifecycle lock, then perform stop and start under one
+  repository lock and one operation ID.
+- Added focused controller tests with an observing fake supervisor. The fake
+  loads `state.json` and `run.json` at the start boundary, proving a wrapper
+  cannot begin before its run is durably indexed.
+
+### Why
+
+The existing commands combined planning, rendering, state mutation, process
+control, and output policy. A typed controller is necessary so Cobra and
+Bubble Tea can become consumers of one lifecycle implementation rather than
+independent implementations.
+
+Restart cannot be implemented as a public `down` call followed by a public
+`up` call. That composition releases the lock, creates two operation
+identities, and permits another process to mutate the repository between stop
+and start.
+
+### What worked
+
+- `go test ./pkg/operator ./pkg/supervise ./pkg/runstate` passes.
+- The tests prove:
+  - a run and its current-run slot exist before wrapper start;
+  - an unknown explicit selection fails before state mutation;
+  - `down` with no state is a successful no-op;
+  - restart performs planning before the first stop;
+  - restart reports one operation and executes both phases under its internal
+    locked callback.
+
+### What didn't work
+
+The first restart test panicked in `errors.Is`. `selectStateServices` returns a
+`*OperatorError`; assigning its nil pointer to a previously declared `error`
+interface produced a non-nil interface containing a nil pointer. Restart then
+called `Unwrap` on that nil receiver.
+
+I changed the selection result to a distinct `selectionErr` pointer and return
+it only after an explicit non-nil check. The focused suite passed afterward.
+
+### What I learned
+
+Typed errors improve CLI stability only when pointer-valued errors do not
+cross interface boundaries as typed nils. Selection helpers should retain
+their concrete pointer type until the non-nil branch.
+
+The state-before-process invariant is easiest to prove at the supervisor
+boundary. A test that inspects files after `up` completes would not detect an
+incorrect transient ordering.
+
+### What was tricky to build
+
+Restart needs both pre-lock and in-lock validation. Planning and selection must
+finish before any process is stopped, while current-run ownership can only be
+trusted after acquiring the repository lock. The current implementation
+therefore resolves immutable launch intent first and performs state-dependent
+stop/start decisions inside one exclusive callback.
+
+### What warrants a second pair of eyes
+
+- Review whether a partial restart should start services whose old runs were
+  proven stopped when another selected service could not be stopped. The
+  current safe policy aborts every start after any unproven termination.
+- Confirm whether restart results should retain separate stop and start
+  outcomes for the same service or introduce an explicit phase field.
+- Review failure-code classification between wrapper start, handshake, and
+  health failures before the public CLI exposes stable exit mappings.
+
+### What should be done in the future
+
+- Add reconciliation before every mutating operation.
+- Classify exit artifacts, identity mismatch, missing evidence, and orphaned
+  runs without guessing.
+- Add race tests for concurrent snapshot reads and locked lifecycle mutations.
+- Replace direct lifecycle logic in Cobra and Bubble Tea only after these
+  controller invariants are complete.
+
+### Code review instructions
+
+- Start at `pkg/operator/controller.go`.
+- Inspect `upLocked` for the create-run, index-state, start-wrapper ordering.
+- Inspect `Restart` for one lock and one operation ID.
+- Run `go test ./pkg/operator ./pkg/supervise ./pkg/runstate`.
+
+### Technical details
+
+```text
+restart request
+  -> resolve plugins/config/build/prepare/validate/launch plan
+  -> validate explicit selection
+  -> acquire repository lifecycle lock
+     -> load and validate current run ownership
+     -> stop selected current runs
+     -> abort if any termination is unproven
+     -> create replacement run records
+     -> atomically index all replacement run IDs
+     -> start wrappers and complete health checks
+  -> aggregate deterministic per-service outcomes
+```
