@@ -2,9 +2,9 @@ package cmds
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -23,11 +23,13 @@ plugins:
     path: devctl-api
 `), 0o644))
 
-	out := executeProfilesCommand(t, "profiles", "active", "--repo-root", repoRoot)
-	require.Equal(t, "(none)\n", out)
+	rows := executeProfilesCommand(t, "profiles", "active", "--repo-root", repoRoot)
+	require.Equal(t, "", rows[0]["profile"])
+	require.Equal(t, false, rows[0]["configured"])
 
-	out = executeProfilesCommand(t, "profiles", "active", "--repo-root", repoRoot, "--profile", "default")
-	require.Equal(t, "default\n", out)
+	rows = executeProfilesCommand(t, "profiles", "active", "--repo-root", repoRoot, "--profile", "default")
+	require.Equal(t, "default", rows[0]["profile"])
+	require.Equal(t, true, rows[0]["configured"])
 }
 
 func TestProfilesListIncludesOverrideProfileAndActiveMarker(t *testing.T) {
@@ -51,32 +53,25 @@ profiles:
     plugins: [api]
 `), 0o644))
 
-	out := executeProfilesCommand(t, "profiles", "list", "--repo-root", repoRoot)
-	require.Contains(t, out, "local")
-	require.Contains(t, out, "Local override profile")
-	require.Contains(t, out, "shared")
-
-	localLine := findLineContaining(out, "local")
-	require.Contains(t, localLine, "*")
+	rows := executeProfilesCommand(t, "profiles", "list", "--repo-root", repoRoot)
+	require.Len(t, rows, 2)
+	require.Equal(t, "local", rows[0]["profile"])
+	require.Equal(t, true, rows[0]["active"])
+	require.Equal(t, "Local override profile", rows[0]["description"])
+	require.Equal(t, "shared", rows[1]["profile"])
+	require.Equal(t, false, rows[1]["active"])
 }
 
-func executeProfilesCommand(t *testing.T, args ...string) string {
+func executeProfilesCommand(t *testing.T, args ...string) []map[string]any {
 	t.Helper()
 	root := &cobra.Command{Use: "devctl"}
 	require.NoError(t, AddCommands(root))
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
-	root.SetArgs(args)
+	root.SetArgs(append(args, "--output", "json"))
 	require.NoError(t, root.Execute())
-	return out.String()
-}
-
-func findLineContaining(s, needle string) string {
-	for _, line := range strings.Split(s, "\n") {
-		if strings.Contains(line, needle) {
-			return line
-		}
-	}
-	return ""
+	var rows []map[string]any
+	require.NoError(t, json.Unmarshal(out.Bytes(), &rows))
+	return rows
 }
