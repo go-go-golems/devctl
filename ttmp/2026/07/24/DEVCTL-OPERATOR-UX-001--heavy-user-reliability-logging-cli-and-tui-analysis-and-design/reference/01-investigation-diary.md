@@ -2239,3 +2239,61 @@ dynamic invocation
   -> command.run
   -> bounded provider shutdown
 ```
+
+## Step 16 — Replace process-exiting command adapters and centralize failures
+
+I replaced Glazed's stock Cobra adapter for the lifecycle, status, logs,
+doctor, and plugin table commands. The stock adapter calls `cobra.CheckErr`
+inside the generated `RunE` closure. That function prints and terminates the
+process immediately, so the root command cannot assign the documented exit
+code, suppress duplicate diagnostics, or finish a partially emitted table.
+The local adapter now uses Glazed's public Cobra parser and table processor
+APIs and returns every parse, execution, and close error to the root.
+
+The first adapter test reported `unknown flag: --repo-root`. I had cloned the
+command description with `Clone(false)`, which copies metadata but creates an
+empty schema. Changing that call to `Clone(true)` preserved every command
+section before adding the Glazed output section. The focused command and
+operator tests then passed.
+
+I removed every `cobra.CheckErr` call from the executable root. One renderer
+now prints exactly one diagnostic and maps failures to the operator contract:
+
+- `0` for success;
+- `1` for runtime and partial-operation failures;
+- `2` for usage, configuration, schema, and catalog bootstrap failures; and
+- `130` for canceled or interrupted operations.
+
+Cobra's untyped parser errors are normalized to `E_USAGE`, while typed
+`OperatorError` values retain their stable code and message. The executable
+now runs under `signal.NotifyContext`, so Ctrl-C reaches commands as context
+cancellation before the root maps it to exit 130.
+
+Real-binary contract tests now prove that a removed command exits 2, contains
+one copy of the Cobra message, and carries the `E_USAGE` code. They also prove
+that a dynamic-command cache miss exits 2 without starting the provider.
+Unit tests cover runtime, usage, and cancellation classification plus the
+single-line renderer.
+
+### Commands and results
+
+```text
+go test ./cmd/devctl/cmds ./pkg/operator
+  PASS
+
+go test ./cmd/devctl/... ./pkg/operator
+  first run: compile failure because the test helper name `exitCode` collided
+  with an existing package helper
+
+go test ./cmd/devctl/... ./pkg/operator
+  PASS after renaming the test-only helper to `processExitCode`
+```
+
+### Remaining robustness work for dynamic injection
+
+The user explicitly chose to retain automatic top-level command injection.
+The implementation must therefore continue to treat it as a durable public
+feature, not a transitional compatibility path. Remaining work includes
+provider-qualified inspection/execution, exact collision/help-order
+contracts, stale-cache runtime cases, and documentation of the refresh and
+execution trust boundaries.
