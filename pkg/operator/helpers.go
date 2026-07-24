@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-go-golems/devctl/pkg/engine"
 	"github.com/go-go-golems/devctl/pkg/runstate"
+	"github.com/go-go-golems/devctl/pkg/supervise"
 	"github.com/pkg/errors"
 )
 
@@ -278,4 +279,16 @@ func normalizedTimeout(timeout time.Duration) time.Duration {
 		return 30 * time.Second
 	}
 	return timeout
+}
+
+func classifyStartError(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case stderrors.Is(err, supervise.ErrOwnerRecordMissing),
+		stderrors.Is(err, supervise.ErrReadyRecordMissing):
+		return CodeWrapperHandshake
+	default:
+		return CodeWrapperStart
+	}
 }

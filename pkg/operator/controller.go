@@ -259,17 +259,40 @@ func (c *controller) upLocked(
 		}
 		c.emit(ctx, sink, result.OperationID, EventServiceStarting, service.spec.Name, "starting", "starting service wrapper", nil)
 		_, startErr := supervisor.StartPreparedService(ctx, service.spec, service.runID)
+		errorCode := classifyStartError(startErr)
+		errorMessage := "service start failed"
 		if startErr == nil {
-			startErr = supervisor.CompleteHealth(ctx, service.spec, service.runID)
+			healthErr := supervisor.CompleteHealth(ctx, service.spec, service.runID)
+			if healthErr != nil {
+				errorCode = CodeHealthTimeout
+				errorMessage = "service health check failed"
+				c.emit(ctx, sink, result.OperationID, EventServiceUnhealthy, service.spec.Name, "unhealthy", errorMessage, serviceError(errorCode, errorMessage, service.spec.Name, service.runID, healthErr))
+				cleanupContext, cancel := context.WithTimeout(context.Background(), timeout)
+				cleanupErr := supervisor.StopPreparedService(cleanupContext, service.runID)
+				cancel()
+				if cleanupErr == nil {
+					persistErr := store.UpdateRun(context.Background(), service.runID, func(record *runstate.RunRecord) error {
+						record.Phase = runstate.RunFailed
+						return nil
+					})
+					if persistErr != nil {
+						cleanupErr = persistErr
+					}
+				}
+				startErr = stderrors.Join(healthErr, cleanupErr)
+			}
 		}
 		run, loadErr := store.LoadRun(context.Background(), service.runID)
 		if loadErr == nil {
 			outcome.After = run.Phase
 		}
 		if startErr != nil {
-			outcome.Error = serviceError(CodeWrapperStart, "service start failed", service.spec.Name, service.runID, startErr)
+			outcome.Error = serviceError(errorCode, errorMessage, service.spec.Name, service.runID, startErr)
 			result.Outcomes = append(result.Outcomes, outcome)
 			c.emit(ctx, sink, result.OperationID, EventServiceFailed, service.spec.Name, "failed", "service start failed", outcome.Error)
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			continue
 		}
 		result.Outcomes = append(result.Outcomes, outcome)

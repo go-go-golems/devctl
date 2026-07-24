@@ -31,9 +31,12 @@ type recordingSupervisor struct {
 	repoRoot        string
 	mu              sync.Mutex
 	started         []string
+	attempted       []string
 	stopped         []string
 	stopErr         error
 	failStopService string
+	healthErr       error
+	onStart         func()
 	processes       map[string]*exec.Cmd
 }
 
@@ -62,6 +65,15 @@ func (s *recordingSupervisor) StartPreparedService(
 	}
 	if run.Phase != runstate.RunPlanned {
 		s.t.Fatalf("wrapper start observed phase %q, want planned", run.Phase)
+	}
+	s.mu.Lock()
+	s.attempted = append(s.attempted, spec.Name)
+	s.mu.Unlock()
+	if s.onStart != nil {
+		s.onStart()
+	}
+	if err := ctx.Err(); err != nil {
+		return state.ServiceRecord{}, err
 	}
 	cmd := exec.Command("sleep", "60")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -118,6 +130,17 @@ func (s *recordingSupervisor) CompleteHealth(ctx context.Context, _ engine.Servi
 	store, err := runstate.NewStore(s.repoRoot)
 	if err != nil {
 		return err
+	}
+	if s.healthErr != nil {
+		_ = store.UpdateRun(ctx, runID, func(run *runstate.RunRecord) error {
+			run.Phase = runstate.RunFailed
+			run.Health = &runstate.HealthResult{
+				Healthy: false, CheckedAt: time.Now().UTC(), Detail: s.healthErr.Error(),
+			}
+			run.LastError = &runstate.ErrorRecord{Code: CodeHealthTimeout, Message: s.healthErr.Error()}
+			return nil
+		})
+		return s.healthErr
 	}
 	return store.UpdateRun(ctx, runID, func(run *runstate.RunRecord) error {
 		run.Phase = runstate.RunReady
@@ -347,6 +370,97 @@ func TestDownReturnsAllOutcomesAndRetainsFailedCurrentRun(t *testing.T) {
 			if service.RunID != failedRunID || service.Desired != runstate.DesiredRunning {
 				t.Fatalf("failed stop did not retain ownership: %#v", service)
 			}
+		}
+	}
+}
+
+func TestUpHealthFailureStopsOwnedProcessAndRetainsFailedAttempt(t *testing.T) {
+	repoRoot := t.TempDir()
+	supervisor := &recordingSupervisor{
+		t: t, repoRoot: repoRoot, healthErr: errors.New("health deadline"),
+	}
+	controller := newTestController(t, repoRoot, staticPlanner{result: PlanResult{
+		Plan: engine.LaunchPlan{Services: []engine.ServiceSpec{
+			{
+				Name: "web", Command: []string{"serve"},
+				Health: &engine.HealthCheck{Type: "tcp", Address: "127.0.0.1:1"},
+			},
+		}},
+	}}, supervisor)
+
+	result, err := controller.Up(context.Background(), UpRequest{RepoRoot: repoRoot}, nil)
+	if err == nil {
+		t.Fatal("up unexpectedly succeeded")
+	}
+	if len(result.Outcomes) != 1 || result.Outcomes[0].Error == nil ||
+		result.Outcomes[0].Error.Code != CodeHealthTimeout {
+		t.Fatalf("unexpected health failure result: %#v", result)
+	}
+	runID := result.Outcomes[0].RunID
+	store, storeErr := runstate.NewStore(repoRoot)
+	if storeErr != nil {
+		t.Fatalf("new store: %v", storeErr)
+	}
+	run, loadErr := store.LoadRun(context.Background(), runID)
+	if loadErr != nil {
+		t.Fatalf("load run: %v", loadErr)
+	}
+	if run.Phase != runstate.RunFailed || run.Health == nil || run.Health.Healthy {
+		t.Fatalf("unexpected failed health run: %#v", run)
+	}
+	wrapperStatus, inspectErr := runstate.InspectProcess(run.Wrapper)
+	if inspectErr != nil {
+		t.Fatalf("inspect stopped wrapper: %v", inspectErr)
+	}
+	if wrapperStatus != runstate.ProcessAbsent {
+		t.Fatalf("health-failed wrapper status = %q, want absent", wrapperStatus)
+	}
+}
+
+func TestUpCancellationStopsLaunchingAndLeavesReconcilerEvidence(t *testing.T) {
+	repoRoot := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	supervisor := &recordingSupervisor{t: t, repoRoot: repoRoot}
+	supervisor.onStart = cancel
+	controller := newTestController(t, repoRoot, staticPlanner{result: PlanResult{
+		Plan: engine.LaunchPlan{Services: []engine.ServiceSpec{
+			{Name: "api", Command: []string{"serve"}},
+			{Name: "web", Command: []string{"serve"}},
+		}},
+	}}, supervisor)
+
+	result, err := controller.Up(ctx, UpRequest{RepoRoot: repoRoot}, nil)
+	if err == nil || result.Status != "canceled" {
+		t.Fatalf("unexpected canceled result: result=%#v err=%v", result, err)
+	}
+	if len(supervisor.attempted) != 1 || supervisor.attempted[0] != "api" {
+		t.Fatalf("start attempts after cancellation: %v", supervisor.attempted)
+	}
+	store, storeErr := runstate.NewStore(repoRoot)
+	if storeErr != nil {
+		t.Fatalf("new store: %v", storeErr)
+	}
+	environment, loadErr := store.LoadEnvironment(context.Background())
+	if loadErr != nil {
+		t.Fatalf("load environment: %v", loadErr)
+	}
+	if len(environment.Services) != 2 {
+		t.Fatalf("planned state does not cover all services: %#v", environment.Services)
+	}
+	report, reconcileErr := reconcile(context.Background(), store)
+	if reconcileErr != nil {
+		t.Fatalf("reconcile canceled starts: %v", reconcileErr)
+	}
+	if len(report.Actions) != 2 {
+		t.Fatalf("reconciliation actions = %d, want 2: %#v", len(report.Actions), report)
+	}
+	environment, loadErr = store.LoadEnvironment(context.Background())
+	if loadErr != nil {
+		t.Fatalf("reload environment: %v", loadErr)
+	}
+	for name, slot := range environment.Services {
+		if slot.CurrentRunID != "" || slot.LastRunID == "" {
+			t.Fatalf("service %s not reconciled: %#v", name, slot)
 		}
 	}
 }
