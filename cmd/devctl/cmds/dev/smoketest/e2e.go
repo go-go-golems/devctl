@@ -180,6 +180,8 @@ func newE2ECmd() *cobra.Command {
 }
 
 func buildTestApp(ctx context.Context, devctlRoot string, pkg string, outPath string) error {
+	// #nosec G204 -- callers select packages from fixed smoke-test constants;
+	// exec.CommandContext passes both paths directly and never invokes a shell.
 	c := exec.CommandContext(ctx, "go", "build", "-o", outPath, pkg)
 	c.Dir = devctlRoot
 	c.Env = append(os.Environ(), "GOWORK=off")

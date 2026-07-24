@@ -117,6 +117,8 @@ func newLogsCmd() *cobra.Command {
 }
 
 func buildLogSpewer(ctx context.Context, devctlRoot string, outPath string) error {
+	// #nosec G204 -- this dev-only smoke helper supplies a fixed package path;
+	// outPath is a caller-owned temporary path and is passed without a shell.
 	c := exec.CommandContext(ctx, "go", "build", "-o", outPath, "./testapps/cmd/log-spewer")
 	c.Dir = devctlRoot
 	c.Env = append(os.Environ(), "GOWORK=off")

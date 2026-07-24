@@ -2786,6 +2786,34 @@ go test -race ./pkg/operator/... ./pkg/runstate/... ./pkg/runlog/... ./pkg/tui/.
   PASS
 ```
 
+## Step 31 — Make the security scan reproducible and clean
+
+The first `gosec` invocation reused the host Go cache. Cache entries
+disappeared while packages were loading, so the tool skipped SSA analysis and
+returned a misleading result. I reran it with an isolated cache under `/tmp`;
+all 81 non-ticket packages then received complete analysis.
+
+That scan found two G204 warnings in dev-only smoke helpers. Both invoke the Go
+tool directly without a shell. One uses a fixed package literal; the other is
+called only with package literals declared in the same smoke command. Their
+output paths are fresh temporary-directory paths owned by the helper. I added
+local `#nosec G204` comments that state those trust boundaries rather than
+globally disabling subprocess analysis.
+
+```text
+env GOCACHE=/tmp/devctl-gosec-cache \
+  gosec -exclude-generated -exclude=G101,G304,G301,G306 \
+  -exclude-dir=.history -exclude-dir=ttmp ./...
+  Files: 81
+  Issues: 0
+
+go test ./cmd/devctl/cmds/dev/smoketest ./cmd/devctl/cmds
+  PASS
+
+git diff --check
+  PASS
+```
+
 ## Step 29 — Mark historical implementation tickets as superseded
 
 The design audit identified thirteen earlier tickets whose open tasks or
