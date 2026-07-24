@@ -2491,6 +2491,28 @@ go test ./cmd/devctl/cmds -run \
   PASS
 ```
 
+## Step 24 — Add exact help-tree and runtime-drift proof
+
+I added the two remaining focused Phase 5 proof gates.
+
+The normalized public help golden recursively records every non-hidden command
+name and short description, including plugin diagnostics, profile commands,
+the stream command, and Cobra's completion shells. The first run showed that
+the expected tree omitted those generated completion children; I added them
+because they are genuinely part of the public help surface.
+
+The runtime catalog test supplies a client whose provider identity and
+`command.run` capability still match but whose command metadata changed. The
+validator returns `PLUGIN_CATALOG_STALE`, proving that a superficially valid
+provider cannot change help/schema metadata between refresh and execution.
+
+```text
+go test ./cmd/devctl/cmds -run \
+  'TestPublicHelp|TestValidateRuntimeCatalog'
+  first run: golden omitted completion shell children
+  second run: PASS
+```
+
 ## Step 20 — Migrate profile inspection to structured rows
 
 I replaced the `profiles list` tabwriter and the special `profiles active`
