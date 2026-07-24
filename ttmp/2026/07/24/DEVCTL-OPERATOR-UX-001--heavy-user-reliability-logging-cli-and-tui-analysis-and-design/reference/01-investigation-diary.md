@@ -2682,3 +2682,32 @@ unit tests. It now proves:
 go test ./cmd/devctl/cmds
   PASS
 ```
+
+## Step 26 — Remove dependencies owned by the retired TUI
+
+After replacing the legacy TUI, I ran `go mod tidy` and reviewed the complete
+module diff. Watermill and Goja were direct dependencies of the deleted UI
+implementation and are no longer in either `go.mod` or `go.sum`. Bubble
+components and Lip Gloss remain as transitive dependencies because the new
+Bubble Tea UI and Glazed still require them. `google/uuid` and `x/sys` moved
+from indirect to direct dependencies because production packages import them
+directly.
+
+The first test command could not read the host Go build cache under the
+workspace sandbox:
+
+```text
+open /home/manuel/.cache/go-build/...: read-only file system
+```
+
+I reran the same test suite with permission to use the existing host cache;
+this changed no repository files and the suite passed:
+
+```text
+go test ./...
+  PASS
+```
+
+This cleanup does not remove or weaken automatic top-level dynamic command
+injection. That feature is now owned by the typed plugin catalog and command
+builder rather than by any of the retired TUI dependencies.
