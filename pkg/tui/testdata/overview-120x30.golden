@@ -1,0 +1,13 @@
+devctl  profile=dev  environment=known  revision=1
+> [1] Overview <   [2] Logs   [3] Runs   [:] Commands
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Services
+  NAME             DESIRED   STATE      HEALTH    PID
+> api              running   ready      -         -
+  worker           running   failed     -         -
+
+Selected: api
+Run: run-api
+
+[enter] logs  [u] up  [d] down  [r] restart  [j/k] select
+

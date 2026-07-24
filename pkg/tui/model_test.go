@@ -3,6 +3,8 @@ package tui
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -149,13 +151,19 @@ func TestDirectNavigationPreservesLogFilters(t *testing.T) {
 func TestViewsAtOperatorTerminalSizes(t *testing.T) {
 	model := NewModel(Options{Context: t.Context(), Controller: &fakeController{}, RepoRoot: t.TempDir()})
 	model.Update(SnapshotMsg{Snapshot: testSnapshot(1)})
-	for _, size := range []tea.WindowSizeMsg{
-		{Width: 80, Height: 24},
-		{Width: 120, Height: 30},
-		{Width: 44, Height: 16},
+	for _, fixture := range []struct {
+		size tea.WindowSizeMsg
+		file string
+	}{
+		{size: tea.WindowSizeMsg{Width: 80, Height: 24}, file: "overview-80x24.golden"},
+		{size: tea.WindowSizeMsg{Width: 120, Height: 30}, file: "overview-120x30.golden"},
+		{size: tea.WindowSizeMsg{Width: 44, Height: 16}, file: "overview-44x16.golden"},
 	} {
-		model.Update(size)
+		model.Update(fixture.size)
 		view := model.View()
+		golden, err := os.ReadFile(filepath.Join("testdata", fixture.file))
+		require.NoError(t, err)
+		require.Equal(t, string(golden), view)
 		require.Contains(t, view, "[1] Overview")
 		require.Contains(t, view, "[2] Logs")
 		require.Contains(t, view, "[3] Runs")

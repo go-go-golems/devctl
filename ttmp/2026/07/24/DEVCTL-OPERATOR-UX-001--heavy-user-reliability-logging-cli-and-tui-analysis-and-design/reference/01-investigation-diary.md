@@ -2756,6 +2756,31 @@ git diff --check
   PASS
 ```
 
+## Step 32 — Replace structural TUI size checks with exact golden views
+
+The original terminal-size test asserted only that navigation labels existed
+and deleted views did not. That would not detect column drift, header changes,
+or accidental reintroduction of a fourth primary view.
+
+I captured deterministic Overview output for the required 80x24, 120x30, and
+44x16 terminals and committed it under `pkg/tui/testdata`. The test now reads
+those fixtures and performs an exact string comparison before retaining the
+semantic assertions.
+
+The first exact comparison failed because I removed one trailing newline from
+the golden while the Bubble Tea view deliberately returned two. I changed the
+test to compare the file bytes exactly; the fixture now owns whitespace as
+part of the rendering contract.
+
+```text
+go test -race ./pkg/tui/...
+  first exact run: FAIL (trailing-newline mismatch)
+  corrected run: PASS
+
+git diff --check
+  PASS
+```
+
 ## Step 30 — Run the release build and capture generated package loggers
 
 `make build` runs both `go generate ./...` and `go build ./...`. The build
