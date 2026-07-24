@@ -86,17 +86,11 @@ func newWrapServiceCmd() *cobra.Command {
 			child.Stdout = stdoutFile
 			child.Stderr = stderrFile
 
-			pgid := os.Getpid()
-			child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: pgid}
+			child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 			sigCh := make(chan os.Signal, 8)
 			signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 			defer signal.Stop(sigCh)
-			go func() {
-				for s := range sigCh {
-					_ = syscall.Kill(-pgid, s.(syscall.Signal))
-				}
-			}()
 
 			if err := child.Start(); err != nil {
 				_ = state.WriteExitInfo(exitInfoPath, state.ExitInfo{
@@ -109,6 +103,13 @@ func newWrapServiceCmd() *cobra.Command {
 				})
 				return errors.Wrap(err, "start child")
 			}
+
+			childPGID := child.Process.Pid
+			go func() {
+				for s := range sigCh {
+					_ = syscall.Kill(-childPGID, s.(syscall.Signal))
+				}
+			}()
 
 			if readyFile != "" {
 				_ = os.MkdirAll(filepath.Dir(readyFile), 0o755)
