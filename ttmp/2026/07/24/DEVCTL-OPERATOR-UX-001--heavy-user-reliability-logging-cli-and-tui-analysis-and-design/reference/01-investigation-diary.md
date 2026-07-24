@@ -1818,3 +1818,105 @@ current run
   └─ artifact or identity contradiction
        -> unknown -> retain current, never guess or signal
 ```
+
+## Step 13 — Make unhealthy and canceled starts ownership-safe
+
+### Prompt
+
+(same as Step 8)
+
+### What I did
+
+- Split wrapper start, wrapper handshake, and health failures into stable
+  operator error classifications.
+- Emitted an explicit `service.unhealthy` event before final service failure.
+- On health failure, stopped the owned wrapper/child process group with a
+  bounded cleanup context.
+- Preserved the failed health result and exit evidence after cleanup by
+  returning the run to the authoritative `failed` phase only after termination
+  succeeded.
+- Stopped launching subsequent services when the caller context is canceled.
+- Added tests for failed-health cleanup and cancellation during the first
+  service start of a two-service operation.
+
+### Why
+
+`failed` is defined as authoritative failure evidence with no matching live
+child. Marking a health-gated run failed while leaving its child running would
+make state unsafe and cause later reconciliation to discover a contradiction.
+
+Cancellation must stop new work but cannot erase already committed intent.
+Because all selected run records and slots are created before wrapper launch,
+the safe result is durable planned attempts that reconciliation can classify.
+
+### What worked
+
+- `go test ./pkg/operator ./pkg/supervise ./pkg/runstate` passed.
+- `go test -race ./pkg/operator` passed.
+- The full pre-commit test suite and lint passed.
+- A health failure now yields `E_HEALTH_TIMEOUT`, an absent owned process, a
+  retained unhealthy health result, and a failed run.
+- Cancellation during the first start prevents the second start attempt.
+- Both pre-indexed planned runs are later reconciled to failed history and
+  removed from current slots.
+
+### What didn't work
+
+N/A. The implementation and tests passed on their first execution.
+
+### What I learned
+
+Lifecycle phase and liveness must be updated as one semantic operation even
+when they require several durable writes. The safe intermediate state is a
+current run with ownership evidence, not a terminal label applied early.
+
+Pre-indexing all selected runs makes cancellation recovery deterministic. It
+also means cancellation tests must verify the unattempted runs, not merely
+assert that a second process was not launched.
+
+### What was tricky to build
+
+`StopPreparedService` correctly records `exited`, while startup semantics need
+the terminal attempt to remain `failed`. The controller therefore performs
+bounded stop first, retains the exit summary written by stop, and changes only
+the phase back to failed after proven termination.
+
+### What warrants a second pair of eyes
+
+- Review whether cleanup failure after a health timeout should expose
+  `E_STOP_FAILED` as the primary code or retain `E_HEALTH_TIMEOUT` with joined
+  causal details. The current result retains the health code and leaves the
+  supervisor's unknown state intact.
+- Confirm whether cancellation should emit a final operation event even when
+  the canceled context prevents the event sink from accepting it.
+
+### What should be done in the future
+
+- Add event-sink coverage for exact ordering and best-effort sink failures.
+- Add raw-secret absence assertions at the controller result/artifact layer.
+- Complete sequenced log capture before migrating user-facing logs commands.
+
+### Code review instructions
+
+- Inspect the start loop in `pkg/operator/controller.go`.
+- Follow the health error through cleanup, run reload, and outcome creation.
+- Inspect the cancellation test to confirm both indexed attempts reconcile.
+- Run the focused normal and race commands above.
+
+### Technical details
+
+```text
+health failure
+  -> persist unhealthy result
+  -> emit service.unhealthy
+  -> bounded owned-process stop
+  -> persist exit evidence
+  -> mark attempt failed (only after absence is proven)
+  -> return E_HEALTH_TIMEOUT outcome
+
+caller cancellation during start
+  -> retain all pre-indexed planned runs
+  -> stop launching additional wrappers
+  -> return canceled operation
+  -> next reconciliation fails unowned planned attempts safely
+```
