@@ -70,10 +70,10 @@ func (m LogsModel) View(height int) string {
 	end := min(m.VisibleCount, len(m.Records))
 	start := max(0, end-limit)
 	for _, record := range m.Records[start:end] {
-		if m.Search != "" && !strings.Contains(record.Text, m.Search) {
+		text := sanitizeLogText(record.Text)
+		if m.Search != "" && !strings.Contains(text, m.Search) {
 			continue
 		}
-		text := record.Text
 		if !m.Wrap {
 			text = truncate(text, 100)
 		}
@@ -83,6 +83,34 @@ func (m LogsModel) View(height int) string {
 		)
 	}
 	output.WriteString("\n[p] pause  [f] follow  [w] wrap  [/] search")
+	return output.String()
+}
+
+func sanitizeLogText(value string) string {
+	var output strings.Builder
+	output.Grow(len(value))
+	state := 0
+	for _, character := range value {
+		switch state {
+		case 0:
+			switch {
+			case character == '\x1b':
+				state = 1
+			case character == '\t' || character >= ' ':
+				output.WriteRune(character)
+			}
+		case 1:
+			if character == '[' {
+				state = 2
+			} else {
+				state = 0
+			}
+		case 2:
+			if character >= '@' && character <= '~' {
+				state = 0
+			}
+		}
+	}
 	return output.String()
 }
 

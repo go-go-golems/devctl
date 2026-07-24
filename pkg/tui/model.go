@@ -30,6 +30,17 @@ type confirmation struct {
 	Services []string
 }
 
+type paletteAction struct {
+	Label string
+	Kind  string
+}
+
+var paletteActions = []paletteAction{
+	{Label: "Refresh environment snapshot", Kind: "refresh"},
+	{Label: "Run operator diagnostics", Kind: "doctor"},
+	{Label: "Show plugin inspection command", Kind: "plugins"},
+}
+
 type Model struct {
 	options      Options
 	active       ViewKind
@@ -41,6 +52,7 @@ type Model struct {
 	status       string
 	confirmation *confirmation
 	palette      bool
+	paletteIndex int
 	help         bool
 	searching    bool
 	cursors      map[string]runlog.Cursor
@@ -116,6 +128,19 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.confirmation = nil
 		m.operationCh = nil
 		return m, m.snapshotCmd()
+	case DoctorMsg:
+		if message.Err != nil {
+			m.status = fmt.Sprintf("doctor: %v", message.Err)
+			return m, nil
+		}
+		failed := 0
+		for _, check := range message.Report.Checks {
+			if check.Status != "ok" {
+				failed++
+			}
+		}
+		m.status = fmt.Sprintf("doctor: %d checks, %d require attention", len(message.Report.Checks), failed)
+		return m, nil
 	case ErrorMsg:
 		m.status = fmt.Sprintf("%s: %v", message.Operation, message.Err)
 		return m, nil
@@ -154,8 +179,26 @@ func (m *Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.palette {
-		if value == "esc" || value == ":" || value == "q" {
+		switch value {
+		case "esc", ":", "q":
 			m.palette = false
+		case "j", "down":
+			m.paletteIndex = (m.paletteIndex + 1) % len(paletteActions)
+		case "k", "up":
+			m.paletteIndex = (m.paletteIndex - 1 + len(paletteActions)) % len(paletteActions)
+		case "enter":
+			action := paletteActions[m.paletteIndex]
+			m.palette = false
+			switch action.Kind {
+			case "refresh":
+				m.status = "refreshing environment snapshot"
+				return m, m.snapshotCmd()
+			case "doctor":
+				m.status = "running operator diagnostics"
+				return m, m.doctorCmd()
+			case "plugins":
+				m.status = "inspect plugin providers with: devctl plugins inspect"
+			}
 		}
 		return m, nil
 	}
@@ -250,13 +293,24 @@ func (m *Model) View() string {
 	}
 	footer := "\n\n" + truncate(m.status, width)
 	if m.confirmation != nil {
+		targets := strings.Join(m.confirmation.Services, ", ")
+		if targets == "" {
+			targets = "all configured services"
+		}
 		footer += fmt.Sprintf(
 			"\nConfirm %s for services [%s]? [y] yes [n] no",
-			m.confirmation.Kind, strings.Join(m.confirmation.Services, ", "),
+			m.confirmation.Kind, targets,
 		)
 	}
 	if m.palette {
-		footer += "\nCommands: refresh snapshot | doctor | plugin inspection: devctl plugins inspect"
+		footer += "\nCommands [j/k select, enter run, esc close]"
+		for index, action := range paletteActions {
+			cursor := " "
+			if index == m.paletteIndex {
+				cursor = ">"
+			}
+			footer += fmt.Sprintf("\n%s %s", cursor, action.Label)
+		}
 	}
 	if m.searching {
 		footer += "\nSearch: " + m.logs.Search + "█"
@@ -299,6 +353,17 @@ func (m *Model) snapshotTickCmd() tea.Cmd {
 	return tea.Tick(m.options.Refresh, func(time.Time) tea.Msg { return snapshotTickMsg{} })
 }
 
+func (m *Model) doctorCmd() tea.Cmd {
+	return func() tea.Msg {
+		report, err := m.options.Controller.Doctor(m.options.Context, operator.DoctorRequest{
+			RepoRoot: m.options.RepoRoot, ConfigPath: m.options.ConfigPath,
+			Profile: m.options.Profile, Cwd: m.options.Cwd, Timeout: m.options.Timeout,
+			Plugins: true,
+		})
+		return DoctorMsg{Report: report, Err: err}
+	}
+}
+
 func (m *Model) operationCmd(request confirmation) tea.Cmd {
 	messages := make(chan tea.Msg)
 	m.operationCh = messages
@@ -337,6 +402,7 @@ func (m *Model) operationCmd(request confirmation) tea.Cmd {
 }
 
 func (m *Model) updateLogRuns(snapshot operator.Snapshot) {
+	m.runs.SetSnapshot(snapshot)
 	runIDs := make([]string, 0, len(snapshot.Services))
 	for _, service := range snapshot.Services {
 		if service.RunID != "" {

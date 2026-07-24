@@ -2711,3 +2711,47 @@ go test ./...
 This cleanup does not remove or weaken automatic top-level dynamic command
 injection. That feature is now owned by the typed plugin catalog and command
 builder rather than by any of the retired TUI dependencies.
+
+## Step 27 — Close command-palette, durable-run, and terminal-safety gaps
+
+I audited the replacement TUI against the Phase 6 acceptance criteria rather
+than treating its initial compile and smoke test as sufficient. The audit
+found three concrete omissions:
+
+- the command palette displayed prose but could not execute an action;
+- the Runs view showed only operations started during the current TUI
+  process, not the durable service attempts already present in the snapshot;
+  and
+- raw service log text could inject ANSI terminal control sequences into the
+  operator display.
+
+The palette is now a selectable model with deterministic `j`/`k`, Enter, and
+Escape behavior. Refresh requests a new typed snapshot, diagnostics call
+`Controller.Doctor`, and plugin inspection presents the exact
+`devctl plugins inspect` command. None of these actions shells out or parses
+rendered CLI output.
+
+`RunsModel` now stores the current typed `operator.Snapshot` and renders each
+service phase and run identifier before session-local lifecycle operations.
+Same-revision health refreshes replace the snapshot without fabricating
+operation history.
+
+The log view now strips CSI sequences and non-printing control characters
+before filtering or rendering. This prevents a service from changing colors,
+moving the cursor, or overwriting apparent TUI content. The stored journal
+record remains unchanged.
+
+An empty Overview selection continues to mean the complete configured
+environment, but its confirmation now names that scope as
+`all configured services` instead of displaying an ambiguous empty list.
+
+```text
+go test ./pkg/tui/...
+  PASS
+
+go test -race ./pkg/tui/...
+  PASS
+
+git diff --check
+  PASS
+```

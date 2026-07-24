@@ -23,6 +23,11 @@ type OperationDoneMsg struct {
 	Err    error
 }
 
+type DoctorMsg struct {
+	Report operator.DoctorReport
+	Err    error
+}
+
 type ErrorMsg struct {
 	Operation string
 	Err       error

@@ -39,6 +39,46 @@ func TestSameRevisionUpdatesHealthWithoutAddingRunHistory(t *testing.T) {
 	model.Update(SnapshotMsg{Snapshot: sameRevision})
 	require.True(t, model.overview.Snapshot.Services[0].Health.Healthy)
 	require.Empty(t, model.runs.Entries)
+	require.Contains(t, model.runs.View(24), "run-api")
+}
+
+func TestLogViewStripsTerminalControlSequences(t *testing.T) {
+	logs := NewLogsModel()
+	logs.Add(runlog.LogRecord{
+		Service: "api", Stream: runlog.StreamStdout,
+		Text: "\x1b[31mfailed\x1b[0m\rspoofed",
+	})
+	view := logs.View(20)
+	require.Contains(t, view, "failedspoofed")
+	require.NotContains(t, view, "\x1b")
+	require.NotContains(t, view, "\r")
+}
+
+func TestCommandPaletteExecutesTypedActions(t *testing.T) {
+	controller := &fakeController{snapshot: testSnapshot(4)}
+	model := NewModel(Options{Context: t.Context(), Controller: controller, RepoRoot: t.TempDir()})
+
+	model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
+	require.Contains(t, model.View(), "Refresh environment snapshot")
+	_, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, command)
+	message := command()
+	snapshot, ok := message.(SnapshotMsg)
+	require.True(t, ok)
+	require.Equal(t, uint64(4), snapshot.Snapshot.Revision)
+
+	model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
+	model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	_, command = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, command)
+	_, ok = command().(DoctorMsg)
+	require.True(t, ok)
+}
+
+func TestEmptySelectionConfirmationNamesConfiguredScope(t *testing.T) {
+	model := NewModel(Options{Context: t.Context(), Controller: &fakeController{}, RepoRoot: t.TempDir()})
+	model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
+	require.Contains(t, model.View(), "[all configured services]")
 }
 
 func TestLogsBufferIsBoundedWhilePausedAndPreservesViewState(t *testing.T) {

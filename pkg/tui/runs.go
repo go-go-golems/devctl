@@ -16,6 +16,11 @@ type RunEntry struct {
 type RunsModel struct {
 	Entries  []RunEntry
 	Selected int
+	Snapshot operator.Snapshot
+}
+
+func (m *RunsModel) SetSnapshot(snapshot operator.Snapshot) {
+	m.Snapshot = snapshot
 }
 
 func (m *RunsModel) Add(result operator.OperationResult, events []operator.OperatorEvent, err error) {
@@ -35,9 +40,11 @@ func (m *RunsModel) Move(delta int) {
 
 func (m RunsModel) View(height int) string {
 	if len(m.Entries) == 0 {
-		return "No lifecycle operations in this session."
+		return m.snapshotView() + "\n\nNo lifecycle operations in this session."
 	}
 	var output strings.Builder
+	output.WriteString(m.snapshotView())
+	output.WriteString("\n\n")
 	output.WriteString("Operations\n")
 	for index, entry := range m.Entries {
 		cursor := " "
@@ -76,4 +83,19 @@ func (m RunsModel) View(height int) string {
 	}
 	output.WriteString("\n\n[j/k] select operation  [l] related logs")
 	return output.String()
+}
+
+func (m RunsModel) snapshotView() string {
+	if len(m.Snapshot.Services) == 0 {
+		return "Durable service attempts\n  No recorded service runs."
+	}
+	var output strings.Builder
+	output.WriteString("Durable service attempts\n")
+	for _, service := range m.Snapshot.Services {
+		_, _ = fmt.Fprintf(
+			&output, "  %-18s %-10s run=%s\n",
+			service.Service, service.Phase, emptyDash(service.RunID),
+		)
+	}
+	return strings.TrimSuffix(output.String(), "\n")
 }
