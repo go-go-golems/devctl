@@ -12,4 +12,4 @@
 - [x] Run and store reproducible read-only architecture and UX probes <!-- t:wslm -->
 - [x] Write evidence-based redesign decisions, APIs, diagrams, and pseudocode <!-- t:k3kw -->
 - [x] Write phased intern implementation and testing guide <!-- t:1v87 -->
-- [ ] Complete docmgr relations, changelog, validation, commits, and reMarkable upload <!-- t:eoh0 -->
+- [x] Complete docmgr relations, changelog, validation, commits, and reMarkable upload <!-- t:eoh0 -->

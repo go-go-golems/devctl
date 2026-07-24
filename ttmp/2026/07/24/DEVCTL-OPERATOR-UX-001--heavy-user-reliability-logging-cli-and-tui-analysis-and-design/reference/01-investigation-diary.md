@@ -1,7 +1,7 @@
 ---
 Title: Investigation Diary
 Ticket: DEVCTL-OPERATOR-UX-001
-Status: active
+Status: complete
 Topics:
     - devctl
     - tui
@@ -21,10 +21,11 @@ RelatedFiles:
       Note: Regression evidence for the committed process-group fix
 ExternalSources: []
 Summary: Chronological evidence, experiments, failures, and decisions for the devctl operator-experience research ticket.
-LastUpdated: 2026-07-24T13:22:12.311783489-04:00
+LastUpdated: 2026-07-24T13:52:07.56808914-04:00
 WhatFor: Preserve how the architecture findings and redesign recommendations were derived.
 WhenToUse: Read when reviewing the design, reproducing an observation, or resuming the investigation.
 ---
+
 
 
 # Investigation Diary
@@ -946,6 +947,16 @@ The current CLI manages local captures through `docmgr import file` and
 frontmatter through `docmgr meta update`. The captures already existed in the
 ticket, so I used `meta update` for external URL registration and did not
 duplicate the files through import.
+
+After closing the ticket, the first final commit gate found:
+
+```text
+changelog.md:79: new blank line at EOF.
+```
+
+The close operation had succeeded and all tasks remained checked. No commit
+was created. I removed only the generated trailing blank line and reran
+`git diff --check` before the closing commit.
 
 ### What I learned
 
