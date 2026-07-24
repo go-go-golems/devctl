@@ -176,16 +176,17 @@ func runDevctlCommand(t *testing.T, args ...string) (string, string, error) {
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	root.SetArgs(args)
+	root.SetArgs(append(args, "--output", "json"))
 	err := root.Execute()
 	return stdout.String(), stderr.String(), err
 }
 
 func decodePhaseOutput(t *testing.T, stdout string) map[string]any {
 	t.Helper()
-	var out map[string]any
-	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(stdout)), &out), stdout)
-	return out
+	var rows []map[string]any
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(stdout)), &rows), stdout)
+	require.Len(t, rows, 1)
+	return rows[0]
 }
 
 func nestedMap(t *testing.T, v map[string]any, keys ...string) map[string]any {
