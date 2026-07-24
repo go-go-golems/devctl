@@ -2427,6 +2427,44 @@ go test ./cmd/devctl/cmds -run 'TestProfiles|TestBuiltCLIContracts'
   second run: PASS with structured contract assertions
 ```
 
+## Step 21 — Migrate plan and phase outcomes to Glazed
+
+I removed the remaining direct JSON marshaling from `plan`, `build`,
+`prepare`, and `validate`. Build, prepare, and validate now share one
+`PhaseCommand`, one repository settings decoder, and one bounded plugin
+pipeline setup. Their rows retain the existing nested payloads:
+
+```text
+build:    config, build
+prepare:  config, prepare
+validate: config, validate
+plan:     config, plan, plugin_count, service_count
+```
+
+Validation still emits its result before returning an error when
+`valid=false`. This relies on the local Glazed adapter closing the processor
+even when command execution fails, preserving useful stdout and a single
+stderr diagnostic.
+
+The first focused phase test run received human tables because the old tests
+implicitly depended on each command always emitting JSON. I updated the test
+harness to request `--output json` and assert the single structured row. This
+is the intended public contract: the default is human-readable, while
+automation selects an explicit formatter.
+
+The plan no-plugin case previously printed the exceptional literal `{}`. It
+now emits the same stable row schema with an empty service list and zero
+counts.
+
+```text
+go test ./cmd/devctl/cmds -run TestPhaseCommands
+  first run: old implicit-JSON assertions failed
+  second run: PASS
+
+go test ./cmd/devctl/cmds
+  PASS
+```
+
 ## Step 19 — Extend process-level CLI boundary coverage
 
 I extended the real executable contract rather than relying only on command
