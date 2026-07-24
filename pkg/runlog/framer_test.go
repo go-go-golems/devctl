@@ -133,6 +133,30 @@ func TestCaptureOneHundredThousandRecordsUsesBoundedPipeline(t *testing.T) {
 	}
 }
 
+func TestCapturePreservesInvalidUTF8AndANSIInRawBytes(t *testing.T) {
+	input := []byte{0xff, ' ', 0x1b, '[', '3', '1', 'm', 'x', 0x1b, '[', '0', 'm', '\n'}
+	var raw bytes.Buffer
+	var journal bytes.Buffer
+	err := Capture(context.Background(), CaptureOptions{
+		RunID: "run-1", Service: "web",
+	}, &journal, CaptureStream{
+		Kind: StreamStdout, Read: bytes.NewReader(input), Raw: &raw,
+	})
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	if !bytes.Equal(raw.Bytes(), input) {
+		t.Fatalf("raw bytes changed: %x != %x", raw.Bytes(), input)
+	}
+	var record LogRecord
+	if err := json.Unmarshal(bytes.TrimSpace(journal.Bytes()), &record); err != nil {
+		t.Fatalf("decode journal: %v", err)
+	}
+	if !strings.Contains(record.Text, "\u001b[31m") || !strings.Contains(record.Text, "\ufffd") {
+		t.Fatalf("journal text lost ANSI or UTF-8 replacement: %q", record.Text)
+	}
+}
+
 func FuzzFramerNeverExceedsLimit(f *testing.F) {
 	f.Add([]byte("one\ntwo\r\nthree"))
 	f.Fuzz(func(t *testing.T, data []byte) {

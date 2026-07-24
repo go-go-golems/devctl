@@ -59,6 +59,20 @@ func TestFileReaderComposesFiltersAndTailsPerRun(t *testing.T) {
 	if records[0].Text != "match-api" || records[1].Text != "match-web-new" {
 		t.Fatalf("unexpected stable merge: %#v", records)
 	}
+	since := base.Add(2 * time.Second)
+	until := base.Add(3 * time.Second)
+	records, err = reader.Query(context.Background(), Query{
+		Services: []string{"api"},
+		Sources:  []SourceKind{SourceService},
+		Streams:  []StreamKind{StreamStderr},
+		Levels:   []string{"info"},
+		Since:    &since,
+		Until:    &until,
+		Contains: "match",
+	})
+	if err != nil || len(records) != 1 || records[0].Text != "match-api" {
+		t.Fatalf("composed filters: records=%#v err=%v", records, err)
+	}
 }
 
 func TestFileReaderIgnoresTrailingCrashFragmentAndRejectsTerminatedCorruption(t *testing.T) {
@@ -150,6 +164,34 @@ func TestFollowCancellationReturnsPromptly(t *testing.T) {
 	}
 }
 
+func TestFollowRejectsActiveJournalReplacement(t *testing.T) {
+	repoRoot := t.TempDir()
+	store, err := runstate.NewStore(repoRoot)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	runID := "018f0f65-6c1a-7abc-8def-0123456789ab"
+	createJournalRunWithPhase(t, store, runID, "web", runstate.RunReady, nil)
+	reader, _ := NewFileReader(repoRoot)
+	identities, err := reader.journalIdentities([]string{runID})
+	if err != nil {
+		t.Fatalf("journal identities: %v", err)
+	}
+	runDir, _ := store.RunDir(runID)
+	path := filepath.Join(runDir, JournalFileName)
+	if err := os.Rename(path, path+".old"); err != nil {
+		t.Fatalf("rename journal: %v", err)
+	}
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatalf("replace journal: %v", err)
+	}
+	err = reader.verifyJournalIdentities([]string{runID}, identities)
+	var readErr *ReadError
+	if !errors.As(err, &readErr) || readErr.Code != CodeLogCorrupt {
+		t.Fatalf("replacement error = %v", err)
+	}
+}
+
 func createJournalRun(t *testing.T, store *runstate.Store, runID, service string, records []LogRecord) {
 	t.Helper()
 	createJournalRunWithPhase(t, store, runID, service, runstate.RunExited, records)
@@ -199,6 +241,6 @@ func record(
 ) LogRecord {
 	return LogRecord{
 		Version: RecordVersion, RunID: runID, Sequence: sequence, Time: at,
-		Source: SourceService, Service: service, Stream: stream, Text: text,
+		Source: SourceService, Service: service, Stream: stream, Level: "info", Text: text,
 	}
 }
