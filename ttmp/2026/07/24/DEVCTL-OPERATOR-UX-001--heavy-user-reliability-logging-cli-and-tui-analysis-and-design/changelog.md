@@ -114,3 +114,12 @@ Phase 1: added versioned atomic environment/run records, UUIDv7 run directories,
 
 - /home/manuel/workspaces/2026-07-07/prod-tiny-idp/devctl/pkg/runstate/atomic_test.go — Injected filesystem-failure and replacement semantics tests
 - /home/manuel/workspaces/2026-07-07/prod-tiny-idp/devctl/pkg/runstate/store.go — Phase 1 durable state implementation
+
+## 2026-07-24
+
+Phase 2 milestone: replaced wrapper argument fan-out with a consumed mode-0600 request, atomic owner/ready records, live process and PGID validation, run-scoped artifacts, and real-binary integration tests (commit 352c815)
+
+### Related Files
+
+- /home/manuel/workspaces/2026-07-07/prod-tiny-idp/devctl/pkg/supervise/supervisor_wrapper_test.go — Real devctl self-wrapper integration evidence
+- /home/manuel/workspaces/2026-07-07/prod-tiny-idp/devctl/pkg/supervise/wrapper_request.go — Durable wrapper protocol

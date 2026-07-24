@@ -13,31 +13,24 @@ DocType: reference
 Intent: long-term
 Owners: []
 RelatedFiles:
-    - Path: repo://internal/testrepo/repository.go
-      Note: Safe isolated repository fixture introduced in Phase 0
-    - Path: repo://pkg/runstate/identity_linux.go
-      Note: Linux boot ID and process-start identity implementation added in Phase 1
+    - Path: repo://cmd/devctl/cmds/wrap_service.go
+      Note: Request-consuming wrapper and child ownership writer added in Phase 2 milestone
     - Path: repo://pkg/runstate/lock.go
       Note: Repository mutation lock contract and diagnostic metadata added in Phase 1
     - Path: repo://pkg/runstate/schema.go
       Note: Versioned environment run and process identity schemas added in Phase 1
     - Path: repo://pkg/runstate/store.go
       Note: Atomic revision-checked environment and run store added in Phase 1
-    - Path: repo://ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/scripts/05-phase0-baseline.sh
-      Note: Reproducible build test lint and UX baseline
-    - Path: repo://ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/scripts/06-phase0-consumer-gate.sh
-      Note: Downstream removal and migration inventory
+    - Path: repo://pkg/supervise/supervisor.go
+      Note: Planned-run creation and live handshake validation added in Phase 2 milestone
+    - Path: repo://pkg/supervise/wrapper_request.go
+      Note: Versioned request and ownership handshake contract added in Phase 2 milestone
 ExternalSources: []
 Summary: Chronological evidence, experiments, failures, and decisions for the devctl operator-experience research ticket.
 LastUpdated: 2026-07-24T14:33:16.81503865-04:00
 WhatFor: Preserve how the architecture findings and redesign recommendations were derived.
 WhenToUse: Read when reviewing the design, reproducing an observation, or resuming the investigation.
 ---
-
-
-
-
-
 
 # Investigation Diary
 
@@ -1419,4 +1412,165 @@ clone
 apply mutation
 set revision N+1 and updated_at
 write temp -> fsync -> rename -> fsync directory
+```
+
+## Step 10: Replace wrapper flags with a durable ownership handshake
+
+The first Phase 2 milestone replaced the hidden wrapper's command, environment,
+log, and readiness flags with one versioned, mode-0600 request file. The
+wrapper deletes that secret-bearing request before process startup, writes its
+own process identity to `owner.json`, starts the child in a distinct process
+group, and writes a validated child identity and PGID to `ready.json`.
+
+The production supervisor now creates a UUIDv7 run directory and planned
+`run.json` before launching the wrapper. It validates both handshake records
+against live Linux process identities and the kernel-reported child process
+group before returning a service record. This is a milestone rather than the
+end of Phase 2: the v2 environment slot must still be persisted before launch,
+and failed-attempt reconciliation must be completed with Phase 3 controller
+ownership.
+
+### Prompt Context
+
+**User prompt (verbatim):** (same as Step 8)
+
+**Assistant interpretation:** Implement the wrapper half of Phase 2 without
+weakening the signal fix, prove it through the real self-executing devctl
+binary, and commit the milestone before changing lifecycle ownership.
+
+**Inferred user intent:** Ensure every supervised process has durable,
+cryptographically unambiguous ownership evidence that later commands can
+reconcile safely.
+
+**Commit (code):** `352c815` — `feat(supervise): add durable wrapper handshake`
+
+### What I did
+
+- Added the versioned `WrapperRequest`, `OwnerRecord`, and `ReadyRecord`
+  contracts in `pkg/supervise/wrapper_request.go`.
+- Derived all wrapper artifact paths from the validated repository/run
+  directory instead of accepting independent arbitrary paths.
+- Changed `__wrap-service` to accept only `--request PATH`.
+- Made the wrapper remove the request before opening logs or starting the
+  child.
+- Wrote `owner.json` atomically before `exec.Cmd.Start`.
+- Captured the live child process start token and actual PGID, required the
+  child to lead its own group, and wrote `ready.json` atomically.
+- Preserved wrapper-to-child `SIGTERM`, `SIGINT`, and `SIGHUP` forwarding while
+  giving the signal goroutine an explicit shutdown path.
+- Recorded setup, child-start, and handshake failures in atomic `exit.json`
+  files.
+- Changed production wrapper launches to pass no raw environment or command
+  values in process arguments.
+- Added transitional run ID, wrapper token, child identity, and child PGID
+  fields to the existing service record so current frontends retain the
+  ownership facts until the v2 index migration.
+- Added a real-binary supervisor integration test plus request privacy,
+  path-binding, missing-owner, missing-ready, tampered identity, and tampered
+  PGID tests.
+
+### Why
+
+- Independent wrapper flags allowed paths and identity fields to disagree.
+- The old ready file proved only that some PID text had been written; it did
+  not bind the child to the run, service, wrapper, boot, start time, or process
+  group.
+- Raw service environment values in wrapper process arguments were visible to
+  local process inspection.
+- The wrapper must establish ownership before a child can execute so a
+  controller crash always leaves reconcilable evidence.
+
+### What worked
+
+- The existing SIGHUP regression test still proves the wrapper itself is not
+  killed while the child receives the forwarded hangup.
+- The new integration test builds the real `devctl` binary, launches it as its
+  own wrapper, and verifies `run.json`, consumed `request.json`, `owner.json`,
+  `ready.json`, live identities, child PGID, redacted environment, and clean
+  shutdown.
+- `go test -race ./pkg/supervise ./cmd/devctl/cmds -count=1` passed.
+- The pre-commit lint and complete Go suite passed.
+- Tampering with run ID, child PGID, or child start token causes handshake
+  validation to fail.
+- Missing owner and missing ready records return distinct sentinel errors
+  joined with the context deadline.
+
+### What didn't work
+
+N/A. The request/handshake implementation and its focused, integration, race,
+lint, and full-suite gates passed on their first software execution.
+
+### What I learned
+
+- Validating `ChildPGID == ChildPID` in JSON is insufficient; the supervisor
+  must also query `getpgid(childPID)` and compare the kernel result.
+- The request file is the only wrapper artifact allowed to contain raw
+  environment values, so failure before wrapper consumption needs explicit
+  parent-side cleanup.
+- Owner and ready timeouts represent different recovery states and must remain
+  separately classifiable.
+- A real built devctl executable is necessary to test self-wrapping; a Go test
+  binary does not route arbitrary `__wrap-service` arguments through Cobra.
+
+### What was tricky to build
+
+The wrapper and child deliberately occupy different process groups. The parent
+launches the wrapper as a group leader, the wrapper confirms its own group,
+and the child starts as another group leader. Stop signals target the wrapper
+group; the wrapper forwards the same signal to the child group. Handshake
+validation therefore must not assume the wrapper and child share a PGID.
+
+Request consumption also has a narrow ordering contract: load and validate,
+remove the mode-0600 secret file, establish wrapper identity, atomically write
+owner, and only then start the child. Moving any of those operations changes
+the crash-recovery evidence.
+
+### What warrants a second pair of eyes
+
+- Review the behavior when `owner.json` exists but opening a raw log fails;
+  the wrapper records `exit.json`, and reconciliation must classify that as a
+  failed attempt with no child.
+- Confirm the two-second wrapper-handshake timeout should become an explicit
+  supervisor option instead of remaining a focused internal bound.
+- Review whether signal-forwarding errors should be represented as system log
+  records once `pkg/runlog` exists.
+
+### What should be done in the future
+
+- Complete Phase 2 by creating the v2 environment index and current-run slots
+  before any wrapper launch.
+- Reconcile `exit.json` into terminal run phases and never overwrite the v2
+  environment index with the transitional legacy state.
+- Move lifecycle policy and failure aggregation into `pkg/operator`; the
+  supervisor should retain only process primitives.
+
+### Code review instructions
+
+- Start with `pkg/supervise/wrapper_request.go` and
+  `cmd/devctl/cmds/wrap_service.go`.
+- Follow `Supervisor.startService` from `CreateRun` through
+  `waitWrapperHandshake`.
+- Inspect `supervisor_wrapper_test.go` for the real-binary evidence.
+- Run `go test -race ./pkg/supervise ./cmd/devctl/cmds -count=1`.
+
+### Technical details
+
+Wrapper launch and evidence order:
+
+```text
+controller/supervisor:
+  create run directory
+  write run.json(planned)
+  write request.json(0600)
+  write run.json(starting)
+  exec devctl __wrap-service --request request.json
+
+wrapper:
+  load + validate request
+  remove request
+  write owner.json(wrapper PID + boot/start token)
+  start child in child-led process group
+  write ready.json(wrapper + child identities + actual PGID)
+  wait and forward signals
+  write exit.json
 ```
