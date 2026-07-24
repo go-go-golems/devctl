@@ -13,7 +13,7 @@
 - [x] Write evidence-based redesign decisions, APIs, diagrams, and pseudocode <!-- t:k3kw -->
 - [x] Write phased intern implementation and testing guide <!-- t:1v87 -->
 - [x] Complete docmgr relations, changelog, validation, commits, and reMarkable upload <!-- t:eoh0 -->
-- [ ] Phase 0: archive baseline tests, builds, lint, probes, and downstream-consumer gate <!-- t:j4q2 -->
+- [x] Phase 0: archive baseline tests, builds, lint, probes, and downstream-consumer gate <!-- t:j4q2 -->
 - [ ] Phase 1: implement versioned atomic run state, repository lock, and process identity <!-- t:z2o6 -->
 - [ ] Phase 2: implement wrapper request and durable ownership/ready handshake <!-- t:jvyg -->
 - [ ] Phase 3: centralize lifecycle operations in pkg/operator <!-- t:22pg -->

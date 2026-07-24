@@ -19,12 +19,19 @@ RelatedFiles:
       Note: Existing supervision correction that anchors the reliability case study
     - Path: repo://cmd/devctl/cmds/wrap_service_test.go
       Note: Regression evidence for the committed process-group fix
+    - Path: repo://internal/testrepo/repository.go
+      Note: Safe isolated repository fixture introduced in Phase 0
+    - Path: repo://ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/scripts/05-phase0-baseline.sh
+      Note: Reproducible build test lint and UX baseline
+    - Path: repo://ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/scripts/06-phase0-consumer-gate.sh
+      Note: Downstream removal and migration inventory
 ExternalSources: []
 Summary: Chronological evidence, experiments, failures, and decisions for the devctl operator-experience research ticket.
 LastUpdated: 2026-07-24T13:52:07.56808914-04:00
 WhatFor: Preserve how the architecture findings and redesign recommendations were derived.
 WhenToUse: Read when reviewing the design, reproducing an observation, or resuming the investigation.
 ---
+
 
 
 
@@ -1086,6 +1093,8 @@ reviewable commits at phase boundaries.
 **Inferred user intent:** Move devctl from an analysis artifact to a reliable
 daily operator tool while preserving enough implementation evidence for
 review, debugging, and intern handoff.
+
+**Commit (baseline):** `82244d4` — `test(devctl): establish operator redesign baseline`
 
 ### What I did
 

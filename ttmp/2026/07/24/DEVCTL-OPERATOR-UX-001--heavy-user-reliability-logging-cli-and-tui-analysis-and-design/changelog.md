@@ -96,3 +96,12 @@ single-provider execution.
 - Remote folder: /ai/2026/07/24/DEVCTL-OPERATOR-UX-001
 - Rendering: default
 - Result: upload confirmed
+
+## 2026-07-24
+
+Phase 0: archived green build test lint and UX baselines; added isolated repository fixtures; passed the external logjs consumer gate and recorded legacy CLI migrations (commit 82244d4)
+
+### Related Files
+
+- /home/manuel/workspaces/2026-07-07/prod-tiny-idp/devctl/internal/testrepo/repository.go — Safe repository-local test fixture
+- /home/manuel/workspaces/2026-07-07/prod-tiny-idp/devctl/ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/sources/local/phase0/README.md — Baseline and removal-gate evidence index
