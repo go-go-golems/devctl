@@ -559,3 +559,166 @@ producer
 The useful boundary is the final typed Bubble Tea message. The earlier
 in-process JSON and broker layers do not provide persistence, cross-process
 transport, replay, or independent deployment.
+
+## Step 4: Compare mature operator interfaces
+
+This step tested the emerging redesign against official documentation for
+Process Compose, Docker Compose, Tilt, and systemd's journal. It looked for
+stable interaction contracts rather than visual similarity.
+
+### Prompt Context
+
+**User prompt (verbatim):**
+
+> research about possible improvements you could make to devctl while you are
+> at it, especially in terms of properly displaying and handling logs,
+> ergonomic improvements to the CLI and TUI, things that could be removed and
+> simplified that don't seem useful, etc...
+
+**Assistant interpretation:** Use established tools to identify expected
+operator primitives and avoid inventing devctl-specific conventions without
+evidence.
+
+**Inferred user intent:** Produce a redesign that feels predictable to an
+experienced developer while remaining appropriate for devctl's plugin-driven,
+repository-local architecture.
+
+### What I did
+
+- Searched only official project and standards documentation for the technical
+  comparison.
+- Captured six pages with Defuddle under `sources/web/`.
+- Added `sources/README.md` with URL provenance and the question each source
+  answers.
+- Compared:
+  - Process Compose's process/log TUI, command palette, bounded log buffer,
+    configurable follow/wrap controls, client API, health, and lifecycle
+    policies;
+  - Docker Compose's `logs [SERVICE...]` and `ps [SERVICE...]` contracts;
+  - Tilt's multi-resource, source, level, since, tail, follow, and JSON Lines
+    log filters;
+  - journalctl's structured fields, time windows, follow modes, and cursor
+    concepts.
+- Added a comparison matrix, adopted patterns, rejected patterns, and design
+  consequences to the primary guide.
+- Checked task `6lar`.
+
+### Why
+
+The comparison prevents two opposite errors: retaining complex devctl
+behavior merely because it exists, and copying a mature tool's architecture
+without sharing its deployment constraints. Devctl needs the operator
+contracts of these tools, but not necessarily a daemon, REST server, container
+engine, or system journal.
+
+### What worked
+
+- Defuddle produced readable Markdown with normal line structure for all six
+  successful captures.
+- Docker Compose and Tilt independently converge on positional multi-resource
+  selection plus follow, tail, time, and structured-output controls.
+- Process Compose independently supports a compact process/log/action TUI
+  rather than a primary view for every internal subsystem.
+- Process Compose explicitly bounds its UI log buffer and warns about CPU
+  cost, reinforcing the need for a defined memory/backpressure contract.
+- Docker Compose `ps` demonstrates that a human table and JSON output can be
+  two renderings of one row model, matching the intended Glazed design.
+
+### What didn't work
+
+Defuddle returned the same status for both official journalctl URLs:
+
+```text
+Error: Failed to fetch: 418 I'm a teapot
+```
+
+The attempted URLs were:
+
+```text
+https://www.freedesktop.org/software/systemd/man/latest/journalctl.html
+https://www.freedesktop.org/software/systemd/man/255/journalctl.html
+```
+
+After two attempts I stopped that debugging path as required by the repository
+guidelines. The official result had already been read through web search, and
+the source register records that the local capture is absent.
+
+The first research-interval commit gate also rejected five trailing spaces
+preserved by three Defuddle captures:
+
+```text
+sources/web/01-process-compose-tui.md:74: trailing whitespace.
+sources/web/01-process-compose-tui.md:120: trailing whitespace.
+sources/web/01-process-compose-tui.md:177: trailing whitespace.
+sources/web/02-process-compose-client.md:50: trailing whitespace.
+sources/web/03-process-compose-lifecycle.md:389: trailing whitespace.
+```
+
+No commit was created. I removed only those trailing spaces, kept the captured
+content otherwise unchanged, and reran the same staged-diff gate.
+
+### What I learned
+
+- Multi-service log selection is normally positional. Devctl's required
+  `--service` flag is not supported by either Docker Compose or Tilt precedent.
+- Time filtering and structured streaming output are baseline operator
+  features, not advanced parser features.
+- A command palette is a better home for infrequent actions than permanent
+  primary TUI tabs.
+- Process Compose separates server state from CLI/TUI clients, but devctl can
+  gain shared semantics through an in-process application service and durable
+  files without introducing a daemon.
+- Lifecycle status needs more than alive/dead: starting, ready, unhealthy,
+  stopping, exited, failed, and unknown are operator-relevant states.
+- Explicit success-exit and restart policies are useful product features, but
+  adding them now would expand scope before ownership durability is fixed.
+
+### What was tricky to build
+
+- Process Compose offers many attractive features. The relevant lesson is its
+  coherent control/log model; replicas, namespaces, interactive PTYs,
+  dependency graphs, remote REST clients, and configuration editing are not
+  requirements for this ticket.
+- journalctl's cursor semantics are valuable, but devctl cannot reuse journal
+  cursors directly because service output is stored in ordinary files.
+  Devctl needs its own run-local monotonically increasing sequence.
+
+### What warrants a second pair of eyes
+
+- Confirm the decision not to add a long-running devctl daemon or REST API in
+  this redesign.
+- Confirm that restart policies and service dependencies stay in a later
+  ticket rather than entering the reliability MVP.
+- Review the proposed default log selection: all services when no positional
+  services are supplied.
+
+### What should be done in the future
+
+- Preserve a small list of adopted precedents in API tests so flags do not
+  drift.
+- Revisit restart policy only after run identity and journal durability ship.
+- Consider a daemon only if independent clients or cross-terminal attachment
+  becomes a proven workflow.
+
+### Code review instructions
+
+- Read `sources/README.md`, then spot-check each capture against its linked
+  official URL.
+- Verify that the comparison section distinguishes “adopt” from “do not
+  adopt.”
+- Confirm task `6lar` is checked and design/implementation tasks remain open.
+
+### Technical details
+
+The comparison dimensions were:
+
+```text
+resource selection
+  + lifecycle state vocabulary
+  + log time/stream/source filters
+  + human vs machine output
+  + follow cursor/backpressure behavior
+  + CLI/TUI semantic sharing
+  + action discoverability
+  + process ownership model
+```

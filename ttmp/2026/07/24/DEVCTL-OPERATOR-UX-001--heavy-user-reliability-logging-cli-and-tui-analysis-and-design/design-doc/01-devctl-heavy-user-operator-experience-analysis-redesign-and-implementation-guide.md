@@ -764,6 +764,134 @@ cannot claim ownership of the same refactor.
 | Plugin streams | explicit protocol capability | bounded CLI lifecycle | default primary TUI view |
 | Log parser | independent functionality if separately owned | external consumer gate | devctl integration and repository ownership |
 
+## Comparative research
+
+The comparison uses official documentation captured under `sources/web/`.
+Features are evidence of established contracts, not a mandate to reproduce
+another product.
+
+### Process Compose
+
+[Process Compose's TUI](https://f1bonacc1.github.io/process-compose/tui/)
+concentrates process status, logs, start/stop/restart, a dependency graph, and
+a command palette in one operator surface. It defines:
+
+- a bounded configurable log buffer and an explicit CPU-cost warning;
+- follow, full-screen, and wrap toggles;
+- configurable shortcuts;
+- activity and silence indicators for unfocused processes;
+- a searchable command palette for less frequent actions.
+
+Its [client documentation](https://f1bonacc1.github.io/client/) exposes the
+same process operations to CLI and remote TUI clients through an OpenAPI
+server. Its
+[lifecycle documentation](https://f1bonacc1.github.io/process-compose/launcher/)
+models readiness, restart policies, dependencies, disabled processes, and
+additional successful exit codes.
+
+**Adopt:**
+
+- one coherent status/log/action TUI;
+- bounded log memory and explicit follow/wrap state;
+- command palette for secondary actions;
+- typed lifecycle states and exit classification;
+- one control API shared by every frontend.
+
+**Do not adopt in this project:**
+
+- a local REST server or permanent daemon;
+- configuration editing from the TUI;
+- replicas, namespaces, PTY forwarding, dependency graphs, and automatic
+  restart policies in the reliability MVP.
+
+The shared `pkg/operator.Controller` supplies semantic unification without a
+network server. A daemon should require separate evidence that independent
+clients must attach to a surviving controller.
+
+### Docker Compose
+
+[Docker Compose logs](https://docs.docker.com/reference/cli/docker/compose/logs/)
+uses `logs [SERVICE...]` and supports follow, instance selection, ANSI/prefix
+control, since/until, tail, and timestamps.
+[Docker Compose ps](https://docs.docker.com/reference/cli/docker/compose/ps/)
+uses the same optional service positionals and offers running/all selection,
+status filters, human tables, JSON, and non-truncated output.
+
+**Adopt:**
+
+- optional positional service lists;
+- source prefixes by default for combined output;
+- follow, tail, since, until, timestamps, and ANSI controls;
+- one row model with human and machine renderings;
+- explicit inclusion of stopped/historical runs.
+
+**Do not adopt:**
+
+- container-specific replica indices, port columns, image fields, and orphan
+  container semantics.
+
+### Tilt
+
+[Tilt logs](https://docs.tilt.dev/cli/tilt_logs.html) accepts positional
+resources and provides follow, JSON Lines, severity, time, source, and tail
+filters. Its source distinction between build and runtime output is relevant
+to devctl's pipeline-versus-service distinction.
+
+**Adopt:**
+
+- JSON Lines for long-running structured output;
+- source filtering;
+- a relative-duration `--since` form;
+- consistent resource positionals.
+
+Devctl's source vocabulary is `service`, `pipeline`, `plugin`, and `system`.
+Protocol telemetry remains under `stream`, not the default logs feed.
+
+### journalctl
+
+The official
+[journalctl manual](https://www.freedesktop.org/software/systemd/man/latest/journalctl.html)
+defines structured field filtering, since/until windows, bounded recent
+records, follow mode, multiple JSON formats, and opaque cursors. Devctl does
+not use journald, but two concepts matter:
+
+- every record needs structured provenance separate from rendered text;
+- follow resumption needs an opaque stable cursor, not a byte offset exposed
+  as public API.
+
+Devctl's cursor is `(run_id, sequence)`. The initial implementation may derive
+records from files, but the public API does not expose inode or byte offset.
+
+### Comparison matrix
+
+| Capability | Current devctl | Process Compose | Docker Compose | Tilt | Proposed devctl |
+|---|---|---|---|---|---|
+| Optional multi-service logs | no | TUI selection | yes | yes | yes |
+| Combined source prefixes | no | yes | yes | resource aware | yes, default |
+| Follow | one file | yes | yes | yes | multi-source |
+| Since/until | no | not central | yes | since | both |
+| Structured streaming | no | API | no Compose JSON flag documented | JSON Lines | Glazed JSON records |
+| Stable resume cursor | no | server-owned | engine-owned | server-owned | run ID + sequence |
+| Shared CLI/TUI control | duplicated | server/client | daemon API | server/client | in-process Controller |
+| Bounded TUI logs | line cap only | explicit | n/a | server-owned | explicit records/bytes |
+| Action palette | no | yes | n/a | web UI actions | yes |
+| Default TUI primary views | six + detail | process/log centric | n/a | resource/log centric | three |
+
+### Research conclusions
+
+The redesign is conservative in architecture and conventional in interface:
+
+1. Do not add a daemon.
+2. Do add one application control service shared by CLI and TUI.
+3. Treat logs as structured, run-scoped records at the API boundary.
+4. Use positional services and conventional filters.
+5. Keep machine output as a first-class streaming contract.
+6. Reduce the default TUI to daily operator questions.
+7. Defer scheduling features until durable process ownership is correct.
+
+These conclusions validate the earlier code-based direction without requiring
+devctl to become a clone of any comparison tool.
+
 ## References
 
 - [Investigation Diary](../reference/01-investigation-diary.md)

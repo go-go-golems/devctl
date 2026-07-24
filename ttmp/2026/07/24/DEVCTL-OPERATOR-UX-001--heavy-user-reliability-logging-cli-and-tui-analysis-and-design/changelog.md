@@ -40,3 +40,14 @@ Step 3: audited service and protocol logs, CLI contracts, the six-view TUI, dupl
 - pkg/logjs/module.go — Standalone JavaScript parser subsystem evaluated for removal
 - ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/scripts/03-log-follow-lifecycle-probe.sh — Append/truncate/rotation reproduction
 - ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/scripts/04-tui-state-event-probe.sh — Tmux capture of repeated snapshot events
+
+## 2026-07-24
+
+Step 4: compared official Process Compose, Docker Compose, Tilt, and journalctl operator contracts; saved six web sources and defined adopted and rejected patterns
+
+### Related Files
+
+- ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/sources/README.md — External-source provenance and research questions
+- ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/sources/web/01-process-compose-tui.md — Status/log/action TUI precedent
+- ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/sources/web/04-docker-compose-logs.md — Multi-service log CLI precedent
+- ttmp/2026/07/24/DEVCTL-OPERATOR-UX-001--heavy-user-reliability-logging-cli-and-tui-analysis-and-design/sources/web/06-tilt-logs.md — Structured development-log CLI precedent

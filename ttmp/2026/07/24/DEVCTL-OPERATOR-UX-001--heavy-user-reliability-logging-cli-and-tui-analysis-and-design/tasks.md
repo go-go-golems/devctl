@@ -8,7 +8,7 @@
 - [x] Audit CLI command ergonomics, output contracts, and automation behavior <!-- t:zn2u -->
 - [x] Audit TUI architecture, views, event routing, actions, and failure UX <!-- t:iwzu -->
 - [x] Reconcile prior devctl tickets against current implementation <!-- t:8qz7 -->
-- [ ] Research comparable supervisor and logging interfaces <!-- t:6lar -->
+- [x] Research comparable supervisor and logging interfaces <!-- t:6lar -->
 - [x] Run and store reproducible read-only architecture and UX probes <!-- t:wslm -->
 - [ ] Write evidence-based redesign decisions, APIs, diagrams, and pseudocode <!-- t:k3kw -->
 - [ ] Write phased intern implementation and testing guide <!-- t:1v87 -->
