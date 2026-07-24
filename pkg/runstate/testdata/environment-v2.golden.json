@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "repo_root": "<REPO_ROOT>",
+  "profile": "development",
+  "revision": 1,
+  "created_at": "2026-07-24T12:00:00Z",
+  "updated_at": "2026-07-24T12:00:00Z",
+  "services": {
+    "api": {
+      "name": "api",
+      "desired": "running"
+    },
+    "web": {
+      "name": "web",
+      "desired": "stopped"
+    }
+  }
+}

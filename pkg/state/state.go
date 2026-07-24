@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-go-golems/devctl/pkg/runstate"
 	"github.com/pkg/errors"
 )
 
@@ -89,16 +90,8 @@ func Save(repoRoot string, s *State) error {
 	if s == nil {
 		return errors.New("nil state")
 	}
-	dir := filepath.Dir(StatePath(repoRoot))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return errors.Wrap(err, "mkdir state dir")
-	}
-	b, err := json.MarshalIndent(s, "", "  ")
-	if err != nil {
-		return errors.Wrap(err, "marshal state")
-	}
-	if err := os.WriteFile(StatePath(repoRoot), b, 0o644); err != nil {
-		return errors.Wrap(err, "write state")
+	if err := runstate.WriteJSONAtomic(StatePath(repoRoot), s, 0o600); err != nil {
+		return errors.Wrap(err, "write state atomically")
 	}
 	return nil
 }
