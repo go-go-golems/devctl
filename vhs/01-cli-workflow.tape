@@ -73,7 +73,7 @@ Sleep 2s
 Type "" Enter
 Type "# Step 5: View service logs" Enter
 Sleep 500ms
-Type "devctl logs --service api | tail -5" Enter
+Type "devctl logs api | tail -5" Enter
 Sleep 3s
 
 # Stop everything

@@ -2755,3 +2755,46 @@ go test -race ./pkg/tui/...
 git diff --check
   PASS
 ```
+
+## Step 28 — Rewrite public help and add the v2 upgrade procedure
+
+I used the Glazed help-page conventions and ran the two authoritative
+`glaze help` style references before editing embedded documentation. The
+existing TUI guide still described Dashboard, Service, Events, Pipeline, and
+Plugins views from the deleted UI. It also contained a duplicate top-level
+heading, which Glazed already supplies.
+
+I replaced that guide with the actual three-view contract:
+
+- Overview reads typed state and performs confirmed controller actions;
+- Logs follows durable journals with bounded buffering and sanitized display;
+- Runs combines durable service attempts with typed session operations; and
+- the command palette executes refresh and diagnostics while directing plugin
+  inspection to the explicit CLI.
+
+The README and user, scripting, and plugin-authoring help now use positional
+service selection, `--stream stderr`, Glazed output selection, and the
+schema-v2 `.devctl/runs/<run-id>/` layout. VHS demos and the screenshot
+playbook now capture Overview, Logs, and Runs rather than deleted screens.
+
+I added the embedded `v2-upgrade` tutorial. It requires operators to stop an
+old environment with the old binary, explains why v2 refuses old state,
+lists removed commands and replacements, documents run retention and exact
+disk artifacts, and explains how to inspect or explicitly invoke dynamic
+provider commands. The feature remains automatic at the top level; the guide
+describes its collision and stale-catalog safety boundaries.
+
+```text
+go run ./cmd/devctl help v2-upgrade
+  PASS (143 rendered lines)
+
+go run ./cmd/devctl help tui-guide
+  PASS (164 rendered lines)
+
+go test ./pkg/doc ./cmd/devctl/cmds \
+  -run 'TestBuiltCLIContracts|TestHelp|TestRoot'
+  PASS
+
+git diff --check
+  PASS
+```

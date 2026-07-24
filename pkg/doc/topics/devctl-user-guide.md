@@ -16,8 +16,6 @@ ShowPerDefault: true
 SectionType: GeneralTopic
 ---
 
-# devctl User Guide
-
 ## What devctl is (and why you'd want it)
 
 Every repo has "how we run this locally" knowledge. Over time, this knowledge accumulates as scattered scripts, undocumented flags, and tribal knowledge that only a few people really understand. Onboarding new developers becomes slow. CI diverges from local dev. The startup script grows into something fragile.
@@ -144,7 +142,7 @@ devctl build          # Optional: run build.run without starting services
 devctl validate       # Optional: check prerequisites without starting services
 devctl up             # Start everything
 devctl status         # What's running?
-devctl logs --service api --follow   # Tail logs
+devctl logs api --follow             # Tail logs
 devctl down           # Stop everything
 ```
 
@@ -180,9 +178,9 @@ For long-running builds, increase `--timeout`. Plugins should stream human-reada
 devctl up                          # Run pipeline, start services
 devctl status                      # Show running services, PIDs, health
 devctl status --tail-lines 10      # Include stderr tails for dead services
-devctl logs --service api          # Show stdout for a service
-devctl logs --service api --stderr # Show stderr
-devctl logs --service api --follow # Live tail
+devctl logs api                         # Show stdout and stderr for a service
+devctl logs api --stream stderr         # Show only stderr
+devctl logs api --follow                # Live tail
 ```
 
 **Restarting**: If state already exists from a previous `up`, devctl prompts before restarting. Use `--force` to skip the prompt:
@@ -197,7 +195,7 @@ Once an environment is running, you can stop, start, or restart one tracked serv
 
 ```bash
 devctl restart api        # Stop api, re-plan, then start api again
-devctl stop-service web   # Stop only web and keep the rest running
+devctl down web           # Stop only web and keep the rest running
 devctl start web          # Start a stopped or crashed tracked service
 ```
 
@@ -211,7 +209,10 @@ devctl start web          # Start a stopped or crashed tracked service
 devctl down   # Stop all services, remove state
 ```
 
-**What `down` does:** sends SIGTERM to each service process group, waits up to 3s, then SIGKILL if needed. Removes `.devctl/state.json`. The `.devctl/logs/` directory is preserved.
+**What `down` does:** records the desired stopped state, asks each wrapper to
+terminate its child process group, escalates when graceful shutdown exceeds the
+timeout, and records the terminal outcome. Completed `.devctl/runs/`
+directories remain available for diagnosis.
 
 ## Profiles and local overrides
 
@@ -305,47 +306,54 @@ devctl tui
 
 | Key | Action |
 |-----|--------|
-| `Tab` | Switch views: Dashboard → Events → Pipeline → Plugins |
+| `1` / `2` / `3` | Open Overview, Logs, or Runs |
+| `Tab` | Cycle Overview → Logs → Runs |
+| `:` | Open the command palette |
 | `?` | Toggle help overlay |
 | `q` | Quit |
 
-### Dashboard view (where you'll spend most time)
+### Overview view
 
 | Key | Action |
 |-----|--------|
 | `j/k` or `↑/↓` | Select service |
-| `l` or `Enter` | Open service logs |
-| `u` | Start (or restart if already running) |
-| `d` | Stop (with confirmation) |
-| `r` | Restart the whole environment (with confirmation) |
-| `x` | Kill selected service (with confirmation) |
+| `Enter` | Open logs for the selected service |
+| `u` | Confirm up for the selected scope |
+| `d` | Confirm down for the selected scope |
+| `r` | Confirm restart for the selected scope |
 
-### Service view (logs)
+### Logs view
 
 | Key | Action |
 |-----|--------|
-| `Tab` | Toggle stdout/stderr |
+| `p` | Pause visible ingestion without unbounded buffering |
 | `f` | Toggle follow mode |
 | `/` | Filter logs |
-| `s` | Stop selected service |
-| `r` | Restart selected service |
-| `Esc` | Back to dashboard |
+| `w` | Toggle wrapping |
+| `Esc` | Return to Overview |
+
+Runs shows durable service attempts plus lifecycle operations started in this
+TUI session. It preserves typed phase events and per-service failures rather
+than deriving status from text.
 
 For the full TUI reference, see `devctl help tui-guide`.
 
 ### Logs on disk
 
-devctl writes service logs to `.devctl/logs/` as timestamped files:
+devctl writes each service attempt under its run ID:
 
 ```
-.devctl/logs/
-├── api-20060102-150405.stdout.log
-├── api-20060102-150405.stderr.log
-├── api-20060102-150405.ready
-└── api-20060102-150405.exit.json
+.devctl/runs/<run-id>/
+├── run.json
+├── stdout.log
+├── stderr.log
+├── logs.jsonl
+└── exit.json
 ```
 
-`devctl logs --service api` reads the most recent stdout log. `devctl logs --service api --follow` tails it live. Even after `devctl down`, the log files remain for debugging.
+`devctl logs api` reads the current run journal for `api`.
+`devctl logs api --follow` follows new records. Even after `devctl down`, the
+retained run journals remain available for debugging.
 
 ## Writing plugins: from shell script to devctl
 
@@ -397,15 +405,23 @@ devctl writes to `.devctl/` in your repo root:
 
 ```
 .devctl/
-├── state.json              # What's running (PIDs, start times, health config)
-└── logs/
-    ├── api-20060102-150405.stdout.log   # Service stdout
-    ├── api-20060102-150405.stderr.log   # Service stderr
-    ├── api-20060102-150405.ready        # Ready file (wrapper mode)
-    └── api-20060102-150405.exit.json    # Exit info (wrapper mode)
+├── state.json              # Versioned environment index
+└── runs/
+    └── <run-id>/
+        ├── run.json
+        ├── owner.json
+        ├── ready.json
+        ├── stdout.log
+        ├── stderr.log
+        ├── logs.jsonl
+        └── exit.json
 ```
 
-Each service run gets a fresh set of timestamped log files. `state.json` is what devctl uses for `status`, `logs`, and `down`. You can safely `rm -rf .devctl/` to reset state. Add `.devctl/` to `.gitignore`.
+Each service attempt gets an immutable run directory. `state.json` indexes
+current and last run IDs for `status`, `logs`, and lifecycle operations.
+`devctl down` preserves completed run directories. Do not delete state while
+owned processes may still be alive; use `devctl doctor` to diagnose ownership.
+Add `.devctl/` to `.gitignore`.
 
 ## Troubleshooting
 
@@ -436,7 +452,7 @@ The service name doesn't match what's in state. Check `status` first:
 
 ```bash
 devctl status   # See actual service names
-devctl logs --service <name-from-status>
+devctl logs <name-from-status>
 ```
 
 ### "Read state: no such file"
