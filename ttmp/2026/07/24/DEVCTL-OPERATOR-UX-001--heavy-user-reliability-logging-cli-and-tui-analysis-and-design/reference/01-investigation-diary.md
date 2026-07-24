@@ -2367,3 +2367,35 @@ go test ./cmd/devctl/... ./pkg/plugincatalog
   complete command handshake.
 - Inspect the real-binary marker assertions in `cli_contract_test.go`; these
   are the side-effect boundary for inspection and qualified execution.
+
+## Step 18 — Enforce JSON Lines for followed logs
+
+The `logs` command owns `--stream` as a repeatable stdout/stderr/event filter.
+Glazed also normally owns that spelling as an output-processor switch. The
+command-specific output section already removed Glazed's duplicate flag, but
+that also meant `logs --follow --output json` retained JSON array framing. An
+array cannot be consumed safely until it closes and is invalid when a
+long-lived follow is interrupted.
+
+I added an optional post-parse hook to the local Glazed adapter. `LogsCommand`
+uses it to force Glazed's `output-as-objects` setting only when both conditions
+are true:
+
+```text
+follow == true AND output == "json"
+```
+
+Glazed's JSON row formatter then writes one complete JSON object per added
+row, followed by a newline. Each `processor.AddRow` reaches the configured
+writer immediately, so there is no table-close dependency and no devctl-side
+buffer to flush. Non-follow JSON queries retain their normal JSON array
+contract.
+
+Focused tests construct parsed Glazed values directly and prove both halves of
+the contract: follow JSON is promoted to individual objects, while non-follow
+JSON remains an array.
+
+```text
+go test ./cmd/devctl/cmds
+  PASS
+```
