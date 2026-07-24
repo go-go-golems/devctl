@@ -2400,6 +2400,33 @@ go test ./cmd/devctl/cmds
   PASS
 ```
 
+## Step 20 — Migrate profile inspection to structured rows
+
+I replaced the `profiles list` tabwriter and the special `profiles active`
+strings with one Glazed command implementation. Both subcommands now share
+the repository settings section and all output processor options.
+
+The row contracts are:
+
+```text
+profiles list:
+  profile, active, display_name, description, plugins
+
+profiles active:
+  profile, configured
+```
+
+The first focused test run failed because the old tests explicitly required
+`(none)` and an asterisk embedded in human table text. Those are presentation
+details from the renderer being removed. I updated the tests to request JSON
+and assert typed fields, ordering, override merging, and active resolution.
+
+```text
+go test ./cmd/devctl/cmds -run 'TestProfiles|TestBuiltCLIContracts'
+  first run: old presentation assertions failed
+  second run: PASS with structured contract assertions
+```
+
 ## Step 19 — Extend process-level CLI boundary coverage
 
 I extended the real executable contract rather than relying only on command
