@@ -74,6 +74,52 @@ func TestReconcileRecordsExitAndReportsUnindexedRun(t *testing.T) {
 	}
 }
 
+func TestSnapshotReconcilesExitedCurrentRun(t *testing.T) {
+	store, runID := createReconcileFixture(t, runstate.RunReady)
+	runDir, err := store.RunDir(runID)
+	if err != nil {
+		t.Fatalf("run dir: %v", err)
+	}
+	exitCode := 17
+	if err := state.WriteExitInfo(filepath.Join(runDir, supervise.ExitRecordName), state.ExitInfo{
+		Service: "web", ExitedAt: time.Now().UTC(), ExitCode: &exitCode,
+	}); err != nil {
+		t.Fatalf("write exit: %v", err)
+	}
+	controller, err := NewController(ControllerOptions{
+		Planner: staticPlanner{},
+		SupervisorFactory: func(string, time.Duration) serviceSupervisor {
+			return &recordingSupervisor{t: t, repoRoot: store.RepoRoot()}
+		},
+	})
+	if err != nil {
+		t.Fatalf("new controller: %v", err)
+	}
+
+	snapshot, err := controller.Snapshot(context.Background(), SnapshotRequest{
+		RepoRoot: store.RepoRoot(), IncludeRuns: true,
+	})
+	if err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	if len(snapshot.Services) != 1 {
+		t.Fatalf("snapshot services = %d, want 1", len(snapshot.Services))
+	}
+	service := snapshot.Services[0]
+	if service.Phase != runstate.RunExited || service.Exit == nil ||
+		service.Exit.ExitCode == nil || *service.Exit.ExitCode != exitCode {
+		t.Fatalf("snapshot did not expose reconciled exit: %#v", service)
+	}
+	environment, err := store.LoadEnvironment(context.Background())
+	if err != nil {
+		t.Fatalf("load environment: %v", err)
+	}
+	slot := environment.Services["web"]
+	if slot.CurrentRunID != "" || slot.LastRunID != runID {
+		t.Fatalf("snapshot did not reconcile environment slot: %#v", slot)
+	}
+}
+
 func TestDoctorReportsWithoutReconcilingOrMutatingState(t *testing.T) {
 	store, runID := createReconcileFixture(t, runstate.RunPlanned)
 	controller, err := NewController(ControllerOptions{

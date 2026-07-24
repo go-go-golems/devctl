@@ -518,6 +518,25 @@ func (c *controller) Snapshot(ctx context.Context, request SnapshotRequest) (Sna
 	if environment == nil {
 		return Snapshot{Exists: false, Services: []ServiceSnapshot{}}, nil
 	}
+	locker, err := runstate.NewLocker(store.RepoRoot())
+	if err != nil {
+		return Snapshot{}, newError(CodeStateCorrupt, "create snapshot reconciliation lock", err)
+	}
+	if err := locker.WithExclusive(ctx, runstate.LockMetadata{
+		Command: []string{"devctl", "snapshot"},
+	}, func(lockContext context.Context) error {
+		_, reconcileErr := reconcile(lockContext, store)
+		return reconcileErr
+	}); err != nil {
+		if stderrors.Is(err, runstate.ErrOperationBusy) {
+			return Snapshot{}, newError(CodeOperationBusy, "another lifecycle operation holds the repository lock", err)
+		}
+		return Snapshot{}, newError(CodeStateCorrupt, "reconcile environment snapshot", err)
+	}
+	environment, err = store.LoadEnvironment(ctx)
+	if err != nil {
+		return Snapshot{}, newError(CodeStateCorrupt, "reload reconciled environment state", err)
+	}
 	snapshot := Snapshot{
 		Exists:   true,
 		Profile:  environment.Profile,

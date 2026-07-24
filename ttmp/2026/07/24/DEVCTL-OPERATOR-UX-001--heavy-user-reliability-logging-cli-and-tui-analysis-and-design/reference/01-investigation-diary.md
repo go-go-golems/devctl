@@ -2756,6 +2756,60 @@ git diff --check
   PASS
 ```
 
+## Step 33 — Reconcile terminal exits during snapshots and replay in tmux
+
+The live tmux matrix found a correctness bug that unit-only rendering tests did
+not expose. The `spewer` fixture emitted 100 stdout/stderr pairs and exited
+with code 2. Its wrapper durably wrote `exit.json`, and both wrapper and child
+were absent, but `Controller.Snapshot` read the old `ready` run record without
+reconciliation. Overview and `devctl status` therefore continued to report a
+dead service as ready.
+
+I changed Snapshot so an existing environment is reconciled under the same
+repository-exclusive lock used by lifecycle mutation, then reloaded before
+building its typed result. A snapshot waits for an in-progress lifecycle
+operation rather than racing its state transitions. No-state snapshots still
+return without creating or locking state.
+
+The regression test constructs a ready current run plus a terminal exit
+artifact and proves one Snapshot call:
+
+- changes the durable run phase to `exited`;
+- copies the exit code into the typed result;
+- moves the run from current to last in the environment slot; and
+- includes the last run when `IncludeRuns=true`.
+
+I replayed the fixture in a 120x30 tmux session. The corrected Overview showed
+the unexpected exit immediately:
+
+```text
+spewer  desired=running  state=exited  exit=2
+```
+
+Runs showed both durable attempts and the typed session `up` operation. Logs
+showed interleaved stdout/stderr records with follow enabled. The selectable
+palette ran Doctor and reported `16 checks, 3 require attention`. I then
+stopped the selected scope through the TUI, quit, verified the tmux session
+was gone, verified port 18080 had no listener, and confirmed both services had
+`desired=stopped` durable status.
+
+The reusable fixture setup is stored at
+`scripts/07-tui-operator-matrix-fixture.sh`. It prepares binaries and
+configuration in an isolated `/tmp` directory and starts the TUI through tmux;
+cleanup remains an explicit lifecycle action so it never hides leaked
+ownership.
+
+```text
+go test -race ./pkg/operator/... ./pkg/tui/...
+  PASS
+
+bash -n scripts/07-tui-operator-matrix-fixture.sh
+  PASS
+
+git diff --check
+  PASS
+```
+
 ## Step 32 — Replace structural TUI size checks with exact golden views
 
 The original terminal-size test asserted only that navigation labels existed
