@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-go-golems/devctl/pkg/runstate"
+	"github.com/go-go-golems/devctl/pkg/state"
 )
 
 type collectingSink struct {
@@ -161,6 +162,56 @@ func TestFollowCancellationReturnsPromptly(t *testing.T) {
 		}
 	case <-time.After(250 * time.Millisecond):
 		t.Fatal("follow did not honor cancellation within 250ms")
+	}
+}
+
+func TestFollowStopsWhenDurableExitArtifactAppears(t *testing.T) {
+	repoRoot := t.TempDir()
+	store, err := runstate.NewStore(repoRoot)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	runID := "018f0f65-6c1a-7abc-8def-0123456789ab"
+	createJournalRunWithPhase(t, store, runID, "web", runstate.RunReady, []LogRecord{
+		record(runID, 1, time.Now().UTC(), "web", StreamStdout, "final"),
+	})
+	reader, _ := NewFileReader(repoRoot, WithPollInterval(time.Millisecond))
+	sink := &collectingSink{}
+	done := make(chan error, 1)
+	go func() {
+		done <- reader.Follow(
+			context.Background(),
+			FollowRequest{Query: Query{RunIDs: []string{runID}}},
+			sink,
+		)
+	}()
+	runDir, err := store.RunDir(runID)
+	if err != nil {
+		t.Fatalf("run dir: %v", err)
+	}
+	exitCode := 0
+	if err := state.WriteExitInfo(filepath.Join(runDir, exitRecordName), state.ExitInfo{
+		Service: "web", ExitedAt: time.Now().UTC(), ExitCode: &exitCode,
+	}); err != nil {
+		t.Fatalf("write exit artifact: %v", err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("follow: %v", err)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("follow did not stop after durable exit artifact")
+	}
+	if len(sink.records) != 1 || sink.records[0].Text != "final" {
+		t.Fatalf("follow records = %#v", sink.records)
+	}
+	run, err := store.LoadRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("load run: %v", err)
+	}
+	if run.Phase != runstate.RunReady {
+		t.Fatalf("test did not exercise stale run phase: %q", run.Phase)
 	}
 }
 

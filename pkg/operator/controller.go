@@ -250,6 +250,16 @@ func (c *controller) upLocked(
 	}
 
 	supervisor := c.supervisorFactory(store.RepoRoot(), timeout)
+	startErrors := make(map[string]error, len(prepared))
+	for _, service := range prepared {
+		c.emit(ctx, sink, result.OperationID, EventServiceStarting, service.spec.Name, "starting", "starting service wrapper", nil)
+		_, startErr := supervisor.StartPreparedService(ctx, service.spec, service.runID)
+		startErrors[service.runID] = startErr
+		if startErr != nil && ctx.Err() != nil {
+			return ctx.Err()
+		}
+	}
+
 	for _, service := range prepared {
 		outcome := ServiceOutcome{
 			Service: service.spec.Name,
@@ -257,8 +267,7 @@ func (c *controller) upLocked(
 			Before:  runstate.RunPlanned,
 			Changed: true,
 		}
-		c.emit(ctx, sink, result.OperationID, EventServiceStarting, service.spec.Name, "starting", "starting service wrapper", nil)
-		_, startErr := supervisor.StartPreparedService(ctx, service.spec, service.runID)
+		startErr := startErrors[service.runID]
 		errorCode := classifyStartError(startErr)
 		errorMessage := "service start failed"
 		if startErr == nil {
@@ -290,9 +299,6 @@ func (c *controller) upLocked(
 			outcome.Error = serviceError(errorCode, errorMessage, service.spec.Name, service.runID, startErr)
 			result.Outcomes = append(result.Outcomes, outcome)
 			c.emit(ctx, sink, result.OperationID, EventServiceFailed, service.spec.Name, "failed", "service start failed", outcome.Error)
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
 			continue
 		}
 		result.Outcomes = append(result.Outcomes, outcome)

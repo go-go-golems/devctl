@@ -2,7 +2,9 @@ package operator
 
 import (
 	"context"
+	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -120,6 +122,36 @@ func TestSnapshotReconcilesExitedCurrentRun(t *testing.T) {
 	}
 }
 
+func TestReconcilePreservesHealthyReadyRun(t *testing.T) {
+	store, runID := createLiveReconcileFixture(t, runstate.RunReady)
+	if err := store.UpdateRun(context.Background(), runID, func(run *runstate.RunRecord) error {
+		run.Spec.Health = &runstate.HealthCheckRecord{
+			Type: "tcp", Address: "127.0.0.1:8080", TimeoutMs: 1000,
+		}
+		run.Health = &runstate.HealthResult{
+			Healthy: true, CheckedAt: time.Now().UTC(),
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("persist healthy run: %v", err)
+	}
+
+	report, err := reconcile(context.Background(), store)
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if len(report.Actions) != 1 || report.Actions[0].After != runstate.RunReady {
+		t.Fatalf("unexpected report: %#v", report)
+	}
+	run, err := store.LoadRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("load run: %v", err)
+	}
+	if run.Phase != runstate.RunReady || run.Health == nil || !run.Health.Healthy {
+		t.Fatalf("healthy ready run was downgraded: %#v", run)
+	}
+}
+
 func TestDoctorReportsWithoutReconcilingOrMutatingState(t *testing.T) {
 	store, runID := createReconcileFixture(t, runstate.RunPlanned)
 	controller, err := NewController(ControllerOptions{
@@ -179,6 +211,51 @@ func createReconcileFixture(t *testing.T, phase runstate.RunPhase) (*runstate.St
 		},
 	}); err != nil {
 		t.Fatalf("create environment: %v", err)
+	}
+	return store, runID
+}
+
+func createLiveReconcileFixture(t *testing.T, phase runstate.RunPhase) (*runstate.Store, string) {
+	t.Helper()
+	store, runID := createReconcileFixture(t, phase)
+	cmd := exec.Command("sleep", "60")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start fixture process: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_ = cmd.Wait()
+	})
+	identity, err := runstate.ReadProcessIdentity(cmd.Process.Pid)
+	if err != nil {
+		t.Fatalf("read fixture identity: %v", err)
+	}
+	runDir, err := store.RunDir(runID)
+	if err != nil {
+		t.Fatalf("run dir: %v", err)
+	}
+	owner := supervise.OwnerRecord{
+		Version: supervise.HandshakeVersion, RunID: runID, Service: "web",
+		Wrapper: *identity, WrittenAt: time.Now().UTC(),
+	}
+	ready := supervise.ReadyRecord{
+		Version: supervise.HandshakeVersion, RunID: runID, Service: "web",
+		Wrapper: *identity, Child: *identity, ChildPGID: identity.PID, WrittenAt: time.Now().UTC(),
+	}
+	if err := supervise.WriteOwnerRecord(filepath.Join(runDir, supervise.OwnerRecordName), owner); err != nil {
+		t.Fatalf("write owner: %v", err)
+	}
+	if err := supervise.WriteReadyRecord(filepath.Join(runDir, supervise.ReadyRecordName), ready); err != nil {
+		t.Fatalf("write ready: %v", err)
+	}
+	if err := store.UpdateRun(context.Background(), runID, func(run *runstate.RunRecord) error {
+		run.Wrapper = identity
+		run.Child = identity
+		run.ChildPGID = identity.PID
+		return nil
+	}); err != nil {
+		t.Fatalf("persist process identity: %v", err)
 	}
 	return store, runID
 }

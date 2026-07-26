@@ -185,7 +185,7 @@ func reconcileCurrentRun(
 				return markReconciledUnknown(ctx, store, action, "PROCESS_GROUP_MISMATCH", "child process group does not match ready artifact")
 			}
 			phase := runstate.RunStarting
-			if run.Spec.Health == nil {
+			if run.Spec.Health == nil || (run.Phase == runstate.RunReady && run.Health != nil && run.Health.Healthy) {
 				phase = runstate.RunReady
 			}
 			if err := store.UpdateRun(ctx, runID, func(record *runstate.RunRecord) error {

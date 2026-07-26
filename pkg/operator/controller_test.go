@@ -37,6 +37,7 @@ type recordingSupervisor struct {
 	failStopService string
 	healthErr       error
 	onStart         func()
+	onHealth        func()
 	processes       map[string]*exec.Cmd
 }
 
@@ -127,6 +128,9 @@ func (s *recordingSupervisor) StartPreparedService(
 }
 
 func (s *recordingSupervisor) CompleteHealth(ctx context.Context, _ engine.ServiceSpec, runID string) error {
+	if s.onHealth != nil {
+		s.onHealth()
+	}
 	store, err := runstate.NewStore(s.repoRoot)
 	if err != nil {
 		return err
@@ -231,6 +235,35 @@ func TestUpIndexesRunBeforeStartingWrapper(t *testing.T) {
 	}
 	if !snapshot.Exists || snapshot.Services[0].Phase != runstate.RunReady {
 		t.Fatalf("unexpected snapshot: %#v", snapshot)
+	}
+}
+
+func TestUpStartsEveryWrapperBeforeCompletingHealth(t *testing.T) {
+	repoRoot := t.TempDir()
+	supervisor := &recordingSupervisor{t: t, repoRoot: repoRoot}
+	supervisor.onHealth = func() {
+		supervisor.mu.Lock()
+		defer supervisor.mu.Unlock()
+		if len(supervisor.started) != 2 {
+			t.Fatalf("health started after %d wrappers, want 2: %v", len(supervisor.started), supervisor.started)
+		}
+	}
+	controller := newTestController(t, repoRoot, staticPlanner{result: PlanResult{
+		Plan: engine.LaunchPlan{Services: []engine.ServiceSpec{
+			{
+				Name: "api", Command: []string{"serve"},
+				Health: &engine.HealthCheck{Type: "tcp", Address: "127.0.0.1:1"},
+			},
+			{Name: "dependency", Command: []string{"serve"}},
+		}},
+	}}, supervisor)
+
+	result, err := controller.Up(context.Background(), UpRequest{RepoRoot: repoRoot}, nil)
+	if err != nil {
+		t.Fatalf("up: %v", err)
+	}
+	if result.Status != "succeeded" || len(result.Outcomes) != 2 {
+		t.Fatalf("unexpected result: %#v", result)
 	}
 }
 

@@ -7,8 +7,11 @@ import (
 	"time"
 
 	"github.com/go-go-golems/devctl/pkg/runstate"
+	"github.com/go-go-golems/devctl/pkg/state"
 	"github.com/pkg/errors"
 )
+
+const exitRecordName = "exit.json"
 
 func (r *FileReader) Follow(ctx context.Context, request FollowRequest, sink LogSink) error {
 	if sink == nil {
@@ -122,8 +125,18 @@ func (r *FileReader) allRunsTerminal(ctx context.Context, runIDs []string) (bool
 		if err != nil {
 			return false, err
 		}
-		if run.Phase != runstate.RunExited && run.Phase != runstate.RunFailed {
-			return false, nil
+		if run.Phase == runstate.RunExited || run.Phase == runstate.RunFailed {
+			continue
+		}
+		runDir, err := r.store.RunDir(runID)
+		if err != nil {
+			return false, err
+		}
+		if _, err := state.ReadExitInfo(filepath.Join(runDir, exitRecordName)); err != nil {
+			if os.IsNotExist(errors.Cause(err)) {
+				return false, nil
+			}
+			return false, errors.Wrapf(err, "read run %q exit artifact", runID)
 		}
 	}
 	return len(runIDs) > 0, nil
