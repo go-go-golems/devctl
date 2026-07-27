@@ -117,6 +117,7 @@ func (c *LifecycleCommand) RunIntoGlazeProcessor(
 		result, operationErr = controller.Down(ctx, operator.DownRequest{
 			RepoRoot: repositoryContext.RepoRoot,
 			Select:   selection,
+			Timeout:  policy.Timeout,
 		}, nil)
 	case "restart":
 		result, operationErr = controller.Restart(ctx, operator.RestartRequest{

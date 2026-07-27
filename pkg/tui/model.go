@@ -385,7 +385,7 @@ func (m *Model) operationCmd(request confirmation) tea.Cmd {
 			}, sink)
 		case "down":
 			result, err = m.options.Controller.Down(m.options.Context, operator.DownRequest{
-				RepoRoot: m.options.RepoRoot, Select: selection,
+				RepoRoot: m.options.RepoRoot, Select: selection, Timeout: m.options.Timeout,
 			}, sink)
 		case "restart":
 			result, err = m.options.Controller.Restart(m.options.Context, operator.RestartRequest{

@@ -39,11 +39,19 @@ func AddDynamicPluginCommands(root *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(positionals) == 0 || positionals[0] == "__wrap-service" ||
-		positionals[0] == "completion" || rootHasCommand(root, positionals[0]) {
+	discoveryMode := len(positionals) == 0 || positionals[0] == "completion"
+	if !discoveryMode && (positionals[0] == "__wrap-service" ||
+		rootHasCommand(root, positionals[0])) {
 		return nil
 	}
-	requestedName := positionals[0]
+	if discoveryMode {
+		if _, statErr := os.Stat(configPath); statErr != nil {
+			if os.IsNotExist(statErr) {
+				return nil
+			}
+			return statErr
+		}
+	}
 	repo, err := repository.Load(repository.Options{
 		RepoRoot: repoRoot, ConfigPath: configPath, ProfileName: profileName,
 		Cwd: repoRoot, DryRun: false,
@@ -57,16 +65,27 @@ func AddDynamicPluginCommands(root *cobra.Command, args []string) error {
 	reserved := reservedCommandNames(root)
 	catalog, loadErr := plugincatalog.Load(repo, reserved)
 	if loadErr != nil {
-		if catalog != nil {
+		if catalog != nil && errors.Is(loadErr, plugincatalog.ErrCatalogConflict) {
+			if discoveryMode {
+				return registerCatalogCommands(root, repo, catalog)
+			}
+			requestedName := positionals[0]
 			if conflicts := catalog.Conflicts[requestedName]; len(conflicts) > 0 {
 				return pluginConflictError(requestedName, repo.ProfileName, conflicts)
 			}
-			return loadErr
+			if entry, exists := catalog.Commands[requestedName]; exists {
+				return registerDynamicCommand(root, repo, catalog, entry)
+			}
+			return nil
 		}
 		staticCatalog, staticErr := plugincatalog.Static(repo, reserved)
 		if staticErr != nil {
 			return staticErr
 		}
+		if discoveryMode {
+			return registerCatalogCommands(root, repo, staticCatalog)
+		}
+		requestedName := positionals[0]
 		if entry, exists := staticCatalog.Commands[requestedName]; exists {
 			return registerDynamicCommand(root, repo, staticCatalog, entry)
 		}
@@ -75,6 +94,10 @@ func AddDynamicPluginCommands(root *cobra.Command, args []string) error {
 		}
 		return errors.Wrapf(loadErr, "plugin command catalog unavailable; run `devctl plugins refresh --repo-root %s`", repo.Root)
 	}
+	if discoveryMode {
+		return registerCatalogCommands(root, repo, catalog)
+	}
+	requestedName := positionals[0]
 	if conflicts := catalog.Conflicts[requestedName]; len(conflicts) > 0 {
 		return pluginConflictError(requestedName, repo.ProfileName, conflicts)
 	}
@@ -83,6 +106,24 @@ func AddDynamicPluginCommands(root *cobra.Command, args []string) error {
 		return nil
 	}
 	return registerDynamicCommand(root, repo, catalog, entry)
+}
+
+func registerCatalogCommands(
+	root *cobra.Command,
+	repo *repository.Repository,
+	catalog *plugincatalog.Catalog,
+) error {
+	names := make([]string, 0, len(catalog.Commands))
+	for name := range catalog.Commands {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if err := registerDynamicCommand(root, repo, catalog, catalog.Commands[name]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func registerDynamicCommand(

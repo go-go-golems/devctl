@@ -71,7 +71,7 @@ commands do not have hidden aliases.
 | `devctl logs --service api` | `devctl logs api` |
 | `devctl logs --stderr api` | `devctl logs api --stream stderr` |
 
-`devctl start api` remains the operation for starting a stopped or failed
+`devctl up api` is the operation for starting a stopped or failed
 tracked service. `devctl restart api` performs a typed down/up operation and
 reports partial failures per service.
 

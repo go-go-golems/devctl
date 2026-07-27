@@ -39,6 +39,7 @@ type recordingSupervisor struct {
 	onStart         func()
 	onHealth        func()
 	processes       map[string]*exec.Cmd
+	timeout         time.Duration
 }
 
 var _ serviceSupervisor = (*recordingSupervisor)(nil)
@@ -199,7 +200,8 @@ func newTestController(t *testing.T, repoRoot string, planner Planner, superviso
 	})
 	controller, err := NewController(ControllerOptions{
 		Planner: planner,
-		SupervisorFactory: func(string, time.Duration) serviceSupervisor {
+		SupervisorFactory: func(_ string, timeout time.Duration) serviceSupervisor {
+			supervisor.timeout = timeout
 			return supervisor
 		},
 		NewOperationID: func() (string, error) {
@@ -304,6 +306,48 @@ func TestDownWithoutStateIsSuccessfulNoOp(t *testing.T) {
 	}
 	if result.Status != "succeeded" || len(result.Outcomes) != 0 {
 		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
+func TestDownWithoutStateRejectsExplicitSelection(t *testing.T) {
+	repoRoot := t.TempDir()
+	supervisor := &recordingSupervisor{t: t, repoRoot: repoRoot}
+	controller := newTestController(t, repoRoot, staticPlanner{}, supervisor)
+
+	result, err := controller.Down(context.Background(), DownRequest{
+		RepoRoot: repoRoot,
+		Select:   Selection{Services: []string{"typo"}},
+	}, nil)
+	var operatorErr *OperatorError
+	if !errors.As(err, &operatorErr) || operatorErr.Code != CodeServiceUnknown {
+		t.Fatalf("error = %v, want %s", err, CodeServiceUnknown)
+	}
+	if result.Status != "failed" {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
+func TestDownUsesRequestedTimeout(t *testing.T) {
+	repoRoot := t.TempDir()
+	supervisor := &recordingSupervisor{t: t, repoRoot: repoRoot}
+	controller := newTestController(t, repoRoot, staticPlanner{result: PlanResult{
+		Plan: engine.LaunchPlan{Services: []engine.ServiceSpec{
+			{Name: "web", Command: []string{"serve"}},
+		}},
+	}}, supervisor)
+	if _, err := controller.Up(context.Background(), UpRequest{RepoRoot: repoRoot}, nil); err != nil {
+		t.Fatalf("up: %v", err)
+	}
+
+	requested := 1250 * time.Millisecond
+	if _, err := controller.Down(context.Background(), DownRequest{
+		RepoRoot: repoRoot,
+		Timeout:  requested,
+	}, nil); err != nil {
+		t.Fatalf("down: %v", err)
+	}
+	if supervisor.timeout != requested {
+		t.Fatalf("supervisor timeout = %s, want %s", supervisor.timeout, requested)
 	}
 }
 

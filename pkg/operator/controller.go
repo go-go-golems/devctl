@@ -331,7 +331,14 @@ func (c *controller) Down(
 		OperationID: result.OperationID,
 		Command:     []string{"devctl", "down"},
 	}, func(lockContext context.Context) error {
-		return c.downLocked(lockContext, store, request.Select, 30*time.Second, sink, &result)
+		return c.downLocked(
+			lockContext,
+			store,
+			request.Select,
+			normalizedTimeout(request.Timeout),
+			sink,
+			&result,
+		)
 	})
 	if lockErr != nil {
 		if stderrors.Is(lockErr, runstate.ErrOperationBusy) {
@@ -361,6 +368,15 @@ func (c *controller) downLocked(
 		return newError(CodeStateCorrupt, "load environment state", err)
 	}
 	if environment == nil {
+		if len(selection.Services) > 0 {
+			return serviceError(
+				CodeServiceUnknown,
+				"service is not present because environment state does not exist",
+				selection.Services[0],
+				"",
+				nil,
+			)
+		}
 		return nil
 	}
 	names, selectionErr := selectStateServices(environment, selection)

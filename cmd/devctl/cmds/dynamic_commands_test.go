@@ -162,6 +162,94 @@ func TestDynamicCommands_StaticDeclarationNeedsNoRefresh(t *testing.T) {
 	require.Equal(t, "echo", command.Name())
 }
 
+func TestDynamicCommands_RegisterStaticDeclarationsForHelp(t *testing.T) {
+	repoRoot := t.TempDir()
+	cfgPath := filepath.Join(repoRoot, ".devctl.yaml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(
+		"plugins:\n"+
+			"  - id: cmd\n"+
+			"    path: missing-provider\n"+
+			"    commands:\n"+
+			"      - name: echo\n"+
+			"        help: Echo values\n",
+	), 0o600))
+	root := &cobra.Command{Use: "devctl"}
+	require.NoError(t, AddCommands(root))
+
+	require.NoError(t, AddDynamicPluginCommands(root, []string{
+		"devctl", "--repo-root", repoRoot, "--config", cfgPath, "--help",
+	}))
+
+	command, _, err := root.Find([]string{"echo"})
+	require.NoError(t, err)
+	require.Equal(t, "echo", command.Name())
+	require.Equal(t, "Echo values", command.Short)
+}
+
+func TestDynamicCommands_RegisterCachedCommandsForCompletion(t *testing.T) {
+	repoRoot := t.TempDir()
+	devctlRoot := findDevctlRootForTest(t)
+	plugin := filepath.Join(devctlRoot, "testdata", "plugins", "command", "plugin.py")
+	cfgPath := filepath.Join(repoRoot, ".devctl.yaml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(
+		"plugins:\n  - id: cmd\n    path: python3\n    args:\n      - \""+plugin+"\"\n",
+	), 0o600))
+	refreshDynamicCatalogForTest(t, repoRoot, cfgPath, "")
+	root := &cobra.Command{Use: "devctl"}
+	root.AddCommand(&cobra.Command{Use: "completion"})
+
+	require.NoError(t, AddDynamicPluginCommands(root, []string{
+		"devctl", "--repo-root", repoRoot, "--config", cfgPath, "completion", "bash",
+	}))
+
+	command, _, err := root.Find([]string{"echo"})
+	require.NoError(t, err)
+	require.Equal(t, "echo", command.Name())
+}
+
+func TestDynamicCommands_UnrelatedCatalogConflictDoesNotDisableCommand(t *testing.T) {
+	repoRoot := t.TempDir()
+	cfgPath := filepath.Join(repoRoot, ".devctl.yaml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(
+		"plugins:\n"+
+			"  - id: first\n"+
+			"    path: /bin/true\n"+
+			"    commands:\n"+
+			"      - name: echo\n"+
+			"        help: First echo\n"+
+			"      - name: seed\n"+
+			"        help: Seed data\n"+
+			"  - id: second\n"+
+			"    path: /bin/true\n"+
+			"    commands:\n"+
+			"      - name: echo\n"+
+			"        help: Second echo\n",
+	), 0o600))
+	repo, err := repository.Load(repository.Options{
+		RepoRoot: repoRoot, ConfigPath: cfgPath, Cwd: repoRoot,
+	})
+	require.NoError(t, err)
+	_, err = plugincatalog.Refresh(t.Context(), repo, plugincatalog.RefreshOptions{
+		Reserved: defaultReservedCommandNames(),
+	})
+	require.ErrorIs(t, err, plugincatalog.ErrCatalogConflict)
+
+	root := &cobra.Command{Use: "devctl"}
+	require.NoError(t, AddDynamicPluginCommands(root, []string{
+		"devctl", "--repo-root", repoRoot, "--config", cfgPath, "seed",
+	}))
+	command, _, err := root.Find([]string{"seed"})
+	require.NoError(t, err)
+	require.Equal(t, "seed", command.Name())
+
+	root = &cobra.Command{Use: "devctl"}
+	err = AddDynamicPluginCommands(root, []string{
+		"devctl", "--repo-root", repoRoot, "--config", cfgPath, "echo",
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "PLUGIN_COMMAND_CONFLICT")
+}
+
 func refreshDynamicCatalogForTest(
 	t *testing.T,
 	repoRoot string,

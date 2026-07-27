@@ -90,7 +90,7 @@ func classifyError(err error) (int, string) {
 		case operator.CodeCanceled:
 			return 130, operatorErr.Error()
 		case operator.CodeUsage, operator.CodeConfigMissing, operator.CodeConfigInvalid,
-			operator.CodeStateVersion, operator.CodeStateCorrupt:
+			operator.CodeStateVersion, operator.CodeStateCorrupt, operator.CodeServiceUnknown:
 			return 2, operatorErr.Error()
 		default:
 			return 1, operatorErr.Error()

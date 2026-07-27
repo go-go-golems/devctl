@@ -78,6 +78,16 @@ func TestBuiltCLIContracts(t *testing.T) {
 		require.NoError(t, err, stderr)
 		require.NoError(t, os.Remove(markerPath))
 
+		stdout, stderr, err := runCLIInDir(binary, repoRoot, "--help")
+		require.NoError(t, err, stderr)
+		require.Contains(t, stdout, "echo")
+		require.NoFileExists(t, markerPath)
+
+		stdout, stderr, err = runCLIInDir(binary, repoRoot, "completion", "bash")
+		require.NoError(t, err, stderr)
+		require.Contains(t, stdout, "echo")
+		require.NoFileExists(t, markerPath)
+
 		_, stderr, err = runCLI(binary,
 			"echo", "--repo-root", repoRoot, "--config", configPath, "hello",
 		)

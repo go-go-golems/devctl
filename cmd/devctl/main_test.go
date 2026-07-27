@@ -37,6 +37,12 @@ func TestClassifyError(t *testing.T) {
 			wantMessage: "E_PARTIAL_FAILURE: one failed",
 		},
 		{
+			name:        "unknown service selector",
+			err:         &operator.OperatorError{Code: operator.CodeServiceUnknown, Message: "missing"},
+			wantCode:    2,
+			wantMessage: "E_SERVICE_UNKNOWN: missing",
+		},
+		{
 			name: "plugin exit",
 			err: &cmds.PluginCommandExitError{
 				Command: "seed", ProviderID: "demo", ExitCode: 42,

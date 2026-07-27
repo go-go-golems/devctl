@@ -29,6 +29,7 @@ type UpRequest struct {
 type DownRequest struct {
 	RepoRoot string
 	Select   Selection
+	Timeout  time.Duration
 }
 
 type RestartRequest struct {
