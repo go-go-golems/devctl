@@ -172,7 +172,12 @@ func (m *Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.confirmation != nil {
 		switch value {
 		case "y", "enter":
-			return m, m.operationCmd(*m.confirmation)
+			request := *m.confirmation
+			m.confirmation = nil
+			if m.operationCh != nil {
+				return m, nil
+			}
+			return m, m.operationCmd(request)
 		case "n", "esc", "q":
 			m.confirmation = nil
 		}
@@ -236,7 +241,7 @@ func (m *Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.followOneCmd()
 		}
 	case "u", "d", "r":
-		if m.active == ViewOverview {
+		if m.active == ViewOverview && m.operationCh == nil {
 			kind := map[string]string{"u": "up", "d": "down", "r": "restart"}[value]
 			m.confirmation = &confirmation{Kind: kind, Services: m.overview.SelectedServices()}
 		}

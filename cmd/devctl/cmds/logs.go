@@ -279,7 +279,11 @@ func resolveLogRuns(
 		for _, runID := range settings.RunIDs {
 			run, loadErr := store.LoadRun(ctx, runID)
 			if loadErr != nil {
-				return nil, errors.Wrapf(loadErr, "E_SERVICE_UNKNOWN: unknown run %q", runID)
+				return nil, &operator.OperatorError{
+					Code:    operator.CodeServiceUnknown,
+					Message: "run is not present in environment state",
+					RunID:   runID,
+				}
 			}
 			if len(settings.Services) > 0 && !stringSelection(settings.Services)[run.Service] {
 				continue
@@ -296,7 +300,11 @@ func resolveLogRuns(
 	}
 	if !snapshot.Exists {
 		if len(settings.Services) > 0 {
-			return nil, errors.Errorf("E_SERVICE_UNKNOWN: no environment state contains %q", settings.Services[0])
+			return nil, &operator.OperatorError{
+				Code:    operator.CodeServiceUnknown,
+				Message: "service is not present because no environment state exists",
+				Service: settings.Services[0],
+			}
 		}
 		return []string{}, nil
 	}
@@ -314,7 +322,11 @@ func resolveLogRuns(
 	}
 	for service := range selected {
 		if !found[service] {
-			return nil, errors.Errorf("E_SERVICE_UNKNOWN: service %q is not present in environment state", service)
+			return nil, &operator.OperatorError{
+				Code:    operator.CodeServiceUnknown,
+				Message: "service is not present in environment state",
+				Service: service,
+			}
 		}
 	}
 	return runIDs, nil

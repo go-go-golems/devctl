@@ -136,6 +136,25 @@ func TestModalPrecedencePreventsQuit(t *testing.T) {
 	require.Nil(t, model.confirmation)
 }
 
+func TestConfirmationStartsOnlyOneLifecycleOperation(t *testing.T) {
+	model := NewModel(Options{Context: t.Context(), Controller: &fakeController{}, RepoRoot: t.TempDir()})
+	model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
+
+	_, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, command)
+	require.Nil(t, model.confirmation)
+	operationCh := model.operationCh
+	require.NotNil(t, operationCh)
+
+	_, repeatedCommand := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.Nil(t, repeatedCommand)
+	require.Equal(t, operationCh, model.operationCh)
+
+	model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	require.Nil(t, model.confirmation)
+	require.Equal(t, operationCh, model.operationCh)
+}
+
 func TestDirectNavigationPreservesLogFilters(t *testing.T) {
 	model := NewModel(Options{Context: t.Context(), Controller: &fakeController{}, RepoRoot: t.TempDir()})
 	model.logs.Services = []string{"api"}

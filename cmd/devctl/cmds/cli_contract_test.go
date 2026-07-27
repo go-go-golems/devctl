@@ -27,6 +27,19 @@ func TestBuiltCLIContracts(t *testing.T) {
 		require.Equal(t, "stopped", rows[0]["environment"])
 	})
 
+	t.Run("unknown status and log selectors are usage errors", func(t *testing.T) {
+		for _, args := range [][]string{
+			{"status", "--repo-root", t.TempDir(), "missing"},
+			{"logs", "--repo-root", t.TempDir(), "missing"},
+		} {
+			_, stderr, err := runCLI(binary, args...)
+			require.Error(t, err)
+			require.Equal(t, 2, processExitCode(t, err), stderr)
+			require.Contains(t, stderr, "E_SERVICE_UNKNOWN:")
+			require.Contains(t, stderr, "missing")
+		}
+	})
+
 	t.Run("removed lifecycle spelling is unknown", func(t *testing.T) {
 		repoRoot := t.TempDir()
 		_, stderr, err := runCLI(binary, "stop-service", "--repo-root", repoRoot, "web")

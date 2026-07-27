@@ -65,7 +65,11 @@ func (c *StatusCommand) RunIntoGlazeProcessor(
 	}
 	if !snapshot.Exists {
 		if len(settings.Services) > 0 {
-			return errors.Errorf("E_SERVICE_UNKNOWN: no environment state contains %q", settings.Services[0])
+			return &operator.OperatorError{
+				Code:    operator.CodeServiceUnknown,
+				Message: "service is not present because no environment state exists",
+				Service: settings.Services[0],
+			}
 		}
 		return processor.AddRow(ctx, types.NewRow(
 			types.MRP("environment", "stopped"),
@@ -106,7 +110,11 @@ func (c *StatusCommand) RunIntoGlazeProcessor(
 	}
 	for service := range selected {
 		if !found[service] {
-			return errors.Errorf("E_SERVICE_UNKNOWN: service %q is not present in environment state", service)
+			return &operator.OperatorError{
+				Code:    operator.CodeServiceUnknown,
+				Message: "service is not present in environment state",
+				Service: service,
+			}
 		}
 	}
 	return nil
