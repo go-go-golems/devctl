@@ -15,8 +15,6 @@ ShowPerDefault: true
 SectionType: GeneralTopic
 ---
 
-# devctl Plugin Authoring Guide (NDJSON Stdio Protocol v2)
-
 devctl plugins let you take all the “tribal knowledge” of starting a dev environment—ports, env vars, build steps, prerequisites, and how to launch services—and turn it into a small, versioned, testable program. A plugin is just an executable that speaks a tiny NDJSON protocol over stdin/stdout, so devctl can ask it to compute config, validate prerequisites, run build/prepare steps, and produce a launch plan that devctl supervises.
 
 This guide is a playbook, not just a spec. It explains the protocol, shows the mental model devctl uses when it talks to plugins, and gives you copy/paste examples (plus the patterns you’ll want once people actually rely on your plugin every day).
@@ -130,7 +128,7 @@ devctl plugins list
 devctl plan
 devctl up
 devctl status
-devctl logs --service app --follow
+devctl logs app --follow
 devctl down
 ```
 
@@ -511,9 +509,11 @@ Once `launch.plan` returns, devctl takes over. Here's what happens to your servi
 - devctl creates a new process group (`Setpgid: true`) for each service.
 - `cwd` is resolved relative to `repo_root` if not absolute.
 - `env` is merged with devctl's own environment.
-- Logs are written to timestamped files under `.devctl/logs/`:
-  - `{name}-{timestamp}.stdout.log`
-  - `{name}-{timestamp}.stderr.log`
+- Each attempt writes raw streams and structured records under
+  `.devctl/runs/<run-id>/`:
+  - `stdout.log`
+  - `stderr.log`
+  - `logs.jsonl`
 
 **Health checks:**
 - After all services start, devctl waits for each `health` check to pass.
@@ -525,10 +525,13 @@ Once `launch.plan` returns, devctl takes over. Here's what happens to your servi
 1. devctl sends SIGTERM to the process group.
 2. Waits up to 3 seconds for graceful exit.
 3. Sends SIGKILL if still alive.
-4. Removes `.devctl/state.json`.
+4. Records terminal state and preserves the completed run artifacts.
 
 **State file:**
-`.devctl/state.json` tracks PIDs, start times, log paths, and health config. devctl uses it for `status`, `logs`, and `down`. If state exists, a subsequent `devctl up` will prompt for restart (or use `--force`).
+`.devctl/state.json` is a versioned index of desired state and current/last run
+IDs. Per-run ownership, process identity, health, logs, and exits live under
+`.devctl/runs/<run-id>/`. A subsequent `devctl up` validates ownership before
+changing an existing environment.
 
 ## 7. Merge behavior, ordering, and strictness
 
@@ -748,7 +751,7 @@ devctl plugins list
 devctl plan
 devctl up
 devctl status
-devctl logs --service <name> --follow
+devctl logs <name> --follow
 devctl down
 ```
 
@@ -840,7 +843,7 @@ flowchart TD
   - good: `services.backend.url`
   - less good: `services.backend.start-command` (that belongs in `launch.plan`)
 - Keep service names stable:
-  - your service `name` in `launch.plan` is the identity for `devctl logs --service <name>`
+  - your service `name` in `launch.plan` is the identity for `devctl logs <name>`
   - don’t rename it casually
 - Don’t overload `env.*`:
   - use `env.*` for values you actually intend to export to processes

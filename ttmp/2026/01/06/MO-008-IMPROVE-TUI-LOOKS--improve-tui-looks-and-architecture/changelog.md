@@ -24,3 +24,8 @@ Completed Phases 4-6: Styled ServiceModel (process info box, exit info, stream t
 
 Close: per request (tasks not populated)
 
+
+## 2026-07-24
+
+Superseded by DEVCTL-OPERATOR-UX-001 for the operator TUI architecture and views.
+

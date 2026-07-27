@@ -15,8 +15,6 @@ ShowPerDefault: true
 SectionType: GeneralTopic
 ---
 
-# devctl Scripting Guide (Writing Practical Plugins)
-
 This guide is the "how do I actually ship this?" companion to the protocol reference. It focuses on practical patterns: how to structure a plugin, how to debug it when it breaks, and how to turn repo knowledge into a predictable `devctl up/status/logs/down` loop.
 
 **Prerequisites**: This guide assumes you've read the user guide (`devctl help user-guide`) and understand the basic devctl workflow.
@@ -246,7 +244,7 @@ A practical progression:
 3. Validate supervision and logs:
    - `devctl up`
    - `devctl status`
-   - `devctl logs --service <name> --follow`
+   - `devctl logs <name> --follow`
    - `devctl down`
 
 When debugging protocol issues, run with a higher log level:

@@ -2,168 +2,212 @@ package cmds
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
 	"time"
 
 	"github.com/go-go-golems/devctl/pkg/engine"
 	"github.com/go-go-golems/devctl/pkg/patch"
 	"github.com/go-go-golems/devctl/pkg/repository"
 	"github.com/go-go-golems/devctl/pkg/runtime"
+	glazedcmds "github.com/go-go-golems/glazed/pkg/cmds"
+	"github.com/go-go-golems/glazed/pkg/cmds/fields"
+	"github.com/go-go-golems/glazed/pkg/cmds/schema"
+	"github.com/go-go-golems/glazed/pkg/cmds/values"
+	"github.com/go-go-golems/glazed/pkg/middlewares"
+	"github.com/go-go-golems/glazed/pkg/types"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
 type phaseRunner struct {
-	opts rootOptions
-	repo *repository.Repository
-	pipe *engine.Pipeline
+	context RepoContext
+	repo    *repository.Repository
+	pipe    *engine.Pipeline
 }
 
-func withPhaseRunner(cmd *cobra.Command, fn func(context.Context, *phaseRunner, patch.Config) error) error {
-	opts, err := getRootOptions(cmd)
-	if err != nil {
-		return err
-	}
+type PhaseSettings struct {
+	Steps []string `glazed:"step"`
+}
 
-	meta, err := requestMetaFromRootOptions(opts)
+type PhaseCommand struct {
+	*glazedcmds.CommandDescription
+	kind string
+}
+
+var _ glazedcmds.GlazeCommand = (*PhaseCommand)(nil)
+
+func NewPhaseCommand(kind string) (*PhaseCommand, error) {
+	repoSection, err := getRepoLayer()
+	if err != nil {
+		return nil, err
+	}
+	short := map[string]string{
+		"build":    "Run the build phase (config.mutate + build.run)",
+		"prepare":  "Run the prepare phase (config.mutate + prepare.run)",
+		"validate": "Run the validation phase (config.mutate + validate.run)",
+	}[kind]
+	if short == "" {
+		return nil, errors.Errorf("unknown phase command %q", kind)
+	}
+	options := []glazedcmds.CommandDescriptionOption{
+		glazedcmds.WithShort(short),
+		glazedcmds.WithSections(repoSection),
+	}
+	if kind != "validate" {
+		options = append(options, glazedcmds.WithFlags(
+			fields.New("step", fields.TypeStringList, fields.WithHelp("Phase step name; repeatable")),
+		))
+	}
+	return &PhaseCommand{
+		CommandDescription: glazedcmds.NewCommandDescription(kind, options...),
+		kind:               kind,
+	}, nil
+}
+
+func (c *PhaseCommand) RunIntoGlazeProcessor(
+	ctx context.Context,
+	vals *values.Values,
+	processor middlewares.Processor,
+) error {
+	settings := PhaseSettings{}
+	if err := vals.DecodeSectionInto(schema.DefaultSlug, &settings); err != nil {
+		return errors.Wrap(err, "decode phase settings")
+	}
+	repositoryContext, err := RepoContextFromParsedLayers(vals)
 	if err != nil {
 		return err
 	}
-	repo, err := repository.Load(repository.Options{RepoRoot: opts.RepoRoot, ConfigPath: opts.Config, ProfileName: opts.Profile, Cwd: meta.Cwd, DryRun: opts.DryRun})
+	return withPhaseRunner(ctx, repositoryContext, func(
+		ctx context.Context,
+		runner *phaseRunner,
+		configuration patch.Config,
+	) error {
+		row := types.NewRow(types.MRP("config", configuration))
+		switch c.kind {
+		case "build":
+			result, err := runBuildPhase(ctx, runner, configuration, settings.Steps)
+			if err != nil {
+				return err
+			}
+			row.Set("build", result)
+		case "prepare":
+			result, err := runPreparePhase(ctx, runner, configuration, settings.Steps)
+			if err != nil {
+				return err
+			}
+			row.Set("prepare", result)
+		case "validate":
+			result, err := runValidatePhase(ctx, runner, configuration)
+			if err != nil {
+				return err
+			}
+			row.Set("validate", result)
+			if err := processor.AddRow(ctx, row); err != nil {
+				return err
+			}
+			if !result.Valid {
+				return errors.New("validation failed")
+			}
+			return nil
+		default:
+			return errors.Errorf("unsupported phase command %q", c.kind)
+		}
+		return processor.AddRow(ctx, row)
+	})
+}
+
+func withPhaseRunner(
+	ctx context.Context,
+	repositoryContext RepoContext,
+	fn func(context.Context, *phaseRunner, patch.Config) error,
+) error {
+	repo, err := repository.Load(repository.Options{
+		RepoRoot: repositoryContext.RepoRoot, ConfigPath: repositoryContext.ConfigPath,
+		ProfileName: repositoryContext.Profile, Cwd: repositoryContext.Cwd,
+		DryRun: repositoryContext.DryRun,
+	})
 	if err != nil {
 		return err
-	}
-	if !opts.Strict && repo.Config.Strictness == "error" {
-		opts.Strict = true
 	}
 	if len(repo.Specs) == 0 {
 		return errors.New("no plugins configured (add .devctl.yaml)")
 	}
-
+	strict := repositoryContext.Strict || repo.Config.Strictness == "error"
 	factory := runtime.NewFactory(runtime.FactoryOptions{
 		HandshakeTimeout: 2 * time.Second,
 		ShutdownTimeout:  3 * time.Second,
 	})
-	clients, err := repo.StartClients(cmd.Context(), factory)
+	clients, err := repo.StartClients(ctx, factory)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		closeCtx, cancel := context.WithTimeout(context.Background(), opts.Timeout)
+		closeContext, cancel := context.WithTimeout(context.Background(), repositoryContext.Timeout)
 		defer cancel()
-		_ = repository.CloseClients(closeCtx, clients)
+		_ = repository.CloseClients(closeContext, clients)
 	}()
-
-	p := &engine.Pipeline{
+	pipeline := &engine.Pipeline{
 		Clients: clients,
 		Opts: engine.Options{
-			Strict: opts.Strict,
-			DryRun: opts.DryRun,
+			Strict: strict, DryRun: repositoryContext.DryRun,
 		},
 	}
-
-	opCtx, cancel := context.WithTimeout(cmd.Context(), opts.Timeout)
-	conf, err := p.MutateConfig(opCtx, patch.Config{})
+	operationContext, cancel := context.WithTimeout(ctx, repositoryContext.Timeout)
+	configuration, err := pipeline.MutateConfig(operationContext, patch.Config{})
 	cancel()
 	if err != nil {
 		return err
 	}
-
-	return fn(cmd.Context(), &phaseRunner{opts: opts, repo: repo, pipe: p}, conf)
+	return fn(ctx, &phaseRunner{
+		context: repositoryContext, repo: repo, pipe: pipeline,
+	}, configuration)
 }
 
-func printIndentedJSON(w io.Writer, v any) error {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprintln(w, string(b))
-	return err
+func runBuildPhase(
+	ctx context.Context,
+	runner *phaseRunner,
+	configuration patch.Config,
+	steps []string,
+) (engine.BuildResult, error) {
+	operationContext, cancel := context.WithTimeout(ctx, runner.context.Timeout)
+	defer cancel()
+	return runner.pipe.Build(operationContext, configuration, steps)
+}
+
+func runPreparePhase(
+	ctx context.Context,
+	runner *phaseRunner,
+	configuration patch.Config,
+	steps []string,
+) (engine.PrepareResult, error) {
+	operationContext, cancel := context.WithTimeout(ctx, runner.context.Timeout)
+	defer cancel()
+	return runner.pipe.Prepare(operationContext, configuration, steps)
+}
+
+func runValidatePhase(
+	ctx context.Context,
+	runner *phaseRunner,
+	configuration patch.Config,
+) (engine.ValidateResult, error) {
+	operationContext, cancel := context.WithTimeout(ctx, runner.context.Timeout)
+	defer cancel()
+	return runner.pipe.Validate(operationContext, configuration)
+}
+
+func buildPhaseCommand(kind string) *cobra.Command {
+	command, err := NewPhaseCommand(kind)
+	cobra.CheckErr(err)
+	return buildGlazedCommand(command)
 }
 
 func newBuildCmd() *cobra.Command {
-	var steps []string
-
-	cmd := &cobra.Command{
-		Use:   "build",
-		Short: "Run the build phase (config.mutate + build.run)",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return withPhaseRunner(cmd, func(ctx context.Context, r *phaseRunner, conf patch.Config) error {
-				opCtx, cancel := context.WithTimeout(ctx, r.opts.Timeout)
-				br, err := r.pipe.Build(opCtx, conf, steps)
-				cancel()
-				if err != nil {
-					return err
-				}
-				return printIndentedJSON(cmd.OutOrStdout(), map[string]any{
-					"config": conf,
-					"build":  br,
-				})
-			})
-		},
-	}
-	cmd.Flags().StringSliceVar(&steps, "step", nil, "Build step name (repeatable)")
-	AddRepoFlags(cmd)
-	return cmd
+	return buildPhaseCommand("build")
 }
 
 func newPrepareCmd() *cobra.Command {
-	var steps []string
-
-	cmd := &cobra.Command{
-		Use:   "prepare",
-		Short: "Run the prepare phase (config.mutate + prepare.run)",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return withPhaseRunner(cmd, func(ctx context.Context, r *phaseRunner, conf patch.Config) error {
-				opCtx, cancel := context.WithTimeout(ctx, r.opts.Timeout)
-				pr, err := r.pipe.Prepare(opCtx, conf, steps)
-				cancel()
-				if err != nil {
-					return err
-				}
-				return printIndentedJSON(cmd.OutOrStdout(), map[string]any{
-					"config":  conf,
-					"prepare": pr,
-				})
-			})
-		},
-	}
-	cmd.Flags().StringSliceVar(&steps, "step", nil, "Prepare step name (repeatable)")
-	AddRepoFlags(cmd)
-	return cmd
+	return buildPhaseCommand("prepare")
 }
 
 func newValidateCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "validate",
-		Short: "Run the validation phase (config.mutate + validate.run)",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return withPhaseRunner(cmd, func(ctx context.Context, r *phaseRunner, conf patch.Config) error {
-				opCtx, cancel := context.WithTimeout(ctx, r.opts.Timeout)
-				vr, err := r.pipe.Validate(opCtx, conf)
-				cancel()
-				if err != nil {
-					return err
-				}
-
-				if err := printIndentedJSON(cmd.OutOrStdout(), map[string]any{
-					"config":   conf,
-					"validate": vr,
-				}); err != nil {
-					return err
-				}
-				if !vr.Valid {
-					return errors.New("validation failed")
-				}
-				return nil
-			})
-		},
-	}
-	AddRepoFlags(cmd)
-	return cmd
+	return buildPhaseCommand("validate")
 }

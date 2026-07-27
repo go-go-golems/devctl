@@ -1,179 +1,451 @@
 package cmds
 
 import (
-	"bufio"
 	"context"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
-	"github.com/go-go-golems/devctl/pkg/state"
+	"github.com/go-go-golems/devctl/pkg/operator"
+	"github.com/go-go-golems/devctl/pkg/runlog"
+	"github.com/go-go-golems/devctl/pkg/runstate"
+	glazedcmds "github.com/go-go-golems/glazed/pkg/cmds"
+	"github.com/go-go-golems/glazed/pkg/cmds/fields"
+	"github.com/go-go-golems/glazed/pkg/cmds/schema"
+	"github.com/go-go-golems/glazed/pkg/cmds/values"
+	"github.com/go-go-golems/glazed/pkg/middlewares"
+	glazedsettings "github.com/go-go-golems/glazed/pkg/settings"
+	"github.com/go-go-golems/glazed/pkg/types"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
-func newLogsCmd() *cobra.Command {
-	var service string
-	var stderr bool
-	var follow bool
-	var tail int
-
-	cmd := &cobra.Command{
-		Use:   "logs",
-		Short: "Show logs for a supervised service",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if service == "" {
-				return errors.New("--service is required")
-			}
-			opts, err := getRootOptions(cmd)
-			if err != nil {
-				return err
-			}
-			st, err := state.Load(opts.RepoRoot)
-			if err != nil {
-				return err
-			}
-			var logPath string
-			for _, s := range st.Services {
-				if s.Name == service {
-					if stderr {
-						logPath = s.StderrLog
-					} else {
-						logPath = s.StdoutLog
-					}
-					break
-				}
-			}
-			if logPath == "" {
-				return errors.Errorf("unknown service %q", service)
-			}
-
-			if follow {
-				if tail != 0 {
-					if err := writeTail(cmd.OutOrStdout(), logPath, tail); err != nil {
-						return err
-					}
-				}
-				ctx, cancel := context.WithCancel(cmd.Context())
-				defer cancel()
-				return followFile(ctx, logPath, cmd.OutOrStdout())
-			}
-			if tail == 0 {
-				b, err := os.ReadFile(logPath)
-				if err != nil {
-					return err
-				}
-				_, _ = fmt.Fprintln(cmd.OutOrStdout(), string(b))
-				return nil
-			}
-			return writeTail(cmd.OutOrStdout(), logPath, tail)
-		},
-	}
-
-	cmd.Flags().StringVar(&service, "service", "", "Service name")
-	cmd.Flags().BoolVar(&stderr, "stderr", false, "Show stderr log instead of stdout")
-	cmd.Flags().BoolVar(&follow, "follow", false, "Follow log output")
-	cmd.Flags().IntVar(&tail, "tail", 50, "Number of lines to show from the end (0 for all)")
-	AddRepoFlags(cmd)
-	return cmd
+type LogsCommand struct {
+	*glazedcmds.CommandDescription
 }
 
-func followFile(ctx context.Context, path string, w io.Writer) error {
-	f, err := os.Open(path)
+type LogsSettings struct {
+	Services   []string `glazed:"services"`
+	Follow     bool     `glazed:"follow"`
+	Tail       int      `glazed:"tail"`
+	Since      string   `glazed:"since"`
+	Until      string   `glazed:"until"`
+	Sources    []string `glazed:"source"`
+	Streams    []string `glazed:"stream"`
+	Levels     []string `glazed:"level"`
+	Contains   string   `glazed:"contains"`
+	RunIDs     []string `glazed:"run"`
+	Timestamps bool     `glazed:"timestamps"`
+	NoPrefix   bool     `glazed:"no-prefix"`
+	ANSI       string   `glazed:"ansi"`
+}
+
+var _ glazedcmds.GlazeCommand = (*LogsCommand)(nil)
+var _ glazedcmds.BareCommand = (*LogsCommand)(nil)
+
+func (c *LogsCommand) Run(ctx context.Context, vals *values.Values) error {
+	return c.RunIntoGlazeProcessor(ctx, vals, &humanLogsProcessor{writer: os.Stdout})
+}
+
+type humanLogsProcessor struct {
+	writer io.Writer
+}
+
+var _ middlewares.Processor = (*humanLogsProcessor)(nil)
+
+func (p *humanLogsProcessor) AddRow(_ context.Context, row types.Row) error {
+	timeValue, _ := row.Get("time")
+	service, _ := row.Get("service")
+	stream, _ := row.Get("stream")
+	text, _ := row.Get("text")
+	prefix, _ := row.Get("prefix")
+
+	parts := make([]string, 0, 4)
+	if timestamp, ok := timeValue.(time.Time); ok && !timestamp.IsZero() {
+		parts = append(parts, timestamp.Format("15:04:05.000"))
+	}
+	if fmt.Sprint(prefix) != "" {
+		parts = append(parts, fmt.Sprintf("%-10s %-7s", fmt.Sprint(service), fmt.Sprint(stream)))
+	}
+	parts = append(parts, fmt.Sprint(text))
+	_, err := fmt.Fprintln(p.writer, strings.Join(parts, " "))
+	return err
+}
+
+func (p *humanLogsProcessor) Close(context.Context) error {
+	return nil
+}
+
+func (c *LogsCommand) BuildGlazedProcessor(
+	vals *values.Values,
+	writer io.Writer,
+) (middlewares.Processor, bool, error) {
+	logValues, exists := vals.Get(schema.DefaultSlug)
+	if !exists {
+		return nil, false, errors.New("logs settings are unavailable")
+	}
+	follow, _ := logValues.GetField("follow")
+	outputValues, exists := vals.Get(glazedsettings.GlazedSlug)
+	if !exists {
+		return nil, false, errors.New("glazed output settings are unavailable")
+	}
+	output, _ := outputValues.GetField("output")
+	if follow != true || output != "json" {
+		return nil, false, nil
+	}
+	processor, err := newJSONLinesProcessor(outputValues, writer)
+	return processor, true, err
+}
+
+func (c *LogsCommand) PrepareGlazedValues(vals *values.Values) error {
+	logValues, exists := vals.Get(schema.DefaultSlug)
+	if !exists {
+		return errors.New("logs settings are unavailable")
+	}
+	followValue, exists := logValues.Fields.Get("follow")
+	if !exists || followValue.Value != true {
+		return nil
+	}
+	glazedValues, exists := vals.Get(glazedsettings.GlazedSlug)
+	if !exists {
+		return errors.New("glazed output settings are unavailable")
+	}
+	outputValue, exists := glazedValues.Fields.Get("output")
+	if !exists || outputValue.Value != "json" {
+		return nil
+	}
+	objectsValue, exists := glazedValues.Fields.Get("output-as-objects")
+	if !exists {
+		return errors.New("glazed JSON object output setting is unavailable")
+	}
+	objectsValue.Value = true
+	return nil
+}
+
+func NewLogsCommand() (*LogsCommand, error) {
+	repoSection, err := getRepoLayer()
+	if err != nil {
+		return nil, err
+	}
+	glazedSection, err := glazedsettings.NewGlazedSection()
+	if err != nil {
+		return nil, err
+	}
+	glazedSection.OutputSection.Definitions.Delete("stream")
+	return &LogsCommand{CommandDescription: glazedcmds.NewCommandDescription(
+		"logs",
+		glazedcmds.WithShort("Show or follow service logs"),
+		glazedcmds.WithArguments(
+			fields.New("services", fields.TypeStringList, fields.WithHelp("Service names; empty selects all")),
+		),
+		glazedcmds.WithFlags(
+			fields.New("follow", fields.TypeBool, fields.WithDefault(false), fields.WithShortFlag("f"), fields.WithHelp("Follow new records")),
+			fields.New("tail", fields.TypeInteger, fields.WithDefault(100), fields.WithShortFlag("n"), fields.WithHelp("Records per run; -1 means all, 0 means no history")),
+			fields.New("since", fields.TypeString, fields.WithDefault(""), fields.WithHelp("RFC3339 time or duration before now")),
+			fields.New("until", fields.TypeString, fields.WithDefault(""), fields.WithHelp("RFC3339 time or duration before now")),
+			fields.New("source", fields.TypeStringList, fields.WithHelp("Sources: service, pipeline, plugin, system")),
+			fields.New("stream", fields.TypeStringList, fields.WithHelp("Streams: stdout, stderr, event")),
+			fields.New("level", fields.TypeStringList, fields.WithHelp("Log levels")),
+			fields.New("contains", fields.TypeString, fields.WithDefault(""), fields.WithHelp("Text substring")),
+			fields.New("run", fields.TypeStringList, fields.WithHelp("Run IDs")),
+			fields.New("timestamps", fields.TypeBool, fields.WithDefault(true), fields.WithHelp("Include timestamps")),
+			fields.New("no-prefix", fields.TypeBool, fields.WithDefault(false), fields.WithHelp("Disable text prefixes")),
+			fields.New("ansi", fields.TypeString, fields.WithDefault("auto"), fields.WithHelp("ANSI policy: auto, always, never")),
+		),
+		glazedcmds.WithSections(repoSection, glazedSection),
+	)}, nil
+}
+
+func (c *LogsCommand) RunIntoGlazeProcessor(
+	ctx context.Context,
+	vals *values.Values,
+	processor middlewares.Processor,
+) error {
+	settings := LogsSettings{}
+	if err := vals.DecodeSectionInto(schema.DefaultSlug, &settings); err != nil {
+		return errors.Wrap(err, "decode logs settings")
+	}
+	if settings.Follow && settings.Until != "" {
+		return errors.New("E_USAGE: --follow and --until are mutually exclusive")
+	}
+	if settings.Tail < -1 {
+		return errors.New("E_USAGE: --tail must be -1 or greater")
+	}
+	if settings.ANSI != "auto" && settings.ANSI != "always" && settings.ANSI != "never" {
+		return errors.New("E_USAGE: --ansi must be auto, always, or never")
+	}
+	repositoryContext, err := RepoContextFromParsedLayers(vals)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = f.Close() }()
-
-	_, _ = f.Seek(0, io.SeekEnd)
-	r := bufio.NewReader(f)
-
-	for {
-		line, err := r.ReadString('\n')
-		if err == nil {
-			_, _ = w.Write([]byte(line))
-			continue
-		}
-		if errors.Is(err, io.EOF) {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-time.After(200 * time.Millisecond):
-				continue
-			}
-		}
-		return err
-	}
-}
-
-func writeTail(w io.Writer, path string, tail int) error {
-	lines, err := readTailLines(path, tail)
+	controller, err := newOperatorController(repositoryContext.RepoRoot)
 	if err != nil {
 		return err
 	}
-	for _, line := range lines {
-		_, _ = fmt.Fprintln(w, line)
+	runIDs, err := resolveLogRuns(ctx, controller, repositoryContext.RepoRoot, settings)
+	if err != nil {
+		return err
+	}
+	query, err := logQuery(settings, runIDs)
+	if err != nil {
+		return err
+	}
+	reader := controller.Logs()
+	if reader == nil {
+		return errors.New("E_LOG_CORRUPT: structured log reader is unavailable")
+	}
+
+	historyQuery := query
+	switch settings.Tail {
+	case -1:
+		historyQuery.Tail = 0
+	case 0:
+		historyQuery.Tail = 0
+	default:
+		historyQuery.Tail = settings.Tail
+	}
+	cursors := map[string]runlog.Cursor{}
+	if settings.Tail != 0 {
+		records, queryErr := reader.Query(ctx, historyQuery)
+		if err := addLogRecords(ctx, processor, records, settings); err != nil {
+			return err
+		}
+		for _, record := range records {
+			cursors[record.RunID] = runlog.Cursor{RunID: record.RunID, Sequence: record.Sequence}
+		}
+		if queryErr != nil {
+			var diagnostic *runlog.ReadError
+			if !stderrors.As(queryErr, &diagnostic) ||
+				diagnostic.Code != runlog.CodeLogTrailingPartial {
+				return queryErr
+			}
+		}
+	} else if settings.Follow {
+		records, queryErr := reader.Query(ctx, query)
+		if queryErr != nil {
+			var diagnostic *runlog.ReadError
+			if !stderrors.As(queryErr, &diagnostic) ||
+				diagnostic.Code != runlog.CodeLogTrailingPartial {
+				return queryErr
+			}
+		}
+		for _, record := range records {
+			cursors[record.RunID] = runlog.Cursor{RunID: record.RunID, Sequence: record.Sequence}
+		}
+	}
+	if !settings.Follow {
+		return nil
+	}
+	if len(runIDs) == 0 {
+		return nil
+	}
+	return reader.Follow(ctx, runlog.FollowRequest{
+		Query: query,
+		After: cursors,
+	}, processorLogSink{processor: processor, settings: settings})
+}
+
+type processorLogSink struct {
+	processor middlewares.Processor
+	settings  LogsSettings
+}
+
+var _ runlog.LogSink = processorLogSink{}
+
+func (s processorLogSink) Add(ctx context.Context, record runlog.LogRecord) error {
+	return s.processor.AddRow(ctx, logRow(record, s.settings))
+}
+
+func addLogRecords(
+	ctx context.Context,
+	processor middlewares.Processor,
+	records []runlog.LogRecord,
+	settings LogsSettings,
+) error {
+	for _, record := range records {
+		if err := processor.AddRow(ctx, logRow(record, settings)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func readTailLines(path string, tail int) ([]string, error) {
-	f, err := os.Open(path)
+func logRow(record runlog.LogRecord, settings LogsSettings) types.Row {
+	text := record.Text
+	if settings.ANSI == "never" {
+		text = stripANSI(text)
+	}
+	timestamp := any(nil)
+	if settings.Timestamps {
+		timestamp = record.Time
+	}
+	prefix := ""
+	if !settings.NoPrefix {
+		prefix = strings.TrimSpace(record.Service + " " + string(record.Stream))
+	}
+	return types.NewRow(
+		types.MRP("time", timestamp),
+		types.MRP("run_id", record.RunID),
+		types.MRP("sequence", record.Sequence),
+		types.MRP("source", string(record.Source)),
+		types.MRP("service", record.Service),
+		types.MRP("stream", string(record.Stream)),
+		types.MRP("level", record.Level),
+		types.MRP("prefix", prefix),
+		types.MRP("text", text),
+		types.MRP("partial", record.Partial),
+	)
+}
+
+func resolveLogRuns(
+	ctx context.Context,
+	controller operator.Controller,
+	repoRoot string,
+	settings LogsSettings,
+) ([]string, error) {
+	store, err := runstate.NewStore(repoRoot)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = f.Close() }()
-
-	if tail <= 0 {
-		b, err := io.ReadAll(f)
-		if err != nil {
-			return nil, err
+	if len(settings.RunIDs) > 0 {
+		runIDs := make([]string, 0, len(settings.RunIDs))
+		for _, runID := range settings.RunIDs {
+			run, loadErr := store.LoadRun(ctx, runID)
+			if loadErr != nil {
+				return nil, &operator.OperatorError{
+					Code:    operator.CodeServiceUnknown,
+					Message: "run is not present in environment state",
+					RunID:   runID,
+				}
+			}
+			if len(settings.Services) > 0 && !stringSelection(settings.Services)[run.Service] {
+				continue
+			}
+			runIDs = append(runIDs, runID)
 		}
-		text := string(b)
-		if text == "" {
-			return nil, nil
-		}
-		return splitLines(text), nil
+		return runIDs, nil
 	}
-
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	lines := make([]string, 0, tail)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if len(lines) < tail {
-			lines = append(lines, line)
-			continue
-		}
-		copy(lines, lines[1:])
-		lines[len(lines)-1] = line
-	}
-	if err := scanner.Err(); err != nil {
+	snapshot, err := controller.Snapshot(ctx, operator.SnapshotRequest{
+		RepoRoot: repoRoot, IncludeRuns: true,
+	})
+	if err != nil {
 		return nil, err
 	}
-	return lines, nil
+	if !snapshot.Exists {
+		if len(settings.Services) > 0 {
+			return nil, &operator.OperatorError{
+				Code:    operator.CodeServiceUnknown,
+				Message: "service is not present because no environment state exists",
+				Service: settings.Services[0],
+			}
+		}
+		return []string{}, nil
+	}
+	selected := stringSelection(settings.Services)
+	found := map[string]bool{}
+	runIDs := make([]string, 0, len(snapshot.Services))
+	for _, service := range snapshot.Services {
+		if len(selected) > 0 && !selected[service.Service] {
+			continue
+		}
+		found[service.Service] = true
+		if service.RunID != "" {
+			runIDs = append(runIDs, service.RunID)
+		}
+	}
+	for service := range selected {
+		if !found[service] {
+			return nil, &operator.OperatorError{
+				Code:    operator.CodeServiceUnknown,
+				Message: "service is not present in environment state",
+				Service: service,
+			}
+		}
+	}
+	return runIDs, nil
 }
 
-func splitLines(text string) []string {
-	var lines []string
-	start := 0
-	for i := 0; i < len(text); i++ {
-		if text[i] == '\n' {
-			line := text[start:i]
-			if len(line) > 0 && line[len(line)-1] == '\r' {
-				line = line[:len(line)-1]
+func logQuery(settings LogsSettings, runIDs []string) (runlog.Query, error) {
+	since, err := parseLogTime(settings.Since)
+	if err != nil {
+		return runlog.Query{}, errors.Wrap(err, "E_USAGE: parse --since")
+	}
+	until, err := parseLogTime(settings.Until)
+	if err != nil {
+		return runlog.Query{}, errors.Wrap(err, "E_USAGE: parse --until")
+	}
+	sources := make([]runlog.SourceKind, 0, len(settings.Sources))
+	for _, source := range settings.Sources {
+		switch runlog.SourceKind(source) {
+		case runlog.SourceService, runlog.SourcePipeline, runlog.SourcePlugin, runlog.SourceSystem:
+			sources = append(sources, runlog.SourceKind(source))
+		default:
+			return runlog.Query{}, errors.Errorf("E_USAGE: invalid log source %q", source)
+		}
+	}
+	streams := make([]runlog.StreamKind, 0, len(settings.Streams))
+	for _, stream := range settings.Streams {
+		switch runlog.StreamKind(stream) {
+		case runlog.StreamStdout, runlog.StreamStderr, runlog.StreamEvent:
+			streams = append(streams, runlog.StreamKind(stream))
+		default:
+			return runlog.Query{}, errors.Errorf("E_USAGE: invalid log stream %q", stream)
+		}
+	}
+	return runlog.Query{
+		RunIDs: runIDs, Services: settings.Services, Sources: sources,
+		Streams: streams, Levels: settings.Levels, Since: since, Until: until,
+		Contains: settings.Contains,
+	}, nil
+}
+
+func parseLogTime(value string) (*time.Time, error) {
+	if value == "" {
+		return nil, nil
+	}
+	if duration, err := time.ParseDuration(value); err == nil {
+		result := time.Now().UTC().Add(-duration)
+		return &result, nil
+	}
+	result, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func stripANSI(value string) string {
+	var result strings.Builder
+	result.Grow(len(value))
+	state := 0
+	for _, character := range value {
+		switch state {
+		case 0:
+			if character == '\x1b' {
+				state = 1
+			} else {
+				result.WriteRune(character)
 			}
-			lines = append(lines, line)
-			start = i + 1
+		case 1:
+			if character == '[' {
+				state = 2
+			} else {
+				state = 0
+			}
+		case 2:
+			if character >= '@' && character <= '~' {
+				state = 0
+			}
 		}
 	}
-	if start < len(text) {
-		line := text[start:]
-		if len(line) > 0 && line[len(line)-1] == '\r' {
-			line = line[:len(line)-1]
-		}
-		lines = append(lines, line)
-	}
-	return lines
+	return result.String()
+}
+
+func newLogsCmd() *cobra.Command {
+	command, err := NewLogsCommand()
+	cobra.CheckErr(err)
+	return buildDualGlazedCommand(command)
 }

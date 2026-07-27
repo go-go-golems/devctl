@@ -37,9 +37,9 @@ PATH="/tmp:$PATH" vhs screenshot-tui.tape
 
 Outputs:
 
-- `docs/screenshots/devctl-tui-dashboard.png`
-- `docs/screenshots/devctl-tui-pipeline.png`
-- `docs/screenshots/devctl-tui-plugins.png`
+- `docs/screenshots/devctl-tui-overview.png`
+- `docs/screenshots/devctl-tui-logs.png`
+- `docs/screenshots/devctl-tui-runs.png`
 
 ## VHS tape file
 
@@ -47,8 +47,8 @@ The tape file is at `vhs/screenshot-tui.tape`. It:
 
 1. Starts the TUI with `devctl tui --alt-screen=false`
 2. Presses `u` to start services
-3. Screenshots the dashboard view
-4. Tabs through to Pipeline and Plugins views, taking screenshots
+3. Screenshots Overview
+4. Opens Logs and Runs directly and takes screenshots
 5. Stops services with `d` and quits
 
 ## Setting up a demo repo

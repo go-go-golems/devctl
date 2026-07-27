@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/go-go-golems/devctl/pkg/protocol"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
 )
@@ -33,12 +34,13 @@ type Profile struct {
 }
 
 type Plugin struct {
-	ID       string            `yaml:"id"`
-	Path     string            `yaml:"path"`
-	Args     []string          `yaml:"args,omitempty"`
-	Priority int               `yaml:"priority,omitempty"`
-	WorkDir  string            `yaml:"workdir,omitempty"`
-	Env      map[string]string `yaml:"env,omitempty"`
+	ID       string                 `yaml:"id"`
+	Path     string                 `yaml:"path"`
+	Args     []string               `yaml:"args,omitempty"`
+	Priority int                    `yaml:"priority,omitempty"`
+	WorkDir  string                 `yaml:"workdir,omitempty"`
+	Env      map[string]string      `yaml:"env,omitempty"`
+	Commands []protocol.CommandSpec `yaml:"commands,omitempty"`
 }
 
 func DefaultPath(repoRoot string) string {
@@ -224,6 +226,7 @@ func clonePlugin(in Plugin) Plugin {
 	out := in
 	out.Args = cloneStringSlice(in.Args)
 	out.Env = cloneStringMap(in.Env)
+	out.Commands = append([]protocol.CommandSpec{}, in.Commands...)
 	return out
 }
 
@@ -265,6 +268,9 @@ func mergePlugin(base, override Plugin) Plugin {
 	}
 	if override.WorkDir != "" {
 		out.WorkDir = override.WorkDir
+	}
+	if len(override.Commands) > 0 {
+		out.Commands = append([]protocol.CommandSpec{}, override.Commands...)
 	}
 	out.Env = mergeStringMaps(out.Env, override.Env)
 	return out

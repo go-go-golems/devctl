@@ -40,7 +40,7 @@ Shows the basic CLI workflow:
 - `devctl plan` - see what would run
 - `devctl up` - start services
 - `devctl status` - check what's running
-- `devctl logs --service api` - view service logs
+- `devctl logs api` - view service logs
 - `devctl down` - stop everything
 
 Duration: ~30 seconds
@@ -53,8 +53,9 @@ Shows the interactive TUI:
 - Starting services with `u`
 - Navigating between services
 - Opening service logs
-- Toggling stdout/stderr
-- Switching between views (Dashboard, Events, Pipeline, Plugins)
+- Pausing and following structured logs
+- Switching between Overview, Logs, and Runs
+- Running a snapshot refresh from the command palette
 - Stopping services with `d`
 
 Duration: ~40 seconds
@@ -105,8 +106,6 @@ Edit the `.tape` files to:
 - Adjust window size with `Set Width` and `Set Height`
 - Change theme with `Set Theme` (try "GitHub Dark", "Tokyo Night", "Catppuccin Mocha")
 - Modify typing speed with `Type@<speed>ms`
-
-
 
 
 

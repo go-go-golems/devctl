@@ -1,0 +1,27 @@
+?   	github.com/go-go-golems/devctl	[no test files]
+?   	github.com/go-go-golems/devctl/cmd/devctl	[no test files]
+ok  	github.com/go-go-golems/devctl/cmd/devctl/cmds	(cached)
+?   	github.com/go-go-golems/devctl/cmd/devctl/cmds/dev	[no test files]
+?   	github.com/go-go-golems/devctl/cmd/devctl/cmds/dev/smoketest	[no test files]
+?   	github.com/go-go-golems/devctl/cmd/log-parse	[no test files]
+?   	github.com/go-go-golems/devctl/pkg	[no test files]
+ok  	github.com/go-go-golems/devctl/pkg/config	(cached)
+?   	github.com/go-go-golems/devctl/pkg/discovery	[no test files]
+?   	github.com/go-go-golems/devctl/pkg/doc	[no test files]
+ok  	github.com/go-go-golems/devctl/pkg/engine	(cached)
+ok  	github.com/go-go-golems/devctl/pkg/logjs	(cached)
+ok  	github.com/go-go-golems/devctl/pkg/patch	(cached)
+?   	github.com/go-go-golems/devctl/pkg/proc	[no test files]
+?   	github.com/go-go-golems/devctl/pkg/protocol	[no test files]
+ok  	github.com/go-go-golems/devctl/pkg/repository	(cached)
+ok  	github.com/go-go-golems/devctl/pkg/runtime	(cached)
+?   	github.com/go-go-golems/devctl/pkg/servicecontrol	[no test files]
+ok  	github.com/go-go-golems/devctl/pkg/state	(cached)
+ok  	github.com/go-go-golems/devctl/pkg/supervise	(cached)
+?   	github.com/go-go-golems/devctl/pkg/tui	[no test files]
+?   	github.com/go-go-golems/devctl/pkg/tui/models	[no test files]
+?   	github.com/go-go-golems/devctl/pkg/tui/styles	[no test files]
+?   	github.com/go-go-golems/devctl/pkg/tui/widgets	[no test files]
+?   	github.com/go-go-golems/devctl/testapps/cmd/crash-after	[no test files]
+?   	github.com/go-go-golems/devctl/testapps/cmd/http-echo	[no test files]
+?   	github.com/go-go-golems/devctl/testapps/cmd/log-spewer	[no test files]

@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-go-golems/devctl/pkg/runstate"
 	"github.com/pkg/errors"
 )
 
@@ -27,15 +28,20 @@ type State struct {
 }
 
 type ServiceRecord struct {
-	Name      string            `json:"name"`
-	PID       int               `json:"pid"`
-	Command   []string          `json:"command"`
-	Cwd       string            `json:"cwd"`
-	Env       map[string]string `json:"env,omitempty"`
-	StdoutLog string            `json:"stdout_log"`
-	StderrLog string            `json:"stderr_log"`
-	ExitInfo  string            `json:"exit_info,omitempty"`
-	StartedAt time.Time         `json:"started_at,omitempty"` // When the process was started
+	Name              string            `json:"name"`
+	PID               int               `json:"pid"`
+	RunID             string            `json:"run_id,omitempty"`
+	WrapperStartToken string            `json:"wrapper_start_token,omitempty"`
+	ChildPID          int               `json:"child_pid,omitempty"`
+	ChildStartToken   string            `json:"child_start_token,omitempty"`
+	ChildPGID         int               `json:"child_pgid,omitempty"`
+	Command           []string          `json:"command"`
+	Cwd               string            `json:"cwd"`
+	Env               map[string]string `json:"env,omitempty"`
+	StdoutLog         string            `json:"stdout_log"`
+	StderrLog         string            `json:"stderr_log"`
+	ExitInfo          string            `json:"exit_info,omitempty"`
+	StartedAt         time.Time         `json:"started_at,omitempty"` // When the process was started
 
 	// Health check configuration (if any)
 	HealthType    string `json:"health_type,omitempty"`    // "tcp"|"http"
@@ -89,16 +95,8 @@ func Save(repoRoot string, s *State) error {
 	if s == nil {
 		return errors.New("nil state")
 	}
-	dir := filepath.Dir(StatePath(repoRoot))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return errors.Wrap(err, "mkdir state dir")
-	}
-	b, err := json.MarshalIndent(s, "", "  ")
-	if err != nil {
-		return errors.Wrap(err, "marshal state")
-	}
-	if err := os.WriteFile(StatePath(repoRoot), b, 0o644); err != nil {
-		return errors.Wrap(err, "write state")
+	if err := runstate.WriteJSONAtomic(StatePath(repoRoot), s, 0o600); err != nil {
+		return errors.Wrap(err, "write state atomically")
 	}
 	return nil
 }

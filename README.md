@@ -248,7 +248,7 @@ devctl up
 devctl status
 
 # View logs
-devctl logs --service api --follow
+devctl logs api --follow
 
 # Stop everything
 devctl down
@@ -269,9 +269,9 @@ That's it! Your development environment is now codified and repeatable.
 | `devctl validate` | Run `config.mutate + validate.run`; exits non-zero when invalid |
 | `devctl up` | Start all selected services |
 | `devctl status` | Show running services |
-| `devctl logs --service NAME` | View service logs |
+| `devctl logs NAME` | View service logs |
 | `devctl restart NAME` | Restart one supervised service |
-| `devctl stop-service NAME` | Stop one supervised service |
+| `devctl down NAME` | Stop one supervised service |
 | `devctl start NAME` | Start one stopped/crashed tracked service |
 | `devctl profiles list` | List available profiles |
 | `devctl profiles active` | Show the resolved active profile |
@@ -287,18 +287,39 @@ devctl tui
 
 | Key | Action |
 |-----|--------|
-| `u` | Start environment |
-| `d` | Stop environment |
-| `l` | View logs for selected service |
-| `s` | Stop selected service in the service view |
-| `r` | Restart environment on the dashboard, or selected service in the service view |
-| `Tab` | Switch views (Dashboard, Events, Pipeline, Plugins) |
+| `1` / `2` / `3` | Open Overview, Logs, or Runs |
+| `u` / `d` / `r` | Confirm up, down, or restart for the selected scope |
+| `Enter` | Open logs for the selected service |
+| `p` / `f` / `w` | Pause, follow, or wrap in Logs |
+| `:` | Open the command palette |
+| `Tab` | Cycle Overview, Logs, and Runs |
 | `?` | Help |
 | `q` | Quit |
 
-<p align="center">
-  <img src="docs/screenshots/devctl-tui-pipeline.png" alt="Pipeline view" width="700">
-</p>
+The TUI reads typed durable state and structured run journals. It does not
+parse rendered CLI output, and its bounded log buffer strips terminal control
+sequences before display.
+
+### Dynamic top-level commands
+
+Plugins can publish commands that appear directly under `devctl`. This
+automatic injection is intentional: repository-specific workflows remain
+convenient while still using the plugin protocol.
+
+The catalog makes injection deterministic and inspectable:
+
+- built-in static commands always keep their names;
+- a dynamic name with multiple providers is recorded as a conflict instead of
+  selecting one arbitrarily;
+- `devctl plugins commands` lists validated, injectable commands;
+- `devctl plugins inspect PLUGIN` shows a provider's catalog entries;
+- `devctl plugins refresh` explicitly rebuilds the persistent catalog; and
+- `devctl plugins run PLUGIN COMMAND -- [ARGS...]` executes an explicit
+  provider when a top-level name is unavailable or ambiguous.
+
+Root help, typo handling, and shell completion use the validated catalog
+without starting every configured plugin. At execution time devctl starts only
+the selected provider and rejects stale catalog identity before dispatch.
 
 ### What Plugins Can Do
 
@@ -322,7 +343,7 @@ You only implement the phases you need. Most simple plugins implement `config.mu
 
 When you run `devctl up`, here's what actually happens:
 
-1. **Load plugins** — start each plugin process, wait for handshake
+1. **Load the selected catalog** — validate configuration and provider identity
 2. **config.mutate** — merge config patches from all plugins
 3. **build.run** — run named build steps (skipped with `--skip-build`)
 4. **prepare.run** — run named prepare steps (skipped with `--skip-prepare`)
@@ -355,7 +376,12 @@ devctl prepare --step pnpm-install --timeout 5m
 devctl validate
 ```
 
-Each standalone phase command first runs `config.mutate`, then runs the named phase and prints a JSON object containing the mutated `config` plus the phase result (`build`, `prepare`, or `validate`). For live progress, plugins should write human-readable progress to **stderr**. Plugin stdout must remain protocol NDJSON only.
+Each standalone phase command first runs `config.mutate`, then runs the named
+phase and emits a Glazed row containing the mutated `config` plus the phase
+result (`build`, `prepare`, or `validate`). The default renderer is
+human-readable; automation should request `--output json`. For live progress,
+plugins should write human-readable progress to **stderr**. Plugin stdout must
+remain protocol NDJSON only.
 
 **Shutdown**: `devctl down` sends SIGTERM to each service process group, waits up to 3s, then sends SIGKILL if needed. State is removed after stop.
 
@@ -462,17 +488,23 @@ devctl stores state and logs under `.devctl/` in your repo:
 
 ```
 .devctl/
-├── state.json              # Service PIDs, start times, health config
-└── logs/
-    ├── api-20060102-150405.stdout.log   # Service stdout
-    ├── api-20060102-150405.stderr.log   # Service stderr
-    ├── api-20060102-150405.ready        # Ready file (wrapper mode)
-    └── api-20060102-150405.exit.json    # Exit info (wrapper mode)
+├── state.json              # Versioned environment index
+└── runs/
+    └── <run-id>/
+        ├── run.json        # Durable typed service-attempt state
+        ├── owner.json      # Wrapper process identity
+        ├── ready.json      # Child identity and readiness handshake
+        ├── stdout.log      # Raw stdout
+        ├── stderr.log      # Raw stderr
+        ├── logs.jsonl      # Sequenced structured journal
+        └── exit.json       # Terminal result
 ```
 
-- **Logs**: Each service gets timestamped `stdout` and `stderr` files.
-- **State**: `state.json` tracks what's running. devctl uses it for `status`, `logs`, and `down`.
-- **Reset**: `rm -rf .devctl/` or `devctl down` to clean up.
+- **Logs**: Each service attempt has raw streams and a structured journal.
+- **State**: schema-v2 state tracks desired state and current/last run IDs.
+- **Retention**: `down` preserves completed run directories for diagnosis.
+- **Upgrade**: stop old environments with the old binary before upgrading;
+  see `devctl help v2-upgrade`.
 
 **Tip:** Add `.devctl/` to `.gitignore`.
 

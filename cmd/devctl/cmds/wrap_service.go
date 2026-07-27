@@ -1,18 +1,19 @@
 package cmds
 
 import (
+	"context"
 	stderrors "errors"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
+	"github.com/go-go-golems/devctl/pkg/runlog"
+	"github.com/go-go-golems/devctl/pkg/runstate"
 	"github.com/go-go-golems/devctl/pkg/state"
+	"github.com/go-go-golems/devctl/pkg/supervise"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -20,173 +21,276 @@ import (
 )
 
 func newWrapServiceCmd() *cobra.Command {
-	var serviceName string
-	var cwd string
-	var stdoutLog string
-	var stderrLog string
-	var exitInfoPath string
-	var readyFile string
-	var envPairs []string
-	var tailLines int
+	var requestPath string
 
 	cmd := &cobra.Command{
-		Use:    "__wrap-service -- [cmd args...]",
-		Short:  "Internal: supervise wrapper to record exit info",
+		Use:    "__wrap-service --request PATH",
+		Short:  "Internal: supervise wrapper to record ownership and exit info",
 		Hidden: true,
-		Args:   cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Args:   cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
 			zerolog.SetGlobalLevel(zerolog.Disabled)
 			log.Logger = zerolog.New(io.Discard)
 
-			if serviceName == "" {
-				return errors.New("missing --service")
-			}
-			if cwd == "" {
-				return errors.New("missing --cwd")
-			}
-			if stdoutLog == "" || stderrLog == "" {
-				return errors.New("missing --stdout-log or --stderr-log")
-			}
-			if exitInfoPath == "" {
-				return errors.New("missing --exit-info")
-			}
-
-			if err := os.MkdirAll(filepath.Dir(stdoutLog), 0o755); err != nil {
-				return errors.Wrap(err, "mkdir stdout dir")
-			}
-			if err := os.MkdirAll(filepath.Dir(stderrLog), 0o755); err != nil {
-				return errors.Wrap(err, "mkdir stderr dir")
-			}
-			if err := os.MkdirAll(filepath.Dir(exitInfoPath), 0o755); err != nil {
-				return errors.Wrap(err, "mkdir exit dir")
-			}
-
-			stdoutFile, err := os.OpenFile(stdoutLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+			request, err := supervise.LoadWrapperRequest(requestPath)
 			if err != nil {
-				return errors.Wrap(err, "open stdout log")
+				return err
 			}
-			defer func() { _ = stdoutFile.Close() }()
-
-			stderrFile, err := os.OpenFile(stderrLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-			if err != nil {
-				return errors.Wrap(err, "open stderr log")
+			if err := os.Remove(requestPath); err != nil {
+				return errors.Wrap(err, "remove consumed wrapper request")
 			}
-			defer func() { _ = stderrFile.Close() }()
-
-			startedAt := time.Now()
-
-			if err := syscall.Setpgid(0, 0); err != nil {
-				return errors.Wrap(err, "setpgid")
-			}
-
-			// #nosec G204 -- command comes from the supervised service spec.
-			child := exec.Command(args[0], args[1:]...)
-			child.Dir = cwd
-			child.Env = mergeEnv(os.Environ(), parseEnvPairs(envPairs))
-			child.Stdout = stdoutFile
-			child.Stderr = stderrFile
-
-			pgid := os.Getpid()
-			child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: pgid}
-
-			sigCh := make(chan os.Signal, 8)
-			signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
-			defer signal.Stop(sigCh)
-			go func() {
-				for s := range sigCh {
-					_ = syscall.Kill(-pgid, s.(syscall.Signal))
-				}
-			}()
-
-			if err := child.Start(); err != nil {
-				_ = state.WriteExitInfo(exitInfoPath, state.ExitInfo{
-					Service:    serviceName,
-					PID:        0,
-					StartedAt:  startedAt,
-					ExitedAt:   time.Now(),
-					Error:      errors.Wrap(err, "start").Error(),
-					StderrTail: nil,
-				})
-				return errors.Wrap(err, "start child")
-			}
-
-			if readyFile != "" {
-				_ = os.MkdirAll(filepath.Dir(readyFile), 0o755)
-				_ = os.WriteFile(readyFile, []byte(fmt.Sprintf("%d\n", child.Process.Pid)), 0o644)
-			}
-
-			waitErr := child.Wait()
-			exitedAt := time.Now()
-
-			exitInfo := state.ExitInfo{
-				Service:   serviceName,
-				PID:       child.Process.Pid,
-				StartedAt: startedAt,
-				ExitedAt:  exitedAt,
-			}
-
-			if waitErr != nil {
-				exitInfo.Error = waitErr.Error()
-				var ee *exec.ExitError
-				if stderrors.As(waitErr, &ee) {
-					if ws, ok := ee.Sys().(syscall.WaitStatus); ok {
-						if ws.Signaled() {
-							exitInfo.Signal = ws.Signal().String()
-						}
-						if ws.Exited() {
-							code := ws.ExitStatus()
-							exitInfo.ExitCode = &code
-						}
-					}
-				}
-			} else {
-				code := 0
-				exitInfo.ExitCode = &code
-			}
-
-			_ = stdoutFile.Sync()
-			_ = stderrFile.Sync()
-
-			if tailLines <= 0 {
-				tailLines = 25
-			}
-			if lines, err := state.TailLines(stderrLog, tailLines, 2<<20); err == nil {
-				exitInfo.StderrTail = lines
-			}
-
-			_ = state.WriteExitInfo(exitInfoPath, exitInfo)
-
-			if exitInfo.ExitCode != nil && *exitInfo.ExitCode != 0 {
-				return errors.New("wrapped service exited non-zero")
-			}
-			if exitInfo.Signal != "" {
-				return errors.New("wrapped service exited by signal")
-			}
-			return nil
+			return runWrappedService(request)
 		},
 	}
 
-	cmd.Flags().StringVar(&serviceName, "service", "", "Service name")
-	cmd.Flags().StringVar(&cwd, "cwd", "", "Working directory")
-	cmd.Flags().StringVar(&stdoutLog, "stdout-log", "", "Stdout log path")
-	cmd.Flags().StringVar(&stderrLog, "stderr-log", "", "Stderr log path")
-	cmd.Flags().StringVar(&exitInfoPath, "exit-info", "", "Exit info JSON path")
-	cmd.Flags().StringVar(&readyFile, "ready-file", "", "Write child PID to this file once started")
-	cmd.Flags().StringSliceVar(&envPairs, "env", nil, "Extra env (KEY=VAL), repeatable")
-	cmd.Flags().IntVar(&tailLines, "tail-lines", 25, "How many stderr lines to record on exit")
+	cmd.Flags().StringVar(&requestPath, "request", "", "Versioned wrapper request path")
+	_ = cmd.MarkFlagRequired("request")
 	return cmd
 }
 
-func parseEnvPairs(pairs []string) map[string]string {
-	out := map[string]string{}
-	for _, p := range pairs {
-		k, v, ok := strings.Cut(p, "=")
-		if !ok || k == "" {
-			continue
-		}
-		out[k] = v
+func runWrappedService(request *supervise.WrapperRequest) error {
+	if err := request.Validate(); err != nil {
+		return err
 	}
-	return out
+	if err := syscall.Setpgid(0, 0); err != nil {
+		return errors.Wrap(err, "isolate wrapper process group")
+	}
+
+	wrapperIdentity, err := runstate.ReadProcessIdentity(os.Getpid())
+	if err != nil {
+		return errors.Wrap(err, "read wrapper process identity")
+	}
+	owner := supervise.OwnerRecord{
+		Version:   supervise.HandshakeVersion,
+		RunID:     request.RunID,
+		Service:   request.Service,
+		Wrapper:   *wrapperIdentity,
+		WrittenAt: time.Now().UTC(),
+	}
+	if err := supervise.WriteOwnerRecord(request.OwnerPath(), owner); err != nil {
+		return err
+	}
+
+	stdoutFile, err := os.OpenFile(request.StdoutPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return recordWrapperSetupFailure(request, errors.Wrap(err, "open stdout log"))
+	}
+	defer func() { _ = stdoutFile.Close() }()
+
+	stderrFile, err := os.OpenFile(request.StderrPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return recordWrapperSetupFailure(request, errors.Wrap(err, "open stderr log"))
+	}
+	defer func() { _ = stderrFile.Close() }()
+
+	journalFile, err := os.OpenFile(request.JournalPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return recordWrapperSetupFailure(request, errors.Wrap(err, "open structured log journal"))
+	}
+	defer func() { _ = journalFile.Close() }()
+
+	startedAt := time.Now().UTC()
+	// #nosec G204 -- command comes from the validated repository service spec.
+	child := exec.Command(request.Command[0], request.Command[1:]...)
+	child.Dir = request.Cwd
+	child.Env = mergeEnv(os.Environ(), request.Environment)
+	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	stdoutPipe, err := child.StdoutPipe()
+	if err != nil {
+		return recordWrapperSetupFailure(request, errors.Wrap(err, "create child stdout pipe"))
+	}
+	stderrPipe, err := child.StderrPipe()
+	if err != nil {
+		return recordWrapperSetupFailure(request, errors.Wrap(err, "create child stderr pipe"))
+	}
+
+	signalChannel := make(chan os.Signal, 8)
+	signal.Notify(signalChannel, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+	signalDone := make(chan struct{})
+	defer func() {
+		signal.Stop(signalChannel)
+		close(signalDone)
+	}()
+
+	if err := child.Start(); err != nil {
+		startErr := errors.Wrap(err, "start child")
+		if recordErr := writeWrapperExit(request, state.ExitInfo{
+			Service:   request.Service,
+			StartedAt: startedAt,
+			ExitedAt:  time.Now().UTC(),
+			Error:     startErr.Error(),
+		}); recordErr != nil {
+			return errors.Wrapf(startErr, "also failed to write exit record: %v", recordErr)
+		}
+		return startErr
+	}
+	captureDone := make(chan error, 1)
+	go func() {
+		captureDone <- runlog.Capture(
+			context.Background(),
+			runlog.CaptureOptions{RunID: request.RunID, Service: request.Service},
+			journalFile,
+			runlog.CaptureStream{Kind: runlog.StreamStdout, Read: stdoutPipe, Raw: stdoutFile},
+			runlog.CaptureStream{Kind: runlog.StreamStderr, Read: stderrPipe, Raw: stderrFile},
+		)
+	}()
+
+	childPGID, err := syscall.Getpgid(child.Process.Pid)
+	if err != nil {
+		return terminateChildAfterHandshakeFailure(request, child, captureDone, startedAt, errors.Wrap(err, "read child process group"))
+	}
+	childIdentity, err := runstate.ReadProcessIdentity(child.Process.Pid)
+	if err != nil {
+		return terminateChildAfterHandshakeFailure(request, child, captureDone, startedAt, errors.Wrap(err, "read child process identity"))
+	}
+	if childPGID != child.Process.Pid {
+		return terminateChildAfterHandshakeFailure(
+			request,
+			child,
+			captureDone,
+			startedAt,
+			errors.Errorf("child process group %d does not match child PID %d", childPGID, child.Process.Pid),
+		)
+	}
+
+	go forwardWrapperSignals(signalDone, signalChannel, childPGID)
+
+	ready := supervise.ReadyRecord{
+		Version:   supervise.HandshakeVersion,
+		RunID:     request.RunID,
+		Service:   request.Service,
+		Wrapper:   *wrapperIdentity,
+		Child:     *childIdentity,
+		ChildPGID: childPGID,
+		WrittenAt: time.Now().UTC(),
+	}
+	if err := supervise.WriteReadyRecord(request.ReadyPath(), ready); err != nil {
+		return terminateChildAfterHandshakeFailure(request, child, captureDone, startedAt, err)
+	}
+
+	waitDone := make(chan error, 1)
+	go func() {
+		waitDone <- child.Wait()
+	}()
+	var waitErr error
+	var captureErr error
+	select {
+	case captureErr = <-captureDone:
+		if captureErr != nil {
+			_ = syscall.Kill(-child.Process.Pid, syscall.SIGKILL)
+		}
+		waitErr = <-waitDone
+	case waitErr = <-waitDone:
+		captureErr = <-captureDone
+	}
+	exitedAt := time.Now().UTC()
+	exitInfo := state.ExitInfo{
+		Service:   request.Service,
+		PID:       child.Process.Pid,
+		StartedAt: startedAt,
+		ExitedAt:  exitedAt,
+	}
+	if waitErr != nil {
+		exitInfo.Error = waitErr.Error()
+		var exitError *exec.ExitError
+		if stderrors.As(waitErr, &exitError) {
+			if waitStatus, ok := exitError.Sys().(syscall.WaitStatus); ok {
+				if waitStatus.Signaled() {
+					exitInfo.Signal = waitStatus.Signal().String()
+				}
+				if waitStatus.Exited() {
+					code := waitStatus.ExitStatus()
+					exitInfo.ExitCode = &code
+				}
+			}
+		}
+	} else {
+		code := 0
+		exitInfo.ExitCode = &code
+	}
+	if captureErr != nil {
+		if exitInfo.Error == "" {
+			exitInfo.Error = captureErr.Error()
+		} else {
+			exitInfo.Error = exitInfo.Error + "; log capture: " + captureErr.Error()
+		}
+	}
+
+	if lines, err := state.TailLines(request.StderrPath(), request.TailLines, 2<<20); err == nil {
+		exitInfo.StderrTail = lines
+	}
+	if err := writeWrapperExit(request, exitInfo); err != nil {
+		return err
+	}
+
+	if exitInfo.ExitCode != nil && *exitInfo.ExitCode != 0 {
+		return errors.New("wrapped service exited non-zero")
+	}
+	if exitInfo.Signal != "" {
+		return errors.New("wrapped service exited by signal")
+	}
+	return nil
+}
+
+func forwardWrapperSignals(done <-chan struct{}, signals <-chan os.Signal, childPGID int) {
+	for {
+		select {
+		case <-done:
+			return
+		case signalValue := <-signals:
+			signalNumber, ok := signalValue.(syscall.Signal)
+			if ok {
+				_ = syscall.Kill(-childPGID, signalNumber)
+			}
+		}
+	}
+}
+
+func recordWrapperSetupFailure(request *supervise.WrapperRequest, setupErr error) error {
+	recordErr := writeWrapperExit(request, state.ExitInfo{
+		Service:  request.Service,
+		ExitedAt: time.Now().UTC(),
+		Error:    setupErr.Error(),
+	})
+	if recordErr != nil {
+		return errors.Wrapf(setupErr, "also failed to write exit record: %v", recordErr)
+	}
+	return setupErr
+}
+
+func terminateChildAfterHandshakeFailure(
+	request *supervise.WrapperRequest,
+	child *exec.Cmd,
+	captureDone <-chan error,
+	startedAt time.Time,
+	handshakeErr error,
+) error {
+	if child.Process != nil {
+		_ = syscall.Kill(-child.Process.Pid, syscall.SIGKILL)
+		_ = child.Wait()
+	}
+	captureErr := <-captureDone
+	if captureErr != nil {
+		handshakeErr = errors.Wrapf(handshakeErr, "log capture also failed: %v", captureErr)
+	}
+	recordErr := writeWrapperExit(request, state.ExitInfo{
+		Service:   request.Service,
+		PID:       child.Process.Pid,
+		StartedAt: startedAt,
+		ExitedAt:  time.Now().UTC(),
+		Error:     handshakeErr.Error(),
+	})
+	if recordErr != nil {
+		return errors.Wrapf(handshakeErr, "also failed to write exit record: %v", recordErr)
+	}
+	return handshakeErr
+}
+
+func writeWrapperExit(request *supervise.WrapperRequest, info state.ExitInfo) error {
+	if err := state.WriteExitInfo(request.ExitPath(), info); err != nil {
+		return errors.Wrap(err, "write wrapper exit record")
+	}
+	return nil
 }
 
 func mergeEnv(base []string, extra map[string]string) []string {
@@ -194,8 +298,8 @@ func mergeEnv(base []string, extra map[string]string) []string {
 		return base
 	}
 	out := append([]string{}, base...)
-	for k, v := range extra {
-		out = append(out, k+"="+v)
+	for key, value := range extra {
+		out = append(out, key+"="+value)
 	}
 	return out
 }

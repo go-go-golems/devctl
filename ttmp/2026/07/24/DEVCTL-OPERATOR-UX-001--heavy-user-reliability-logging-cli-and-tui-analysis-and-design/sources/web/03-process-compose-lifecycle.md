@@ -1,0 +1,415 @@
+## Processes Lifetime
+
+## Start in Parallel
+
+```
+processes:
+  process1:
+   description: This process will sleep for 2 seconds
+    command: "sleep 2"
+  process2:
+   description: This process will sleep for 3 seconds
+    command: "sleep 3"
+```
+
+> ![💡](https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f4a1.svg ":bulb:") It's recommended to add a process description. It will be shown in the Process Info Dialog (`F3`) in the TUI.
+
+## Start Serially
+
+```
+processes:
+  process1:
+    command: "sleep 3"
+    depends_on:
+      process2:
+        condition: process_completed_successfully # or "process_completed" if you don't care about errors
+  process2:
+    command: "sleep 3"
+    depends_on:
+      process3:
+        condition: process_completed_successfully # or "process_completed" if you don't care about errors
+```
+
+## Multiple Replicas of a Process
+
+You can run multiple replicas of a process by adding `processes.process_name.replicas` parameter (default: 1)
+
+```
+processes:
+  process_name:
+    command: "sleep 2"
+    log_location: ./log_file.{PC_REPLICA_NUM}.log  # <- {PC_REPLICA_NUM} will be replaced with replica number. If more than one replica and PC_REPLICA_NUM is not specified, the replica number will be concatenated to the file end.
+    replicas: 2
+```
+
+When replicas are present (`processes.process_name.replicas > 1`), other processes can depend on the group (`process-name`) or specific replicas (`process-name-N` where `N` is a value between 0 and the number of `replicas` minus one).
+
+```
+processes:
+  consumer:
+    command: "/some/binary"
+    replicas: 2
+
+  # Older versions (<= v1.110.0) require the dependencies to be manually expanded
+  producer:
+    command: "/some/other/binary"
+    depends_on:
+      consumer-0:
+        condition: process_healthy
+      consumer-1:
+        condition: process_healthy
+```
+```
+processes:
+  consumer:
+    command: "/some/binary"
+    replicas: 2
+
+  # Newer versions (> v1.110.0) allow the group name to be used directly
+  producer:
+    command: "/some/other/binary"
+    depends_on:
+      consumer:
+        condition: process_healthy
+```
+```
+processes:
+  consumer:
+    command: "/some/binary"
+    replicas: 2
+
+  # Also we can set conditions for each instance in the group independently
+  producer:
+    command: "/some/other/binary"
+    depends_on:
+      # set the defaults for the group
+      consumer:
+        condition: process_healthy
+
+      # override a single instance
+      consumer-0:
+        condition: process_started
+```
+
+To scale a process on the fly CLI:
+
+```
+process-compose process scale process_name 3
+```
+
+To scale a process on the fly TUI: `F2` or Process Compose in client mode (`process-compose attach`).
+
+> ![💡](https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f4a1.svg ":bulb:") Starting multiple processes using the same port, will fail. Please use the injected `PC_REPLICA_NUM` environment variable to increment the used port number.
+
+## Specify a working directory
+
+```
+processes:
+  process1:
+    command: "ls -laF --color=always"
+    working_dir: "/path/to/your/working/directory"
+```
+
+Make sure that you have the proper access permissions to the specified `working_dir`. If not, the command will fail with a `permission denied` error. The process status in TUI will be `Error`.
+
+## Define process dependencies
+
+```
+processes:
+  process2:
+    depends_on:
+      process3:
+        condition: process_completed_successfully
+      process4:
+        condition: process_completed_successfully
+```
+
+> ![💡](https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f4a1.svg ":bulb:") You can visualize your process dependencies using the [Dependency Graph](https://f1bonacc1.github.io/process-compose/graph/).
+
+There are 5 condition types that can be used in process dependencies:
+
+- `process_completed` - is the type for waiting until a process has been completed (any exit code)
+- `process_completed_successfully` - is the type for waiting until a process has been completed successfully (exit code 0)
+- `process_healthy` - is the type for waiting until a process is healthy
+- `process_started` - is the type for waiting until a process has started (default)
+- `process_log_ready` - is the type for waiting until a process has printed a predefined log line. This requires the definition of `ready_log_line` in the dependent process.
+
+##### Process Log Ready Example
+
+In some situations a process's log output is a simple way to determine if it is ready or not. For example, we can wait for a 'ready' message in the process's logs as follows:
+
+```
+processes:
+  world:
+   command: "echo Connected"
+    depends_on:
+      hello:
+        condition: process_log_ready
+  hello:
+   command: |
+     echo 'Preparing...'
+      sleep 1
+      echo 'I am ready to accept connections now'
+    ready_log_line: "ready to accept connections" # equal to *.ready to accept connections.*\n regex
+```
+
+> ![💡](https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f4a1.svg ":bulb:") `ready_log_line` and readiness probe are incompatible and can't be used at the same time.
+
+## Run only specific processes
+
+For testing and debugging purposes, especially when your `process-compose.yaml` file contains many processes, you might want to specify only a subset of processes to run. For example:
+
+```
+#process-compose.yaml
+processes:
+  process1:
+    command: "echo 'Hi from Process1'"
+    depends_on:
+      process2:
+        condition: process_completed_successfully
+  process2:
+    command: "echo 'Hi from Process2'"
+  process3:
+    command: "echo 'Hi from Process3'"
+```
+```
+process-compose up # will run all the processes - equal to 'process-compose'
+
+#output:
+#Hi from Process3
+#Hi from Process2
+#Hi from Process1
+```
+```
+process-compose up process1 process3 # will run 'process1', 'process3' and all of their dependencies - 'process2'
+
+#output:
+#Hi from Process3
+#Hi from Process2
+#Hi from Process1
+```
+```
+process-compose up process1 process3 --no-deps # will run 'process1', 'process3' without any dependencies
+
+#output:
+#Hi from Process3
+#Hi from Process1
+```
+
+## Termination Parameters
+
+```
+processes:
+  nginx:
+    command: "docker run --rm --name nginx_test nginx"
+    shutdown:
+      command: "docker stop nginx_test"
+      timeout_seconds: 10 # default 10
+      signal: 15 # default 15, but only if the 'command' is not defined or empty
+      parent_only: no  # default no. If yes, only signal the running process instead of its whole process group
+```
+
+`shutdown` is optional and can be omitted. The default behavior in this case: `SIGTERM` is issued to the process group of the running process.
+
+In case only `shutdown.signal` is defined `[1..31]` the running process group will be terminated with its value.
+
+If `shutdown.parent_only` is yes, the signal is only sent to the running process and not to the whole process group.
+
+In case the `shutdown.command` is defined:
+
+1. The `shutdown.command` is executed with all the Environment Variables of the primary process
+2. Wait for `shutdown.timeout_seconds` for its completion (if not defined wait for 10 seconds)
+3. In case of timeout, the process group will receive the `SIGKILL` signal (irrespective of the `shutdown.parent_only` option).
+
+In case the `shutdown.timeout_seconds` is defined (without `shutdown.command`) and the process will fail to terminate within that time, the process group will receive the `SIGKILL` signal.
+
+### Stopping Interactive Processes With Keystrokes
+
+Some tty/console programs exit only on a keystroke (e.g. `q`) and ignore termination signals. For these, `shutdown.send_keys` writes the configured keys to the process's stdin to trigger a clean, key-based shutdown. It requires `is_interactive: true` (or `is_tty: true`).
+
+```
+processes:
+  viewer:
+    command: "less /var/log/syslog"
+    is_interactive: true
+    shutdown:
+      send_keys: "q"        # written to the process's stdin on stop
+      timeout_seconds: 10   # default 10
+```
+
+When `shutdown.send_keys` is defined (and `shutdown.command` is not):
+
+1. The interpreted keys are written to the running process's stdin.
+2. Wait for `shutdown.timeout_seconds` for the process to exit (if not defined wait for 10 seconds).
+3. In case of timeout, the process group will receive the `SIGKILL` signal.
+
+Control keys can be expressed with escape sequences: `\xHH` (hex, e.g. `\x03` for `Ctrl-C`), `\r`, `\n`, `\t`, `\e` (ESC), `\0` (NUL), `\\`, and the usual `\a \b \f \v`. No trailing newline is added, so add `\r` yourself if the program needs `Enter` to submit (e.g. `send_keys: 'q\r'`).
+
+> [!note] Note
+> Prefer **single-quoted** YAML values for escape sequences (`send_keys: '\x03'`). Double-quoted YAML scalars already process `\x..` escapes before process-compose sees them; single quotes pass the literal sequence through unchanged.
+
+If both `shutdown.command` and `shutdown.send_keys` are defined, `shutdown.command` takes precedence.
+
+## Successful Exit Codes
+
+By default only exit code `0` is considered a success; any other code marks the process as `Failed`. When `process-compose` terminates a process with a signal, the process exits with the UNIX convention `128 + signal` — for example `130` for `SIGINT` (signal 2) or `143` for `SIGTERM` (signal 15). Many runtimes (JVM/Quarkus, Node/Vite, signal-respecting Go binaries) follow this convention, so a clean signal-driven shutdown would otherwise be reported as a failure.
+
+`success_exit_codes` is a per-process allowlist of additional exit codes to treat as a success (modeled after systemd's `SuccessExitStatus`):
+
+```
+processes:
+  quarkus:
+    command: "./mvnw quarkus:dev"
+    success_exit_codes: [130] # 130 == 128 + SIGINT, treated as a clean exit
+    shutdown:
+      signal: 2 # SIGINT
+```
+
+A listed exit code is treated exactly like `0` everywhere:
+
+- The process shows as `Completed` (not `Failed`) in the TUI, `process list`, and the REST API readiness.
+- Restart policies do not see it as a failure — `on_failure` will not restart it and `exit_on_failure` will not trigger a project shutdown.
+- `depends_on` conditions of type `process_completed_successfully` are satisfied.
+- The project's own exit code is `0`.
+
+`0` is always a success and never needs to be listed. Codes must be in the range `0-255`.
+
+## Background (detached) Processes
+
+```
+processes:
+  nginx:
+    command: "docker run -d --rm --name nginx_test nginx" # note the '-d' for detached mode
+    is_daemon: true # this flag is required for background processes (default false)
+    launch_timeout_seconds: 2 # default 5s
+    shutdown:
+      command: "docker stop nginx_test"
+      timeout_seconds: 10 # default 10
+      signal: 15 # default 15, but only if command is not defined or empty
+```
+1. For processes that start services / daemons in the background, please use the `is_daemon` flag set to `true`.
+2. In case a process is daemon it will be considered running until stopped.
+3. Daemon processes can only be stopped with the `$PROCESSNAME.shutdown.command` as in the example above.
+4. If parent process (starter) won’t close `stdout` and `stderr` within specified `launch_timeout_seconds`, (default 5 seconds) process compose will stop waiting for its log completion and start waiting for process termination. (more details are [here](https://github.com/F1bonacc1/process-compose/issues/258#issuecomment-2439544894))
+
+## Foreground Processes
+
+```
+processes:
+  vim:
+    command: "vim process-compose.yaml"
+    is_foreground: true
+```
+
+Foreground processes are useful for cases when a full `tty` access is required (e.g. `vim`, `top`, `gdb -tui`)
+
+1. Foreground process have to be started manually (`F7`). They can be started multiple times.
+2. They are available in TUI mode only.
+3. To return to TUI, exit the foreground process.
+4. In [TUI Client](https://f1bonacc1.github.io/process-compose/client/#tui-client) mode, a local process will be started.
+
+## Disabled Processes
+
+Process execution can be disabled:
+
+```
+processes:
+  process_name:
+    command: "ls -R /"
+    disabled: true #default false
+```
+
+Even if disabled, the process is still listed in the TUI and the REST client, and can be started manually when needed.
+
+## Auto Restart on Exit
+
+```
+processes:
+  process2:
+    availability:
+      restart: on_failure # other options: "exit_on_failure", "always", "no" (default)
+      backoff_seconds: 2 # default: 1
+      max_restarts: 5 # default: 0 (unlimited)
+```
+
+## Terminate Process Compose on Failure
+
+There are cases when you might want `process-compose` to terminate immediately when one of the processes exits with a non `0` exit code. This can be useful when you would like to perform "pre-flight" validation checks on the environment.
+
+To achieve that, use `exit_on_failure` restart policy. If defined, `process-compose` will gracefully shut down all the other running processes and exit with the same exit code as the failed process.
+
+```
+processes:
+  sanitycheck:
+    command: "which go"
+    availability:
+      restart: "exit_on_failure"
+
+  other_proc:
+    command: "go test ./..."
+    depends_on:
+      sanitycheck:
+        condition: process_completed_successfully
+```
+
+## Terminate Process Compose once given process ends
+
+There are cases when you might want `process-compose` to terminate immediately when one of the processes exits (regardless of the exit code). For example when running tests that depend on other processes like databases etc. You might want the processes, on which the test process depends, to start first, then run the tests, and finally terminate all processes once the test process exits, reporting the code returned by the test process.
+
+To achieve that, set `availability.exit_on_end` to `true`, and `process-compose` will gracefully shut down all the other running processes and exit with the same exit code as the given process.
+
+```
+processes:
+  tests:
+    command: tests-run
+    availability:
+      # NOTE: \`restart: exit_on_failure\` is not needed since
+      # exit_on_end implies it.
+      exit_on_end: true
+    depends_on:
+      redis:
+        condition: process_healthy
+      postgres:
+        condition: process_healthy
+
+  redis:
+    command: redis-start
+    readiness_probe:
+      exec:
+        command: redis-health-check
+
+  postgres:
+    command: postgres-start
+    readiness_probe:
+      exec:
+        command: postgres-health-check
+```
+
+> ![💡](https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f4a1.svg ":bulb:") setting `restart: exit_on_failure` together with `exit_on_end: true` is not needed as the latter causes termination regardless of the exit code. However, it might be sometimes useful to `exit_on_end` with `restart: on_failure` and `max_restarts` in case you want the process to recover from failure and only cause termination on success.
+>
+> ![💡](https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f4a1.svg ":bulb:") `exit_on_end` can be set on more than one process, for example when running multiple tasks in parallel and wishing to terminate as soon as any one finished.
+
+## Terminate Process Compose once given process is skipped
+
+This can be achieved by setting `availability.exit_on_skipped` to `true`. If defined, `process-compose` will gracefully shut down all the other running processes and exit with exit-code `1`.
+
+Here's an example, where `process1` depends on `process2` and `process2` fails:
+
+```
+processes:
+  process1:
+    command: "echo 'Hi from Process1'"
+    depends_on:
+      process2:
+        condition: process_completed_successfully
+    availability:
+      # NOTE: \`restart: exit_on_failure\` is not needed since
+      # exit_on_skipped implies it.
+      exit_on_skipped: true
+  process2:
+    command: "echo 'Hi from Process2'; exit 1"
+  process3:
+    command: "while true; do echo 'Running...'; sleep 1; done"
+```
+
+Why can't the same be achieved with `exit_on_end` on `process2`? Yes, it can be, but in a case where `process1` depends on multiple processes, and failure of any of them should cause termination, `exit_on_skipped` can be used to avoid setting `exit_on_end` on all of them.

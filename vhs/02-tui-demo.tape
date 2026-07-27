@@ -37,22 +37,20 @@ Type "j"
 Sleep 1s
 
 # Open logs for the web service
-Type "l"
+Enter
 Sleep 3s
-
-# Toggle to stderr
-Tab
-Sleep 2s
-
-# Toggle back to stdout  
-Tab
-Sleep 1s
 
 # Toggle follow mode
 Type "f"
 Sleep 2s
 
-# Go back to dashboard
+# Pause and resume visible ingestion
+Type "p"
+Sleep 1s
+Type "p"
+Sleep 1s
+
+# Go back to Overview
 Escape
 Sleep 1s
 
@@ -60,20 +58,18 @@ Sleep 1s
 Type "k"
 Sleep 1s
 
-# Switch to Events view
-Tab
+# Switch directly to Runs
+Type "3"
 Sleep 3s
 
-# Switch to Pipeline view (shows last up operation)
-Tab
-Sleep 3s
+# Open the command palette and refresh the snapshot
+Type ":"
+Sleep 1s
+Enter
+Sleep 2s
 
-# Switch to Plugins view
-Tab
-Sleep 3s
-
-# Back to Dashboard
-Tab
+# Back to Overview
+Type "1"
 Sleep 2s
 
 # Stop services with confirmation

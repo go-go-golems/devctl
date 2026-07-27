@@ -1,0 +1,42 @@
+/home/manuel/code/wesen/go-go-golems/publish-vault/README.md:248:devctl logs --service backend
+/home/manuel/code/wesen/go-go-golems/publish-vault/README.md:249:devctl logs --service web
+/home/manuel/code/wesen/go-go-golems/scraper/README.md:80:devctl logs --service api --follow
+/home/manuel/code/wesen/go-go-golems/scraper/README.md:81:devctl logs --service web --follow
+/home/manuel/code/wesen/go-go-golems/scraper/Makefile:112:	devctl logs --service api --follow
+/home/manuel/code/wesen/go-go-golems/rag-evaluation-system/examples/xgoja/widget-site/devctl/widget-site.py:11:  devctl logs --service widget-site --stderr --follow
+/home/manuel/code/wesen/go-go-golems/rag-evaluation-system/examples/xgoja/widget-site/README.devctl.md:28:devctl logs --service widget-site --stderr --follow
+/home/manuel/code/wesen/go-go-golems/rag-evaluation-system/plugins/rag-eval.py:18:  devctl logs --service backend --follow
+/home/manuel/code/wesen/go-go-golems/rag-evaluation-system/plugins/rag-eval.py:19:  devctl logs --service web --follow
+/home/manuel/code/wesen/go-go-golems/researchctl/README.md:160:devctl logs --service backend --stderr --follow
+/home/manuel/code/wesen/go-go-golems/researchctl/README.md:162:devctl stop-service frontend # stop one service
+/home/manuel/code/wesen/go-go-golems/researchctl/README.md:163:devctl start frontend        # start a stopped/crashed service
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/07/ARTICLE - Devctl Trace Profiles - Pinocchio and CoinVault.md:451:devctl logs --service coinvault-api --follow
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Restart - Replanning Service Specs Without Persisting Secrets.md:32:> - `devctl start` and `devctl restart` re-run `config.mutate` and `launch.plan`, then start only the selected service.
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Restart - Replanning Service Specs Without Persisting Secrets.md:155:devctl stop-service api-server
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Restart - Replanning Service Specs Without Persisting Secrets.md:158:devctl start api-server
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Restart - Replanning Service Specs Without Persisting Secrets.md:165:`devctl start` and `devctl restart` run only the planning phases:
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Restart - Replanning Service Specs Without Persisting Secrets.md:182:    CLI[devctl start/restart service] --> LoadState[Load .devctl/state.json]
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Restart - Replanning Service Specs Without Persisting Secrets.md:266:That guard prevents duplicate starts. If the service is alive, `devctl start service` fails. If the user wants a new process, the correct command is `devctl restart service`, which stops the tracked process before starting the replacement.
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Restart - Replanning Service Specs Without Persisting Secrets.md:301:| `devctl stop-service name` | Stop one tracked service. | No | Stops one process group and sets PID to 0. |
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Restart - Replanning Service Specs Without Persisting Secrets.md:302:| `devctl start name` | Start one stopped or crashed tracked service. | `config.mutate + launch.plan` | Starts one process from fresh spec. |
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Restart - Replanning Service Specs Without Persisting Secrets.md:321:./devctl stop-service ticker --repo-root /tmp/devctl-test
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Restart - Replanning Service Specs Without Persisting Secrets.md:322:./devctl start ticker --repo-root /tmp/devctl-test
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Restart - Replanning Service Specs Without Persisting Secrets.md:363:| `/home/manuel/workspaces/2026-05-04/devctl-multiple-profiles/devctl/cmd/devctl/cmds/start_service.go` | Implements `devctl start <service>`. |
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Restart - Replanning Service Specs Without Persisting Secrets.md:365:| `/home/manuel/workspaces/2026-05-04/devctl-multiple-profiles/devctl/cmd/devctl/cmds/stop_service.go` | Implements `devctl stop-service <service>`. |
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Restart - Replanning Service Specs Without Persisting Secrets.md:393:- `devctl start` refuses to start a service whose tracked PID is still alive.
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Lifecycle Controls - Start Stop Restart and the Midstream Redesign.md:31:> - `devctl` gained individual service lifecycle commands: `devctl stop-service <name>`, `devctl start <name>`, and `devctl restart <name>`.
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Lifecycle Controls - Start Stop Restart and the Midstream Redesign.md:49:devctl stop-service worker
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Lifecycle Controls - Start Stop Restart and the Midstream Redesign.md:55:devctl start worker
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Lifecycle Controls - Start Stop Restart and the Midstream Redesign.md:108:The state file is the bridge between commands. `devctl up` exits after launching services; a later `devctl status`, `devctl stop-service`, `devctl start`, or `devctl restart` is a new process. There is no resident devctl daemon that remembers the launch plan in memory. The state file is therefore the durable coordination point between CLI invocations.
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Lifecycle Controls - Start Stop Restart and the Midstream Redesign.md:115:devctl stop-service <name>
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Lifecycle Controls - Start Stop Restart and the Midstream Redesign.md:163:devctl start <name>
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Lifecycle Controls - Start Stop Restart and the Midstream Redesign.md:208:devctl stop-service ticker
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Lifecycle Controls - Start Stop Restart and the Midstream Redesign.md:210:devctl start ticker
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Lifecycle Controls - Start Stop Restart and the Midstream Redesign.md:237:devctl start api
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Lifecycle Controls - Start Stop Restart and the Midstream Redesign.md:279:devctl start <name>
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Lifecycle Controls - Start Stop Restart and the Midstream Redesign.md:469:devctl stop-service <service>
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/05/ARTICLE - devctl Service Lifecycle Controls - Start Stop Restart and the Midstream Redesign.md:470:devctl start <service>
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/25/ARTICLE - SSR Sidecar for Go-Hosted React SPAs - A Deep Dive into docsctl Server-Side Rendering.md:468:devctl logs --service glazed.ssr-sidecar --stderr --follow  # Tail SSR logs
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/25/ARTICLE - SSR Sidecar for Go-Hosted React SPAs - A Deep Dive into docsctl Server-Side Rendering.md:509:**Diagnosis:** Check `devctl logs --service glazed.ssr-sidecar --stderr`. The crash reason is logged there.
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/22/ARTICLE - Readwise Viewer Bleve Search Port.md:105:devctl logs --service readwise-viewer --follow
+/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/05/22/ARTICLE - Readwise Viewer Bleve Search Port.md:605:devctl logs --service readwise-viewer --follow

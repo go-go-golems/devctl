@@ -1,0 +1,39 @@
+## tilt logs
+
+Get logs from a running Tilt instance (optionally filtered for the specified resources)
+
+### Synopsis
+
+Get logs from a running Tilt instance (optionally filtered for the specified resources).
+
+By default, looks for a running Tilt instance on localhost:10350 (this is configurable with the –port and –host flags).
+
+```
+tilt logs [resource1, resource2...]
+```
+
+### Options
+
+```
+-f, --follow          If true, stream the requested logs; otherwise, print the requested logs at the current moment in time, then exit.
+-h, --help            help for logs
+    --host string     Host for the Tilt HTTP server. Only necessary if you started Tilt with --host. Overrides TILT_HOST env variable. (default "localhost")
+    --json            Output logs in JSON Lines format
+    --level string    Specify a log level. One of "warn", "error"
+    --port int        Port for the Tilt HTTP server. Only necessary if you started Tilt with --port. Overrides TILT_PORT env variable. (default 10350)
+    --since string    Only show logs since duration ago (e.g., "5m", "1h", "30s")
+    --source string   Specify a log source. One of "all", "build", "runtime" (default "all")
+    --tail int        Number of lines to show from the end of logs (-1 for all) (default -1)
+```
+
+### Options inherited from parent commands
+
+```
+-d, --debug      Enable debug logging
+    --klog int   Enable Kubernetes API logging. Uses klog v-levels (0-4 are debug logs, 5-9 are tracing logs)
+-v, --verbose    Enable verbose logging
+```
+
+### SEE ALSO
+
+- [tilt](https://docs.tilt.dev/cli/tilt.html) - Multi-service development with no stress

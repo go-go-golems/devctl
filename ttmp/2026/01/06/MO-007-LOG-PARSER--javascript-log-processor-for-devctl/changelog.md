@@ -117,3 +117,8 @@ Created comprehensive log-parse developer guide covering module API, helper func
 
 Close: per request (devctl logs integration remaining)
 
+
+## 2026-07-24
+
+Superseded in part by DEVCTL-OPERATOR-UX-001 for devctl log ingestion and display; the standalone parser history remains authoritative.
+

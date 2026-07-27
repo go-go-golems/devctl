@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/go-go-golems/devctl/pkg/engine"
+	"github.com/go-go-golems/devctl/pkg/runstate"
 	"github.com/go-go-golems/devctl/pkg/state"
 	"github.com/stretchr/testify/require"
 )
@@ -188,4 +191,79 @@ func TestSupervisor_PostReadyCrashIsObservable(t *testing.T) {
 	stopCtx, stopCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer stopCancel()
 	_ = s.Stop(stopCtx, st)
+}
+
+func TestCompleteHealthWithoutCheckRejectsExitedRun(t *testing.T) {
+	repoRoot := t.TempDir()
+	store, err := runstate.NewStore(repoRoot)
+	require.NoError(t, err)
+
+	runID, err := runstate.NewRunID()
+	require.NoError(t, err)
+	require.NoError(t, store.CreateRun(context.Background(), runstate.RunRecord{
+		RunID:     runID,
+		Service:   "fast-exit",
+		Phase:     runstate.RunStarting,
+		Spec:      runstate.ServiceSpecRecord{Name: "fast-exit", Command: []string{"false"}},
+		Wrapper:   &runstate.ProcessIdentity{PID: 999_998, StartToken: "gone"},
+		Child:     &runstate.ProcessIdentity{PID: 999_999, StartToken: "gone"},
+		ChildPGID: 999_999,
+	}))
+	runDir, err := store.RunDir(runID)
+	require.NoError(t, err)
+	exitCode := 1
+	require.NoError(t, state.WriteExitInfo(filepath.Join(runDir, ExitRecordName), state.ExitInfo{
+		Service:  "fast-exit",
+		ExitedAt: time.Now().UTC(),
+		ExitCode: &exitCode,
+	}))
+
+	s := New(Options{RepoRoot: repoRoot})
+	err = s.CompleteHealth(context.Background(), engine.ServiceSpec{Name: "fast-exit"}, runID)
+	require.ErrorContains(t, err, "exited before readiness")
+
+	run, err := store.LoadRun(context.Background(), runID)
+	require.NoError(t, err)
+	require.Equal(t, runstate.RunExited, run.Phase)
+	require.NotNil(t, run.Exit)
+	require.Equal(t, exitCode, *run.Exit.ExitCode)
+	require.Equal(t, "E_PROCESS_EXIT", run.LastError.Code)
+}
+
+func TestTerminateOwnedProcessGroupsKillsTermResistantChildGroup(t *testing.T) {
+	wrapper := exec.Command("sh", "-c", "sleep 30")
+	wrapper.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	require.NoError(t, wrapper.Start())
+
+	child := exec.Command("sh", "-c", "trap '' TERM; while :; do sleep 1; done")
+	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	require.NoError(t, child.Start())
+
+	wrapperDone := make(chan error, 1)
+	childDone := make(chan error, 1)
+	go func() { wrapperDone <- wrapper.Wait() }()
+	go func() { childDone <- child.Wait() }()
+	t.Cleanup(func() {
+		_ = wrapper.Process.Kill()
+		_ = child.Process.Kill()
+	})
+
+	err := terminateOwnedProcessGroups(
+		context.Background(),
+		wrapper.Process.Pid,
+		child.Process.Pid,
+		100*time.Millisecond,
+	)
+	require.NoError(t, err)
+
+	select {
+	case <-wrapperDone:
+	case <-time.After(time.Second):
+		t.Fatal("wrapper process was not reaped")
+	}
+	select {
+	case <-childDone:
+	case <-time.After(time.Second):
+		t.Fatal("child process group survived SIGKILL escalation")
+	}
 }

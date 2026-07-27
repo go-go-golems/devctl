@@ -28,3 +28,8 @@ Step 2: bind Bubbletea program lifecycle to the TUI context (commit 1cfee17)
 
 Close: per request (validation pending)
 
+
+## 2026-07-24
+
+Superseded by DEVCTL-OPERATOR-UX-001 for TUI cancellation, single-flight follow, and controller lifetime ownership.
+

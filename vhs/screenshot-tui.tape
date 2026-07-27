@@ -26,33 +26,32 @@ Sleep 3s
 Type "u"
 Sleep 5s
 
-# Screenshot the dashboard view
-Screenshot ../docs/screenshots/devctl-tui-dashboard.png
+# Screenshot the Overview view
+Screenshot ../docs/screenshots/devctl-tui-overview.png
 Sleep 500ms
 
-# Switch to Pipeline view (Tab twice)
-Type "	"
-Sleep 500ms
-Type "	"
+# Switch to Logs
+Type "2"
 Sleep 1s
 
-# Screenshot the pipeline view
-Screenshot ../docs/screenshots/devctl-tui-pipeline.png
+# Screenshot Logs
+Screenshot ../docs/screenshots/devctl-tui-logs.png
 Sleep 500ms
 
-# Switch to Plugins view (Tab once more)
-Type "	"
+# Switch to Runs
+Type "3"
 Sleep 1s
 
-# Screenshot the plugins view
-Screenshot ../docs/screenshots/devctl-tui-plugins.png
+# Screenshot Runs
+Screenshot ../docs/screenshots/devctl-tui-runs.png
 Sleep 500ms
 
 # Clean up - stop services and quit
+Type "1"
+Sleep 500ms
 Type "d"
 Sleep 500ms
 Type "y"
 Sleep 2s
 Type "q"
 Sleep 500ms
-

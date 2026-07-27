@@ -1,0 +1,18 @@
+golangci-lint run -v
+level=info msg="golangci-lint has version 2.4.0 built with go1.26.1 from (unknown, modified: ?, mod sum: \"h1:qz6O6vr7kVzXJqyvHjHSz5fA3D+PM8v96QU5gxZCNWM=\") on (unknown)"
+level=info msg="[config_reader] Config search paths: [./ /home/manuel/workspaces/2026-07-07/prod-tiny-idp/devctl /home/manuel/workspaces/2026-07-07/prod-tiny-idp /home/manuel/workspaces/2026-07-07 /home/manuel/workspaces /home/manuel /home /]"
+level=info msg="[config_reader] Used config file .golangci.yml"
+level=info msg="[config_reader] Module name \"github.com/go-go-golems/devctl\""
+level=info msg="maxprocs: Leaving GOMAXPROCS=8: CPU quota undefined"
+level=info msg="[goenv] Read go env for 8.606279ms: map[string]string{\"GOCACHE\":\"/home/manuel/.cache/go-build\", \"GOROOT\":\"/home/manuel/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.5.linux-amd64\"}"
+level=info msg="[lintersdb] Active 9 linters: [errcheck exhaustive gofmt govet ineffassign nonamedreturns predeclared staticcheck unused]"
+level=info msg="[loader] Go packages loading at mode 8767 (compiled_files|deps|exports_file|name|files|imports|types_sizes) took 253.993374ms"
+level=info msg="[runner/filename_unadjuster] Pre-built 0 adjustments in 9.499606ms"
+level=info msg="[linters_context/goanalysis] analyzers took 0s with no stages"
+level=info msg="[runner/exclusion_rules] Skipped 0 issues by rules: [Text: \"SA1019: cli.CreateProcessorLegacy\", Linters: \"staticcheck\"]"
+level=info msg="[runner] processing took 11.576µs with stages: exclusion_rules: 8.104µs, max_same_issues: 904ns, filename_unadjuster: 481ns, nolint_filter: 261ns, exclusion_paths: 204ns, path_absoluter: 188ns, max_from_linter: 186ns, severity-rules: 160ns, sort_results: 154ns, path_relativity: 152ns, diff: 149ns, source_code: 144ns, path_prettifier: 85ns, fixer: 68ns, generated_file_filter: 59ns, path_shortener: 57ns, invalid_issue: 56ns, cgo: 55ns, max_per_file_from_linter: 55ns, uniq_by_line: 54ns"
+level=info msg="[runner] linters took 89.629133ms with stages: goanalysis_metalinter: 89.58154ms"
+0 issues.
+level=info msg="File cache stats: 0 entries of total size 0B"
+level=info msg="Memory: 5 samples, avg is 53.5MB, max is 83.5MB"
+level=info msg="Execution took 362.229638ms"

@@ -3,9 +3,9 @@ package state
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"time"
 
+	"github.com/go-go-golems/devctl/pkg/runstate"
 	"github.com/pkg/errors"
 )
 
@@ -27,15 +27,8 @@ func WriteExitInfo(path string, info ExitInfo) error {
 	if path == "" {
 		return errors.New("missing path")
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return errors.Wrap(err, "mkdir exit info dir")
-	}
-	b, err := json.MarshalIndent(info, "", "  ")
-	if err != nil {
-		return errors.Wrap(err, "marshal exit info")
-	}
-	if err := os.WriteFile(path, b, 0o644); err != nil {
-		return errors.Wrap(err, "write exit info")
+	if err := runstate.WriteJSONAtomic(path, info, 0o600); err != nil {
+		return errors.Wrap(err, "write exit info atomically")
 	}
 	return nil
 }

@@ -1,0 +1,13 @@
+devctl  profile=dev  environment=known  services 2  running 1  unhealthy 0
+[1] Overview   [2] Logs   [3] Runs   [:] Commands
+────────────────────────────────────────────
+╭────────────────────────────────────────╮
+│ Overview                               │
+│   NAME          STATE       HEALTH     │
+│ > api           ready       -          │
+│   worker        failed      -          │
+│                                        │
+│ Selected api ready pid:- h:-           │
+╰────────────────────────────────────────╯
+[enter] logs  [u/d/r] lifecycle  [j/k] select
+No active operation

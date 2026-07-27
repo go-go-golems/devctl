@@ -2,133 +2,63 @@ package cmds
 
 import (
 	"context"
-	stderrors "errors"
 	"io"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/go-go-golems/devctl/pkg/tui"
-	"github.com/go-go-golems/devctl/pkg/tui/models"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"golang.org/x/sync/errgroup"
 )
 
 func newTuiCmd() *cobra.Command {
 	var refresh time.Duration
 	var altScreen bool
 	var debugLogs bool
-
-	cmd := &cobra.Command{
+	command := &cobra.Command{
 		Use:   "tui",
 		Short: "Interactive terminal UI for devctl",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			opts, err := getRootOptions(cmd)
+		RunE: func(command *cobra.Command, _ []string) error {
+			options, err := getRootOptions(command)
 			if err != nil {
 				return err
 			}
-
 			if !debugLogs {
 				zerolog.SetGlobalLevel(zerolog.Disabled)
 				log.Logger = zerolog.New(io.Discard)
 			}
-
-			ctx, cancel := context.WithCancel(cmd.Context())
-			defer cancel()
-
-			bus, err := tui.NewInMemoryBus()
+			controller, err := newOperatorController(options.RepoRoot)
 			if err != nil {
 				return err
 			}
-
-			tui.RegisterDomainToUITransformer(bus)
-
-			tui.RegisterUIActionRunner(ctx, bus, tui.RootOptions{
-				RepoRoot: opts.RepoRoot,
-				Config:   opts.Config,
-				Profile:  opts.Profile,
-				Strict:   opts.Strict,
-				DryRun:   opts.DryRun,
-				Timeout:  opts.Timeout,
-			})
-			tui.RegisterUIStreamRunner(ctx, bus, tui.RootOptions{
-				RepoRoot: opts.RepoRoot,
-				Config:   opts.Config,
-				Profile:  opts.Profile,
-				Strict:   opts.Strict,
-				DryRun:   opts.DryRun,
-				Timeout:  opts.Timeout,
-			})
-
-			watcher := &tui.StateWatcher{
-				RepoRoot: opts.RepoRoot,
-				Profile:  opts.Profile,
-				Interval: refresh,
-				Pub:      bus.Publisher,
-			}
-
-			model := models.NewRootModel(models.RootModelOptions{
-				PublishAction: func(req tui.ActionRequest) error {
-					return tui.PublishAction(bus.Publisher, req)
-				},
-				PublishStreamStart: func(req tui.StreamStartRequest) error {
-					return tui.PublishStreamStart(bus.Publisher, req)
-				},
-				PublishStreamStop: func(req tui.StreamStopRequest) error {
-					return tui.PublishStreamStop(bus.Publisher, req)
-				},
-				PublishIntrospectionRefresh: func() error {
-					watcher.RequestIntrospection()
-					return nil
-				},
+			ctx, cancel := context.WithCancel(command.Context())
+			defer cancel()
+			model := tui.NewModel(tui.Options{
+				Context: ctx, Controller: controller,
+				RepoRoot: options.RepoRoot, ConfigPath: options.Config,
+				Profile: options.Profile, Cwd: options.RepoRoot,
+				Strict: options.Strict, DryRun: options.DryRun,
+				Timeout: options.Timeout, Refresh: refresh,
 			})
 			programOptions := []tea.ProgramOption{
-				tea.WithInput(cmd.InOrStdin()),
-				tea.WithOutput(cmd.OutOrStdout()),
+				tea.WithInput(command.InOrStdin()),
+				tea.WithOutput(command.OutOrStdout()),
 				tea.WithContext(ctx),
 			}
 			if altScreen {
 				programOptions = append(programOptions, tea.WithAltScreen())
 			}
-			program := tea.NewProgram(model, programOptions...)
-			tui.RegisterUIForwarder(bus, program)
-
-			eg, egCtx := errgroup.WithContext(ctx)
-			eg.Go(func() error {
-				err := bus.Run(egCtx)
-				if stderrors.Is(err, context.Canceled) {
-					return nil
-				}
-				return err
-			})
-			eg.Go(func() error {
-				err := watcher.Run(egCtx)
-				if stderrors.Is(err, context.Canceled) {
-					return nil
-				}
-				return err
-			})
-			eg.Go(func() error {
-				_, err := program.Run()
-				cancel()
-				if stderrors.Is(err, context.Canceled) {
-					return nil
-				}
-				return err
-			})
-
-			if err := eg.Wait(); err != nil {
+			if _, err := tea.NewProgram(model, programOptions...).Run(); err != nil {
 				return errors.Wrap(err, "tui")
 			}
 			return nil
 		},
 	}
-
-	cmd.Flags().DurationVar(&refresh, "refresh", 1*time.Second, "Refresh interval for state polling")
-	cmd.Flags().BoolVar(&altScreen, "alt-screen", true, "Use the terminal alternate screen buffer")
-	cmd.Flags().BoolVar(&debugLogs, "debug-logs", false, "Allow zerolog output to stdout/stderr while the TUI runs (may corrupt the UI)")
-	AddRepoFlags(cmd)
-	return cmd
+	command.Flags().DurationVar(&refresh, "refresh", time.Second, "Snapshot refresh interval")
+	command.Flags().BoolVar(&altScreen, "alt-screen", true, "Use the terminal alternate screen buffer")
+	command.Flags().BoolVar(&debugLogs, "debug-logs", false, "Allow zerolog output while the TUI runs")
+	AddRepoFlags(command)
+	return command
 }

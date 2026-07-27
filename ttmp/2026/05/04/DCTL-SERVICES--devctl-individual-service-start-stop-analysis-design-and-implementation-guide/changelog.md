@@ -57,3 +57,8 @@ Addressed PR #6 review comments (commit ae537e9): blocked duplicate starts, remo
 - /home/manuel/workspaces/2026-05-04/devctl-multiple-profiles/devctl/pkg/state/state.go — ServiceSpecRecord no longer persists raw env
 - /home/manuel/workspaces/2026-05-04/devctl-multiple-profiles/devctl/pkg/supervise/supervisor.go — StartService now accepts fresh spec and blocks duplicate starts
 
+
+## 2026-07-24
+
+Superseded by DEVCTL-OPERATOR-UX-001 for individual-service lifecycle safety and the consolidated up/down/restart controller.
+

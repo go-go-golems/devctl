@@ -45,3 +45,8 @@ Document capability checking and safe plugin invocation; identify unguarded comm
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/dynamic_commands.go — Calls ops without SupportsOp gating
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/pkg/runtime/client.go — Call/StartStream rely on ctx timeouts if plugin ignores requests
 
+
+## 2026-07-24
+
+Superseded by DEVCTL-OPERATOR-UX-001 for the operator TUI feature set; historical work remains recorded here.
+

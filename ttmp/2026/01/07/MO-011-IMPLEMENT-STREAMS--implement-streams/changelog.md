@@ -127,3 +127,8 @@ Docs: refresh streams analysis/design to reflect implemented UI/CLI + ops-only S
 
 Close: per request (optional stream stop remaining)
 
+
+## 2026-07-24
+
+Superseded in part by DEVCTL-OPERATOR-UX-001 for lifecycle-integrated log streaming and TUI consumption.
+

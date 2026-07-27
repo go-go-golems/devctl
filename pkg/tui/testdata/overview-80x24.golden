@@ -1,0 +1,22 @@
+devctl  profile=dev  environment=known  services 2  running 1  unhealthy 0
+[1] Overview   [2] Logs   [3] Runs   [:] Commands
+────────────────────────────────────────────────────────────────────────────────
+╭────────────────────────────────────────────────────────────────────────────╮
+│ Services                                                                   │
+│   NAME             DESIRED   STATE      HEALTH      PID                    │
+│ > api              running   ready      -           -                      │
+│   worker           running   failed     -           -                      │
+╰────────────────────────────────────────────────────────────────────────────╯
+╭────────────────────────────────────────────────────────────────────────────╮
+│ Current service                                                            │
+│ api                                                                        │
+│ Desired  running     State   ready                                         │
+│ Health   -           Uptime  -                                             │
+│ Child PID -         Wrapper -                                              │
+│ Run      run-api                                                           │
+│ Exit     -                                                                 │
+│ stdout   -                                                                 │
+│ stderr   -                                                                 │
+╰────────────────────────────────────────────────────────────────────────────╯
+[enter] logs  [u] up  [d] down  [r] restart  [j/k] select
+No active operation

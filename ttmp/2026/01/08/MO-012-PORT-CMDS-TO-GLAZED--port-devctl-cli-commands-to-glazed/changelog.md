@@ -91,3 +91,8 @@ Port plugins list to Glazed and add intern porting playbook
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/cmd/devctl/cmds/plugins.go — plugins list is now a Glazed WriterCommand
 - /home/manuel/workspaces/2026-01-06/moments-dev-tool/devctl/ttmp/2026/01/08/MO-012-PORT-CMDS-TO-GLAZED--port-devctl-cli-commands-to-glazed/playbook/01-playbook-port-a-devctl-cobra-verb-to-a-glazed-command.md — Intern-facing porting procedure and gotchas
 
+
+## 2026-07-24
+
+Superseded by DEVCTL-OPERATOR-UX-001 for public operator command output contracts and Glazed migration.
+

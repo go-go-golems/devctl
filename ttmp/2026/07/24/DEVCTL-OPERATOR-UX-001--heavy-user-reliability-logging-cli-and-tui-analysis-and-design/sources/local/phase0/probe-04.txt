@@ -1,0 +1,23 @@
+ DevCtl — events   ○ Stopped                      [tab] switch [?] help [q] quit
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│Live Events                                                         [esc] back│
+│Following: All Services                   [f] filter  [1-9] select service    │
+│────────────────────────────────────────────────────────────────────────────  │
+│14:18:33.173  [system    ]  INFO   state: missing                             │
+│14:18:33.373  [system    ]  INFO   state: missing                             │
+│14:18:33.572  [system    ]  INFO   state: missing                             │
+│14:18:33.772  [system    ]  INFO   state: missing                             │
+│14:18:33.973  [system    ]  INFO   state: missing                             │
+│14:18:34.173  [system    ]  INFO   state: missing                             │
+│14:18:34.372  [system    ]  INFO   state: missing                             │
+│                                                                              │
+│                                                                              │
+│Services:  [1]● system    [space] toggle                                      │
+│Levels:   ● DEBUG  ● INFO  ● WARN  ● ERROR    [l] level menu                  │
+│Stats: 8 events (5/sec)   Buffer: 8/200 lines   Dropped: 0                    │
+│[p] pause   [c] clear   [/] search   [↑/↓] scroll                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                       [/] filter [c] clear [↑/↓] scroll

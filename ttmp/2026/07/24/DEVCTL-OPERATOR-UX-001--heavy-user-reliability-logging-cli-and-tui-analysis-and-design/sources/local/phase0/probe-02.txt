@@ -1,0 +1,120 @@
+
+case=root_help
+command=/tmp/tmp.jzeZgMPNSb/devctl --help
+
+  # devctl - devctl is a dev environment orchestrator
+
+  Run devctl help to explore documentation topics.
+
+  Run devctl help --ui to open the interactive help TUI.
+
+  ## Usage:
+
+  devctl [command]
+
+  ## Available Commands:
+
+  • **build**          Run the build phase (config.mutate + build.run)
+  • **completion**     Generate the autocompletion script for the specified
+  shell
+  • **down**           Stop supervised services and remove state
+  • **help**           Help about any command or topic
+  • **logs**           Show logs for a supervised service
+  • **plan**           Compute a merged launch plan from plugins (config.
+  mutate + launch.plan)
+  • **plugins**        Plugin discovery and inspection
+  • **prepare**        Run the prepare phase (config.mutate + prepare.run)
+  • **profiles**       List and inspect devctl profiles
+  • **restart**        Restart a single supervised service
+  • **start**          Start a previously stopped supervised service
+  • **status**         Show status of supervised services
+  • **stop-service**   Stop a single supervised service (leaves others
+  running)
+  • **stream**         Start and inspect protocol streams
+  • **tui**            Interactive terminal UI for devctl
+  • **up**             Start the dev environment (config.mutate + validate.run +
+  launch.plan + supervise)
+  • **validate**       Run the validation phase (config.mutate + validate.run)
+
+  ## Flags:
+
+               -h, --help    help for devctl
+               --log-area    Per-area log level override, for example app.
+  view:debug or app.db=warn
+             --log-config    Additional logcopter profile/config file;
+  repeatable
+               --log-file    Log file (default: stderr)
+             --log-format    Log format (json, text) (default "text")
+              --log-level    Log level (trace, debug, info, warn, error,
+  fatal) (default "info")
+          --log-to-stdout    Log to stdout even when log-file is set
+              --long-help    Show long help
+       --strict-log-areas    Fail when configured log areas do not match known
+  generated logcopter areas
+            -v, --version    version for devctl
+            --with-caller    Log caller information
+
+  Use devctl [command] --help for more information about a command. Use devctl --
+  help --long-help for information about all flags.
+
+exit_status=0
+
+case=status_without_state
+command=/tmp/tmp.jzeZgMPNSb/devctl status --repo-root /tmp/tmp.jzeZgMPNSb
+{
+  "exists": false,
+  "profile": "",
+  "services": []
+}
+exit_status=0
+
+case=logs_without_service
+command=/tmp/tmp.jzeZgMPNSb/devctl logs --repo-root /tmp/tmp.jzeZgMPNSb
+Error: --service is required
+
+  # logs - Show logs for a supervised service
+
+  --------
+
+  **No examples found!**
+
+  Showing a list of alternatives:
+
+  For more help, run: devctl help logs
+
+  Run devctl help --ui to open the interactive help TUI.
+
+
+Error: --service is required
+exit_status=1
+
+case=down_without_state
+command=/tmp/tmp.jzeZgMPNSb/devctl down --repo-root /tmp/tmp.jzeZgMPNSb
+Error: read state: open /tmp/tmp.jzeZgMPNSb/.devctl/state.json: no such file or directory
+
+  # down - Stop supervised services and remove state
+
+  --------
+
+  **No examples found!**
+
+  Showing a list of alternatives:
+
+  For more help, run: devctl help down
+
+  Run devctl help --ui to open the interactive help TUI.
+
+
+Error: read state: open /tmp/tmp.jzeZgMPNSb/.devctl/state.json: no such file or directory
+exit_status=1
+
+case=plan_without_config
+command=/tmp/tmp.jzeZgMPNSb/devctl plan --repo-root /tmp/tmp.jzeZgMPNSb
+2026-07-24T14:18:28.223813417-04:00 WRN no plugins configured (add .devctl.yaml)
+{}
+exit_status=0
+
+case=profiles_without_config
+command=/tmp/tmp.jzeZgMPNSb/devctl profiles list --repo-root /tmp/tmp.jzeZgMPNSb
+PROFILE  ACTIVE  DISPLAY NAME  DESCRIPTION  PLUGINS
+exit_status=0
