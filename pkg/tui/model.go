@@ -38,7 +38,22 @@ type paletteAction struct {
 var paletteActions = []paletteAction{
 	{Label: "Refresh environment snapshot", Kind: "refresh"},
 	{Label: "Run operator diagnostics", Kind: "doctor"},
+	{Label: "Go to Overview", Kind: "overview"},
+	{Label: "Go to Logs", Kind: "logs"},
+	{Label: "Go to Runs", Kind: "runs"},
+	{Label: "Show logs for selected service", Kind: "selected-logs"},
+	{Label: "Toggle log follow", Kind: "toggle-follow"},
+	{Label: "Toggle log pause", Kind: "toggle-pause"},
+	{Label: "Clear local log buffer", Kind: "clear-logs"},
 	{Label: "Show plugin inspection command", Kind: "plugins"},
+}
+
+type activeOperation struct {
+	ID        string
+	Kind      string
+	StartedAt time.Time
+	LastEvent operator.OperatorEvent
+	Recent    []operator.OperatorEvent
 }
 
 type Model struct {
@@ -59,6 +74,8 @@ type Model struct {
 	runIDs       []string
 	following    bool
 	operationCh  <-chan tea.Msg
+	operation    *activeOperation
+	now          func() time.Time
 }
 
 var _ tea.Model = (*Model)(nil)
@@ -75,7 +92,7 @@ func NewModel(options Options) *Model {
 	}
 	return &Model{
 		options: options, active: ViewOverview, logs: NewLogsModel(),
-		cursors: map[string]runlog.Cursor{},
+		cursors: map[string]runlog.Cursor{}, now: time.Now,
 	}
 }
 
@@ -121,12 +138,16 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case EventMsg:
 		m.status = eventStatus(message.Event)
+		m.recordOperationEvent(message.Event)
 		return m, waitOperationMsg(m.operationCh)
 	case OperationDoneMsg:
 		m.runs.Add(message.Result, message.Events, message.Err)
 		m.status = operationStatus(message)
 		m.confirmation = nil
 		m.operationCh = nil
+		if m.operation != nil {
+			m.operation.LastEvent.Status = message.Result.Status
+		}
 		return m, m.snapshotCmd()
 	case DoctorMsg:
 		if message.Err != nil {
@@ -203,6 +224,25 @@ func (m *Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, m.doctorCmd()
 			case "plugins":
 				m.status = "inspect plugin providers with: devctl plugins inspect"
+			case "overview":
+				m.active = ViewOverview
+			case "logs":
+				m.active = ViewLogs
+			case "runs":
+				m.active = ViewRuns
+			case "selected-logs":
+				m.logs.Services = m.overview.SelectedServices()
+				m.active = ViewLogs
+				return m, m.followOneCmd()
+			case "toggle-follow":
+				m.logs.Follow = !m.logs.Follow
+				if m.logs.Follow {
+					return m, m.followOneCmd()
+				}
+			case "toggle-pause":
+				m.logs.TogglePause()
+			case "clear-logs":
+				m.logs.Clear()
 			}
 		}
 		return m, nil
@@ -260,6 +300,18 @@ func (m *Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.active == ViewLogs {
 			m.logs.Wrap = !m.logs.Wrap
 		}
+	case "o":
+		if m.active == ViewLogs {
+			m.logs.ToggleStream(runlog.StreamStdout)
+		}
+	case "e":
+		if m.active == ViewLogs {
+			m.logs.ToggleStream(runlog.StreamStderr)
+		}
+	case "x":
+		if m.active == ViewLogs {
+			m.logs.Clear()
+		}
 	case "/":
 		if m.active == ViewLogs {
 			m.searching = true
@@ -281,14 +333,17 @@ func (m *Model) View() string {
 	if m.overview.Snapshot.Exists {
 		environment = "known"
 	}
-	header := fmt.Sprintf(
-		"devctl  profile=%s  environment=%s  revision=%d\n%s\n",
-		profile, environment, m.overview.Snapshot.Revision, m.navigation(),
-	)
+	running, unhealthy := snapshotCounts(m.overview.Snapshot)
+	header := titleStyle.Render("devctl") + "  " +
+		mutedStyle.Render("profile") + "=" + accentStyle.Render(profile) + "  " +
+		mutedStyle.Render("environment") + "=" + stateStyle(environment).Render(environment) + "  " +
+		summaryBadge("services", len(m.overview.Snapshot.Services)) + "  " +
+		summaryBadge("running", running) + "  " + summaryBadge("unhealthy", unhealthy) + "\n" +
+		m.navigation() + "\n"
 	var body string
 	switch m.active {
 	case ViewOverview:
-		body = m.overview.View(width)
+		body = m.overview.ViewAt(width, m.now())
 	case ViewLogs:
 		body = m.logs.View(height - 6)
 	case ViewRuns:
@@ -296,7 +351,7 @@ func (m *Model) View() string {
 	default:
 		body = "Unknown view"
 	}
-	footer := "\n\n" + truncate(m.status, width)
+	footer := "\n" + m.operationView(width) + "\n" + clipLine(m.status, width)
 	if m.confirmation != nil {
 		targets := strings.Join(m.confirmation.Services, ", ")
 		if targets == "" {
@@ -308,7 +363,7 @@ func (m *Model) View() string {
 		)
 	}
 	if m.palette {
-		footer += "\nCommands [j/k select, enter run, esc close]"
+		footer += "\n" + titleStyle.Render("Commands") + " " + mutedStyle.Render("[j/k select, enter run, esc close]")
 		for index, action := range paletteActions {
 			cursor := " "
 			if index == m.paletteIndex {
@@ -323,7 +378,7 @@ func (m *Model) View() string {
 	if m.help {
 		footer += "\nKeys: 1/2/3 views, Tab cycle, Esc overview, : commands, ? help, q quit"
 	}
-	return header + strings.Repeat("─", min(width, 100)) + "\n" + body + footer
+	return header + borderStyle.Render(strings.Repeat("─", width)) + "\n" + body + footer
 }
 
 func (m *Model) moveSelection(delta int) {
@@ -338,8 +393,58 @@ func (m *Model) moveSelection(delta int) {
 
 func (m *Model) navigation() string {
 	labels := []string{"[1] Overview", "[2] Logs", "[3] Runs"}
-	labels[m.active] = "> " + labels[m.active] + " <"
-	return strings.Join(labels, "   ") + "   [:] Commands"
+	for index := range labels {
+		if index == int(m.active) {
+			labels[index] = activeStyle.Render(labels[index])
+		} else {
+			labels[index] = mutedStyle.Render(labels[index])
+		}
+	}
+	return strings.Join(labels, "   ") + "   " + renderKey(":", "Commands")
+}
+
+func snapshotCounts(snapshot operator.Snapshot) (int, int) {
+	running, unhealthy := 0, 0
+	for _, service := range snapshot.Services {
+		if service.Phase == "ready" || service.Phase == "starting" {
+			running++
+		}
+		if service.Health != nil && !service.Health.Healthy {
+			unhealthy++
+		}
+	}
+	return running, unhealthy
+}
+
+func (m *Model) recordOperationEvent(event operator.OperatorEvent) {
+	if m.operation == nil || (event.OperationID != "" && event.OperationID != m.operation.ID) {
+		m.operation = &activeOperation{ID: event.OperationID, Kind: string(event.Kind), StartedAt: event.At}
+	}
+	if m.operation.StartedAt.IsZero() {
+		m.operation.StartedAt = m.now()
+	}
+	m.operation.LastEvent = event
+	m.operation.Recent = append(m.operation.Recent, event)
+	if len(m.operation.Recent) > 8 {
+		m.operation.Recent = m.operation.Recent[len(m.operation.Recent)-8:]
+	}
+}
+
+func (m *Model) operationView(width int) string {
+	if m.operation == nil {
+		return mutedStyle.Render("No active operation")
+	}
+	event := m.operation.LastEvent
+	label := event.Phase
+	if event.Service != "" {
+		label = event.Service
+	}
+	if label == "" {
+		label = string(event.Kind)
+	}
+	elapsed := shortAge(m.now().Sub(m.operation.StartedAt))
+	line := fmt.Sprintf("Operation %s  %-18s %-10s elapsed %s", emptyDash(m.operation.ID), label, event.Status, elapsed)
+	return clipLine(stateStyle(event.Status).Render(line), width)
 }
 
 func (m *Model) snapshotCmd() tea.Cmd {

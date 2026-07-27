@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-go-golems/devctl/pkg/operator"
+	"github.com/go-go-golems/devctl/pkg/runstate"
 )
 
 type OverviewModel struct {
@@ -37,12 +38,19 @@ func (m OverviewModel) SelectedServices() []string {
 }
 
 func (m OverviewModel) View(width int) string {
+	return m.ViewAt(width, time.Now())
+}
+
+func (m OverviewModel) ViewAt(width int, now time.Time) string {
 	if !m.Snapshot.Exists && len(m.Snapshot.Services) == 0 {
-		return "No environment state.\n\n[u] start configured services"
+		return panel("Environment", "No environment state.\n\n"+renderKey("u", "start configured services"), width)
 	}
-	var output strings.Builder
-	output.WriteString("Services\n")
-	output.WriteString("  NAME             DESIRED   STATE      HEALTH    PID\n")
+	var services strings.Builder
+	if layoutFor(width) == layoutCompact {
+		services.WriteString("  NAME          STATE       HEALTH\n")
+	} else {
+		services.WriteString("  NAME             DESIRED   STATE      HEALTH      PID\n")
+	}
 	for index, service := range m.Snapshot.Services {
 		cursor := " "
 		if index == m.Selected {
@@ -61,26 +69,108 @@ func (m OverviewModel) View(width int) string {
 			pid = fmt.Sprintf("%d", service.Child.PID)
 		}
 		name := truncate(service.Service, max(8, min(16, width/4)))
-		_, _ = fmt.Fprintf(
-			&output, "%s %-16s %-9s %-10s %-9s %s\n",
-			cursor, name, service.Desired, service.Phase, health, pid,
-		)
+		var row string
+		if layoutFor(width) == layoutCompact {
+			row = fmt.Sprintf("%s %-13s %-11s %s", cursor, name, service.Phase, health)
+		} else {
+			row = fmt.Sprintf("%s %-16s %-9s %-10s %-11s %s", cursor, name, service.Desired, service.Phase, health, pid)
+		}
+		if index == m.Selected {
+			row = selectedStyle.Render(row)
+		} else {
+			row = stateStyle(string(service.Phase)).Render(row)
+		}
+		services.WriteString(row + "\n")
 	}
+	details := "No service selected."
 	if len(m.Snapshot.Services) > 0 {
 		selected := m.Snapshot.Services[m.Selected]
-		_, _ = fmt.Fprintf(&output, "\nSelected: %s\nRun: %s", selected.Service, emptyDash(selected.RunID))
-		if selected.Exit != nil && selected.Exit.ExitCode != nil {
-			_, _ = fmt.Fprintf(&output, "  exit=%d", *selected.Exit.ExitCode)
+		health := "-"
+		if selected.Health != nil {
+			if selected.Health.Healthy {
+				health = "healthy"
+			} else {
+				health = "unhealthy"
+			}
 		}
+		pid := processIdentityPID(selected.Child)
+		var detail strings.Builder
+		_, _ = fmt.Fprintf(&detail, "%s\n", titleStyle.Render(selected.Service))
+		_, _ = fmt.Fprintf(&detail, "Desired  %-10s  State   %s\n", selected.Desired, stateStyle(string(selected.Phase)).Render(string(selected.Phase)))
+		_, _ = fmt.Fprintf(&detail, "Health   %-10s  Uptime  %s\n", health, serviceUptime(now, selected))
+		_, _ = fmt.Fprintf(&detail, "Child PID %-9s Wrapper %s\n", pid, processIdentityPID(selected.Wrapper))
+		_, _ = fmt.Fprintf(&detail, "Run      %s\n", emptyDash(selected.RunID))
+		if selected.Health != nil && selected.Health.Detail != "" {
+			_, _ = fmt.Fprintf(&detail, "Check    %s\n", selected.Health.Detail)
+		}
+		exit := "-"
+		if selected.Exit != nil {
+			exit = exitDescription(selected.Exit.ExitCode, selected.Exit.Signal)
+		}
+		_, _ = fmt.Fprintf(&detail, "Exit     %s\n", exit)
 		if selected.LastError != nil {
-			_, _ = fmt.Fprintf(&output, "\nLast error: %s: %s", selected.LastError.Code, selected.LastError.Message)
+			_, _ = fmt.Fprintf(&detail, "%s\n", errorStyle.Render("Error    "+selected.LastError.Code+": "+selected.LastError.Message))
 		}
+		_, _ = fmt.Fprintf(&detail, "stdout   %s\n", emptyDash(selected.StdoutPath))
+		_, _ = fmt.Fprintf(&detail, "stderr   %s", emptyDash(selected.StderrPath))
 		if !selected.UpdatedAt.IsZero() {
-			_, _ = fmt.Fprintf(&output, "\nUpdated: %s ago", shortAge(time.Since(selected.UpdatedAt)))
+			_, _ = fmt.Fprintf(&detail, "\nUpdated  %s ago", shortAge(now.Sub(selected.UpdatedAt)))
 		}
+		details = detail.String()
 	}
-	output.WriteString("\n\n[enter] logs  [u] up  [d] down  [r] restart  [j/k] select")
-	return output.String()
+	keys := renderKey("enter", "logs") + "  " + renderKey("u", "up") + "  " +
+		renderKey("d", "down") + "  " + renderKey("r", "restart") + "  " + renderKey("j/k", "select")
+	if layoutFor(width) == layoutCompact {
+		selected := m.Snapshot.Services[m.Selected]
+		summary := fmt.Sprintf(
+			"Selected %s %s pid:%s h:%s",
+			selected.Service, selected.Phase, processIdentityPID(selected.Child),
+			func() string {
+				if selected.Health == nil {
+					return "-"
+				}
+				if selected.Health.Healthy {
+					return "healthy"
+				}
+				return "unhealthy"
+			}(),
+		)
+		return panel("Overview", strings.TrimSuffix(services.String(), "\n")+"\n\n"+summary, width) +
+			"\n" + renderKey("enter", "logs") + "  " + renderKey("u/d/r", "lifecycle") + "  " + renderKey("j/k", "select")
+	}
+	if layoutFor(width) == layoutWide {
+		return joinPanels(strings.TrimSuffix(services.String(), "\n"), details, width) + "\n" + keys
+	}
+	return panel("Services", strings.TrimSuffix(services.String(), "\n"), width) + "\n" +
+		panel("Current service", details, width) + "\n" + keys
+}
+
+func serviceUptime(now time.Time, service operator.ServiceSnapshot) string {
+	if service.CreatedAt.IsZero() || service.Phase == "exited" || service.Phase == "failed" {
+		return "-"
+	}
+	return shortAge(now.Sub(service.CreatedAt))
+}
+
+func processIdentityPID(identity *runstate.ProcessIdentity) string {
+	if identity == nil {
+		return "-"
+	}
+	return fmt.Sprint(identity.PID)
+}
+
+func exitDescription(code *int, signal string) string {
+	parts := make([]string, 0, 2)
+	if code != nil {
+		parts = append(parts, fmt.Sprintf("code %d", *code))
+	}
+	if signal != "" {
+		parts = append(parts, "signal "+signal)
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	return strings.Join(parts, ", ")
 }
 
 func truncate(value string, width int) string {

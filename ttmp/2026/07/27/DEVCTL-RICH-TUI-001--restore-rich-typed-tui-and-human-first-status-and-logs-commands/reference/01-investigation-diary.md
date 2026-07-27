@@ -11,13 +11,26 @@ Topics:
 DocType: reference
 Intent: long-term
 Owners: []
-RelatedFiles: []
+RelatedFiles:
+    - Path: repo://cmd/devctl/cmds/lifecycle.go
+      Note: Temporary RunE dual-mode builder preserving error classification and custom Glazed processor hooks
+    - Path: repo://cmd/devctl/cmds/logs.go
+      Note: Human log sink and structured streaming processor paths
+    - Path: repo://cmd/devctl/cmds/status.go
+      Note: Human-default and explicit structured status command paths
+    - Path: repo://pkg/tui/layout.go
+      Note: Responsive panel composition
+    - Path: repo://pkg/tui/model.go
+      Note: Styled Bubble Tea shell, operation panel, palette and interactions
+    - Path: repo://pkg/tui/styles.go
+      Note: Static semantic Lip Gloss theme
 ExternalSources: []
-Summary: "Chronological research record for the bounded rich-TUI and human-first dual-command design."
+Summary: Chronological research record for the bounded rich-TUI and human-first dual-command design.
 LastUpdated: 2026-07-27T13:45:20.608675866-04:00
-WhatFor: "Preserve the evidence, commands, decisions, and scope checks behind the implementation guide."
-WhenToUse: "Use when reviewing the design rationale or resuming implementation in a later session."
+WhatFor: Preserve the evidence, commands, decisions, and scope checks behind the implementation guide.
+WhenToUse: Use when reviewing the design rationale or resuming implementation in a later session.
 ---
+
 
 # Investigation diary
 
@@ -132,6 +145,94 @@ Files inspected:
 
 - `cmd/devctl/cmds/status.go`
 - `cmd/devctl/cmds/logs.go`
+
+## Step 8: Implement the rich presentation and local dual-command bridge
+
+The implementation resumed after confirming that Glazed issue #611 is the correct upstream fix for lost application exit codes. The immediate devctl requirement is not blocked on that release: a small local builder can preserve the intended dual-command behavior while returning errors through `RunE` and retaining devctl's existing custom processor hooks. This keeps the workaround isolated and makes its eventual removal straightforward.
+
+### Prompt Context
+
+**User prompt (verbatim):** "ok, can we accept that and move on for now? i'll have it ready in glazed later"
+
+**Assistant interpretation:** Accept the known Glazed limitation temporarily, implement the devctl feature using a local workaround, and continue validation.
+
+**Inferred user intent:** Keep progress moving without waiting for an upstream Glazed release, while preserving devctl's exit-code and streaming-output contracts.
+
+### What I did
+
+- Added `buildDualGlazedCommand` to `cmd/devctl/cmds/lifecycle.go`.
+- Used `RunE` for local dual commands so errors reach `cmd/devctl/main.go` and `classifyError`.
+- Preserved `PrepareGlazedValues` and `BuildGlazedProcessor` for `logs`.
+- Wired `status` and `logs` to the local builder with human output as the default and `--with-glaze-output` as the structured mode.
+- Added the rich TUI shell, Lip Gloss styles, responsive overview layouts, service details, active operation display, log controls, and palette actions.
+- Replaced exact overview fixtures at 44×16, 80×24, and 120×30.
+- Updated CLI/help contracts for explicit structured output and human-first log help.
+
+### Why
+
+- The upstream builder currently terminates internally with `cobra.CheckErr`, which collapses devctl's typed usage errors to exit code 1.
+- The upstream builder does not know devctl's custom JSON-lines processor hook.
+- The ticket requires visible UI restoration and dual commands now, without adding backend features.
+
+### What worked
+
+- `E_SERVICE_UNKNOWN` and `E_USAGE` errors again reach the application-level classifier.
+- Structured no-state status works with `--with-glaze-output --output json`.
+- Bare status produces human output by default.
+- Existing logs processor preparation remains available for follow-mode JSON lines.
+- Focused CLI/TUI tests and the full `go test ./... -count=1` suite pass.
+
+### What didn't work
+
+- The first attempt used `cli.BuildCobraCommand` directly. Its internal `cobra.CheckErr` caused the CLI contract tests to observe exit code 1 instead of devctl's expected 2.
+- The old status test invoked `--output json` without the new explicit Glazed toggle and therefore received human text. The contract was updated to use `--with-glaze-output`.
+- Existing TUI fixtures represented the previous bare renderer and failed until replaced with deterministic styled layouts.
+
+### What I learned
+
+- The dual-mode interface contract and the command builder's error propagation are separate concerns.
+- A local `RunE` bridge is enough to preserve devctl behavior without changing operator or runlog APIs.
+- Exact fixtures must be updated as part of a deliberate UI contract change; they are not incidental snapshots.
+
+### What was tricky to build
+
+- The builder must decide the mode after parsing but before invoking either interface. Structured mode also needs processor setup and close errors joined, while human mode must return directly to Cobra.
+- Compact layouts have a hard width budget. The selected-service summary had to be shortened to avoid wrapping inside a 44-column rounded panel.
+- The 120-column layout uses two panels with independent widths; its fixture locks the current Lip Gloss border and padding geometry.
+
+### What warrants a second pair of eyes
+
+- Review `buildDualGlazedCommand` against the eventual Glazed #611 fix before removing it; the replacement must preserve error propagation, processor hooks, and the explicit toggle.
+- Confirm that human writers should remain `os.Stdout` or migrate the commands to Glazed's writer interface when the upstream API supports it.
+- Review the compact and wide layouts in a real terminal because non-TTY test rendering intentionally omits ANSI color sequences.
+
+### What should be done in the future
+
+- Replace the local dual builder when Glazed #611 is released with equivalent behavior.
+- Add a dedicated integration assertion for follow-mode JSON Lines once a stable log fixture exists.
+
+### Code review instructions
+
+- Start with `cmd/devctl/cmds/lifecycle.go:buildDualGlazedCommand`, then inspect `status.go` and `logs.go` mode-specific paths.
+- Review TUI presentation from `pkg/tui/model.go`, `pkg/tui/layout.go`, `pkg/tui/overview.go`, `pkg/tui/logs.go`, and `pkg/tui/runs.go`.
+- Validate with:
+
+```bash
+go test ./cmd/devctl/cmds ./pkg/tui -count=1
+go test ./... -count=1
+```
+
+### Technical details
+
+```text
+devctl status                         -> BareCommand -> human output
+devctl status --with-glaze-output    -> GlazeCommand -> processor rows
+devctl logs --follow                  -> BareCommand -> human sink
+devctl logs --follow --with-glaze-output --output json
+                                      -> GlazeCommand -> custom JSONL sink
+```
+
+The upstream tracking issue is [Glazed #611](https://github.com/go-go-golems/glazed/issues/611), updated with this devctl reproduction and the custom-processor observation.
 - `cmd/devctl/cmds/lifecycle.go`
 - `cmd/devctl/cmds/cli_contract_test.go`
 

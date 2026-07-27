@@ -3,7 +3,9 @@ package cmds
 import (
 	"context"
 	stderrors "errors"
+	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -42,6 +44,40 @@ type LogsSettings struct {
 }
 
 var _ glazedcmds.GlazeCommand = (*LogsCommand)(nil)
+var _ glazedcmds.BareCommand = (*LogsCommand)(nil)
+
+func (c *LogsCommand) Run(ctx context.Context, vals *values.Values) error {
+	return c.RunIntoGlazeProcessor(ctx, vals, &humanLogsProcessor{writer: os.Stdout})
+}
+
+type humanLogsProcessor struct {
+	writer io.Writer
+}
+
+var _ middlewares.Processor = (*humanLogsProcessor)(nil)
+
+func (p *humanLogsProcessor) AddRow(_ context.Context, row types.Row) error {
+	timeValue, _ := row.Get("time")
+	service, _ := row.Get("service")
+	stream, _ := row.Get("stream")
+	text, _ := row.Get("text")
+	prefix, _ := row.Get("prefix")
+
+	parts := make([]string, 0, 4)
+	if timestamp, ok := timeValue.(time.Time); ok && !timestamp.IsZero() {
+		parts = append(parts, timestamp.Format("15:04:05.000"))
+	}
+	if fmt.Sprint(prefix) != "" {
+		parts = append(parts, fmt.Sprintf("%-10s %-7s", fmt.Sprint(service), fmt.Sprint(stream)))
+	}
+	parts = append(parts, fmt.Sprint(text))
+	_, err := fmt.Fprintln(p.writer, strings.Join(parts, " "))
+	return err
+}
+
+func (p *humanLogsProcessor) Close(context.Context) error {
+	return nil
+}
 
 func (c *LogsCommand) BuildGlazedProcessor(
 	vals *values.Values,
@@ -101,7 +137,7 @@ func NewLogsCommand() (*LogsCommand, error) {
 	glazedSection.OutputSection.Definitions.Delete("stream")
 	return &LogsCommand{CommandDescription: glazedcmds.NewCommandDescription(
 		"logs",
-		glazedcmds.WithShort("Query or follow structured service logs"),
+		glazedcmds.WithShort("Show or follow service logs"),
 		glazedcmds.WithArguments(
 			fields.New("services", fields.TypeStringList, fields.WithHelp("Service names; empty selects all")),
 		),
@@ -411,5 +447,5 @@ func stripANSI(value string) string {
 func newLogsCmd() *cobra.Command {
 	command, err := NewLogsCommand()
 	cobra.CheckErr(err)
-	return buildGlazedCommand(command)
+	return buildDualGlazedCommand(command)
 }

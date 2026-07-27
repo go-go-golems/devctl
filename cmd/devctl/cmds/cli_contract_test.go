@@ -17,7 +17,7 @@ func TestBuiltCLIContracts(t *testing.T) {
 	t.Run("structured no-state status", func(t *testing.T) {
 		repoRoot := t.TempDir()
 		stdout, stderr, err := runCLI(binary,
-			"status", "--repo-root", repoRoot, "--output", "json",
+			"status", "--repo-root", repoRoot, "--with-glaze-output", "--output", "json",
 		)
 		require.NoError(t, err, stderr)
 		require.Empty(t, stderr)
@@ -25,6 +25,15 @@ func TestBuiltCLIContracts(t *testing.T) {
 		require.NoError(t, json.Unmarshal([]byte(stdout), &rows))
 		require.Len(t, rows, 1)
 		require.Equal(t, "stopped", rows[0]["environment"])
+	})
+
+	t.Run("human output is the default status mode", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		stdout, stderr, err := runCLI(binary, "status", "--repo-root", repoRoot)
+		require.NoError(t, err, stderr)
+		require.Empty(t, stderr)
+		require.Contains(t, stdout, "Environment stopped")
+		require.NotContains(t, stdout, "environment\"")
 	})
 
 	t.Run("unknown status and log selectors are usage errors", func(t *testing.T) {

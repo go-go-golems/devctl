@@ -45,16 +45,19 @@ func (m RunsModel) View(height int) string {
 	var output strings.Builder
 	output.WriteString(m.snapshotView())
 	output.WriteString("\n\n")
-	output.WriteString("Operations\n")
+	output.WriteString(titleStyle.Render("Operations") + "\n")
 	for index, entry := range m.Entries {
 		cursor := " "
 		if index == m.Selected {
 			cursor = ">"
 		}
-		_, _ = fmt.Fprintf(
-			&output, "%s %-9s %-10s %s\n",
-			cursor, entry.Result.Kind, entry.Result.Status, emptyDash(entry.Result.OperationID),
-		)
+		row := fmt.Sprintf("%s %-9s %-10s %s", cursor, entry.Result.Kind, entry.Result.Status, emptyDash(entry.Result.OperationID))
+		if index == m.Selected {
+			row = selectedStyle.Render(row)
+		} else {
+			row = stateStyle(entry.Result.Status).Render(row)
+		}
+		output.WriteString(row + "\n")
 		if index >= max(3, height/3) {
 			break
 		}
@@ -81,7 +84,7 @@ func (m RunsModel) View(height int) string {
 	if selected.Err != nil {
 		_, _ = fmt.Fprintf(&output, "\nError: %v", selected.Err)
 	}
-	output.WriteString("\n\n[j/k] select operation  [l] related logs")
+	output.WriteString("\n\n" + renderKey("j/k", "select operation") + "  " + renderKey("l", "related logs"))
 	return output.String()
 }
 
@@ -90,7 +93,7 @@ func (m RunsModel) snapshotView() string {
 		return "Durable service attempts\n  No recorded service runs."
 	}
 	var output strings.Builder
-	output.WriteString("Durable service attempts\n")
+	output.WriteString(titleStyle.Render("Durable service attempts") + "\n")
 	for _, service := range m.Snapshot.Services {
 		_, _ = fmt.Fprintf(
 			&output, "  %-18s %-10s run=%s\n",

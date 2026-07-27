@@ -27,6 +27,23 @@ type LogsModel struct {
 	bufferedBytes int
 }
 
+func (m *LogsModel) ToggleStream(stream runlog.StreamKind) {
+	for index, current := range m.Streams {
+		if current == stream {
+			m.Streams = append(m.Streams[:index], m.Streams[index+1:]...)
+			return
+		}
+	}
+	m.Streams = append(m.Streams, stream)
+}
+
+func (m *LogsModel) Clear() {
+	m.Records = nil
+	m.VisibleCount = 0
+	m.bufferedBytes = 0
+	m.Dropped = 0
+}
+
 func NewLogsModel() LogsModel {
 	return LogsModel{
 		Streams: []runlog.StreamKind{runlog.StreamStdout, runlog.StreamStderr},
@@ -62,9 +79,13 @@ func (m *LogsModel) TogglePause() {
 
 func (m LogsModel) View(height int) string {
 	var output strings.Builder
-	_, _ = fmt.Fprintf(
-		&output, "Filters: services=%s streams=%s follow=%s paused=%t wrap=%t dropped=%d\n\n",
-		joinOrAll(m.Services), streamNames(m.Streams), onOff(m.Follow), m.Paused, m.Wrap, m.Dropped,
+	_, _ = fmt.Fprintf(&output, "%s  %s  %s  %s  %s  %s\n\n",
+		accentStyle.Render("services:"+joinOrAll(m.Services)),
+		accentStyle.Render("streams:"+streamNames(m.Streams)),
+		stateStyle(onOff(m.Follow)).Render("follow:"+onOff(m.Follow)),
+		warningStyle.Render(fmt.Sprintf("paused:%t", m.Paused)),
+		mutedStyle.Render(fmt.Sprintf("wrap:%t", m.Wrap)),
+		mutedStyle.Render(fmt.Sprintf("visible:%d dropped:%d", m.VisibleCount, m.Dropped)),
 	)
 	limit := max(1, height-5)
 	end := min(m.VisibleCount, len(m.Records))
@@ -77,12 +98,13 @@ func (m LogsModel) View(height int) string {
 		if !m.Wrap {
 			text = truncate(text, 100)
 		}
-		_, _ = fmt.Fprintf(
-			&output, "%s %-10s %-7s %s\n",
-			record.Time.Format("15:04:05.000"), record.Service, record.Stream, text,
-		)
+		stream := stateStyle(string(record.Stream)).Render(fmt.Sprintf("%-7s", record.Stream))
+		_, _ = fmt.Fprintf(&output, "%s %-10s %s %s\n",
+			mutedStyle.Render(record.Time.Format("15:04:05.000")), record.Service, stream, text)
 	}
-	output.WriteString("\n[p] pause  [f] follow  [w] wrap  [/] search")
+	output.WriteString("\n" + renderKey("p", "pause") + "  " + renderKey("f", "follow") +
+		"  " + renderKey("w", "wrap") + "  " + renderKey("o/e", "streams") +
+		"  " + renderKey("/", "search") + "  " + renderKey("x", "clear"))
 	return output.String()
 }
 

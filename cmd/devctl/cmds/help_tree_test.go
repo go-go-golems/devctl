@@ -24,7 +24,7 @@ completion	Generate the autocompletion script for the specified shell
 doctor	Inspect configuration, durable state, ownership, and log health
 down	Stop all or selected services
 help	Help about any command
-logs	Query or follow structured service logs
+logs	Show or follow service logs
 plan	Compute a merged launch plan from selected plugins
 plugins	Inspect plugins and manage the dynamic command catalog
   commands	List validated dynamic root commands

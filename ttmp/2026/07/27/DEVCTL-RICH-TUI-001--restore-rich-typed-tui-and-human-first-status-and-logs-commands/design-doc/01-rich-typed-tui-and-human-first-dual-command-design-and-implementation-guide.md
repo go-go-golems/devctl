@@ -363,6 +363,12 @@ devctl logs api --with-glaze-output --output csv
 devctl logs api --follow --with-glaze-output --output json
 ```
 
+#### Temporary devctl builder workaround
+
+Glazed issue [#611](https://github.com/go-go-golems/glazed/issues/611) currently tracks a limitation in the standard dual-mode builder: it installs a `cmd.Run` callback and calls `cobra.CheckErr`, so errors never return to the embedding application's `Execute()` and application-specific exit-code classification is lost. The same builder does not currently invoke devctl's custom processor preparation hooks.
+
+Until that Glazed fix is available, devctl uses `buildDualGlazedCommand` in `cmd/devctl/cmds/lifecycle.go` for only `status` and `logs`. The local builder keeps the desired public dual-command contract, but uses `RunE`, returns errors to `cmd/devctl/main.go`, and preserves `PrepareGlazedValues` and `BuildGlazedProcessor` for streaming logs. This is an intentional temporary implementation boundary, not a second command API. Once Glazed provides equivalent behavior, replace the local builder and retain the same CLI tests.
+
 Do not preserve the current implicit structured default through an adapter. Update documentation and tests to the new command contract.
 
 #### Share semantics, not rendering
