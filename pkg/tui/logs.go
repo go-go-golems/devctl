@@ -79,22 +79,19 @@ func (m *LogsModel) TogglePause() {
 
 func (m LogsModel) View(height int) string {
 	var output strings.Builder
+	records := m.filteredRecords()
 	_, _ = fmt.Fprintf(&output, "%s  %s  %s  %s  %s  %s\n\n",
 		accentStyle.Render("services:"+joinOrAll(m.Services)),
 		accentStyle.Render("streams:"+streamNames(m.Streams)),
 		stateStyle(onOff(m.Follow)).Render("follow:"+onOff(m.Follow)),
 		warningStyle.Render(fmt.Sprintf("paused:%t", m.Paused)),
 		mutedStyle.Render(fmt.Sprintf("wrap:%t", m.Wrap)),
-		mutedStyle.Render(fmt.Sprintf("visible:%d dropped:%d", m.VisibleCount, m.Dropped)),
+		mutedStyle.Render(fmt.Sprintf("visible:%d dropped:%d", len(records), m.Dropped)),
 	)
 	limit := max(1, height-5)
-	end := min(m.VisibleCount, len(m.Records))
-	start := max(0, end-limit)
-	for _, record := range m.Records[start:end] {
+	start := max(0, len(records)-limit)
+	for _, record := range records[start:] {
 		text := sanitizeLogText(record.Text)
-		if m.Search != "" && !strings.Contains(text, m.Search) {
-			continue
-		}
 		if !m.Wrap {
 			text = truncate(text, 100)
 		}
@@ -106,6 +103,43 @@ func (m LogsModel) View(height int) string {
 		"  " + renderKey("w", "wrap") + "  " + renderKey("o/e", "streams") +
 		"  " + renderKey("/", "search") + "  " + renderKey("x", "clear"))
 	return output.String()
+}
+
+func (m LogsModel) filteredRecords() []runlog.LogRecord {
+	end := min(m.VisibleCount, len(m.Records))
+	records := make([]runlog.LogRecord, 0, end)
+	for _, record := range m.Records[:end] {
+		if len(m.Services) > 0 && !containsString(m.Services, record.Service) {
+			continue
+		}
+		if len(m.Streams) > 0 && !containsStream(m.Streams, record.Stream) {
+			continue
+		}
+		text := sanitizeLogText(record.Text)
+		if m.Search != "" && !strings.Contains(text, m.Search) {
+			continue
+		}
+		records = append(records, record)
+	}
+	return records
+}
+
+func containsString(values []string, candidate string) bool {
+	for _, value := range values {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func containsStream(values []runlog.StreamKind, candidate runlog.StreamKind) bool {
+	for _, value := range values {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func sanitizeLogText(value string) string {

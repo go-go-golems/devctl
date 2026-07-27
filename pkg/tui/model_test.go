@@ -107,6 +107,23 @@ func TestLogsBufferIsBoundedWhilePausedAndPreservesViewState(t *testing.T) {
 	require.Equal(t, len(logs.Records), logs.VisibleCount)
 }
 
+func TestLogViewFiltersBufferedRecordsWhenServiceSelectionChanges(t *testing.T) {
+	logs := NewLogsModel()
+	logs.Add(runlog.LogRecord{
+		Service: "api", Stream: runlog.StreamStdout, Text: "api-ready",
+	})
+	logs.Add(runlog.LogRecord{
+		Service: "worker", Stream: runlog.StreamStderr, Text: "worker-failed",
+	})
+
+	logs.Services = []string{"worker"}
+	view := logs.View(20)
+
+	require.Contains(t, view, "worker-failed")
+	require.NotContains(t, view, "api-ready")
+	require.Contains(t, view, "visible:1")
+}
+
 func TestTypedPartialOperationPopulatesRunsWithoutParsingText(t *testing.T) {
 	model := NewModel(Options{Context: t.Context(), Controller: &fakeController{}, RepoRoot: t.TempDir()})
 	operationErr := &operator.OperatorError{

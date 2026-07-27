@@ -90,7 +90,7 @@ func (s *Supervisor) Stop(ctx context.Context, st *state.State) error {
 		if svc.PID <= 0 {
 			continue
 		}
-		if err := terminatePIDGroup(ctx, svc.PID, s.opts.ShutdownTimeout); err != nil {
+		if err := terminateOwnedProcessGroups(ctx, svc.PID, svc.ChildPGID, s.opts.ShutdownTimeout); err != nil {
 			lastErr = err
 		}
 	}
@@ -116,7 +116,7 @@ func (s *Supervisor) StopService(ctx context.Context, st *state.State, name stri
 	}
 
 	if svc.PID > 0 && state.ProcessAlive(svc.PID) {
-		if err := terminatePIDGroup(ctx, svc.PID, s.opts.ShutdownTimeout); err != nil {
+		if err := terminateOwnedProcessGroups(ctx, svc.PID, svc.ChildPGID, s.opts.ShutdownTimeout); err != nil {
 			return errors.Wrapf(err, "failed to stop service %q", name)
 		}
 	}
@@ -165,7 +165,7 @@ func (s *Supervisor) StartService(ctx context.Context, st *state.State, spec eng
 		cancel()
 	}
 	if healthErr != nil {
-		_ = terminatePIDGroup(context.Background(), newRec.PID, s.opts.ShutdownTimeout)
+		_ = terminateOwnedProcessGroups(context.Background(), newRec.PID, newRec.ChildPGID, s.opts.ShutdownTimeout)
 		return errors.Wrapf(healthErr, "service %q health check failed", name)
 	}
 
@@ -438,6 +438,9 @@ func (s *Supervisor) CompleteHealth(ctx context.Context, svc engine.ServiceSpec,
 	}
 	startedAt := time.Now()
 	if svc.Health == nil {
+		if err := verifyRunAliveBeforeReady(ctx, store, runID); err != nil {
+			return err
+		}
 		return store.UpdateRun(ctx, runID, func(record *runstate.RunRecord) error {
 			record.Phase = runstate.RunReady
 			record.Health = &runstate.HealthResult{
@@ -521,7 +524,7 @@ func (s *Supervisor) StopPreparedService(ctx context.Context, runID string) erro
 	}
 
 	if wrapperStatus == runstate.ProcessMatches {
-		if err := terminatePIDGroup(ctx, run.Wrapper.PID, s.opts.ShutdownTimeout); err != nil {
+		if err := terminateOwnedProcessGroups(ctx, run.Wrapper.PID, run.ChildPGID, s.opts.ShutdownTimeout); err != nil {
 			markRunUnknown(store, runID, "STOP_FAILED", err.Error())
 			return err
 		}
@@ -564,6 +567,61 @@ func (s *Supervisor) StopPreparedService(ctx context.Context, runID string) erro
 		record.Exit = exitSummary
 		return nil
 	})
+}
+
+func verifyRunAliveBeforeReady(ctx context.Context, store *runstate.Store, runID string) error {
+	run, err := store.LoadRun(ctx, runID)
+	if err != nil {
+		return errors.Wrap(err, "load run before marking ready")
+	}
+	runDir, err := store.RunDir(runID)
+	if err != nil {
+		return err
+	}
+	exitInfo, exitErr := state.ReadExitInfo(filepath.Join(runDir, ExitRecordName))
+	if exitErr == nil {
+		failure := errors.Errorf("service %q exited before readiness", run.Service)
+		_ = store.UpdateRun(context.Background(), runID, func(record *runstate.RunRecord) error {
+			record.Phase = runstate.RunExited
+			record.Exit = &runstate.ExitSummary{
+				ExitedAt: exitInfo.ExitedAt,
+				ExitCode: exitInfo.ExitCode,
+				Signal:   exitInfo.Signal,
+				Error:    exitInfo.Error,
+			}
+			record.LastError = &runstate.ErrorRecord{
+				Code:    "E_PROCESS_EXIT",
+				Message: failure.Error(),
+			}
+			return nil
+		})
+		return failure
+	}
+	if !os.IsNotExist(errors.Cause(exitErr)) {
+		return errors.Wrap(exitErr, "inspect exit artifact before marking ready")
+	}
+	if run.Wrapper == nil || run.Child == nil || run.ChildPGID <= 0 {
+		failure := errors.Errorf("service %q has incomplete process ownership before readiness", run.Service)
+		markRunFailed(store, runID, "E_PROCESS_IDENTITY", failure)
+		return failure
+	}
+	wrapperStatus, err := runstate.InspectProcess(run.Wrapper)
+	if err != nil {
+		return errors.Wrap(err, "inspect wrapper before marking ready")
+	}
+	childStatus, err := runstate.InspectProcess(run.Child)
+	if err != nil {
+		return errors.Wrap(err, "inspect child before marking ready")
+	}
+	if wrapperStatus != runstate.ProcessMatches || childStatus != runstate.ProcessMatches {
+		failure := errors.Errorf(
+			"service %q process exited before readiness (wrapper=%s child=%s)",
+			run.Service, wrapperStatus, childStatus,
+		)
+		markRunFailed(store, runID, "E_PROCESS_EXIT", failure)
+		return failure
+	}
+	return nil
 }
 
 func markRunUnknown(store *runstate.Store, runID string, code string, message string) {
@@ -728,6 +786,11 @@ func waitHTTP(ctx context.Context, url string) error {
 }
 
 func terminatePIDGroup(ctx context.Context, pid int, timeout time.Duration) error {
+	return terminateOwnedProcessGroups(ctx, pid, 0, timeout)
+}
+
+func terminateOwnedProcessGroups(ctx context.Context, wrapperPID int, childPGID int, timeout time.Duration) error {
+	pid := wrapperPID
 	if pid <= 0 {
 		return nil
 	}
@@ -736,6 +799,9 @@ func terminatePIDGroup(ctx context.Context, pid int, timeout time.Duration) erro
 		_ = syscall.Kill(-pgid, syscall.SIGTERM)
 	} else {
 		_ = syscall.Kill(pid, syscall.SIGTERM)
+	}
+	if childPGID > 0 && (err != nil || childPGID != pgid) {
+		_ = syscall.Kill(-childPGID, syscall.SIGTERM)
 	}
 
 	ctxDeadline, ok := ctx.Deadline()
@@ -757,7 +823,7 @@ func terminatePIDGroup(ctx context.Context, pid int, timeout time.Duration) erro
 	defer t.Stop()
 
 	for {
-		if !state.ProcessAlive(pid) {
+		if !state.ProcessAlive(pid) && !processGroupAlive(childPGID) {
 			return nil
 		}
 		if time.Now().After(deadline) {
@@ -770,6 +836,9 @@ func terminatePIDGroup(ctx context.Context, pid int, timeout time.Duration) erro
 		}
 	}
 
+	if childPGID > 0 && (err != nil || childPGID != pgid) {
+		_ = syscall.Kill(-childPGID, syscall.SIGKILL)
+	}
 	if err == nil {
 		_ = syscall.Kill(-pgid, syscall.SIGKILL)
 	} else {
@@ -777,7 +846,7 @@ func terminatePIDGroup(ctx context.Context, pid int, timeout time.Duration) erro
 	}
 
 	killDeadline := time.Now().Add(2 * time.Second)
-	for state.ProcessAlive(pid) && time.Now().Before(killDeadline) {
+	for (state.ProcessAlive(pid) || processGroupAlive(childPGID)) && time.Now().Before(killDeadline) {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -785,10 +854,18 @@ func terminatePIDGroup(ctx context.Context, pid int, timeout time.Duration) erro
 		}
 	}
 
-	if state.ProcessAlive(pid) {
+	if state.ProcessAlive(pid) || processGroupAlive(childPGID) {
 		return errors.New("failed to stop service")
 	}
 	return nil
+}
+
+func processGroupAlive(pgid int) bool {
+	if pgid <= 0 {
+		return false
+	}
+	err := syscall.Kill(-pgid, 0)
+	return err == nil || stderrors.Is(err, syscall.EPERM)
 }
 
 func specRecordFromServiceSpec(svc engine.ServiceSpec, cwd string) *state.ServiceSpecRecord {
