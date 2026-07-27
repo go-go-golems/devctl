@@ -1,0 +1,4 @@
+interface:
+  display_name: "Devctl Plugin Authoring"
+  short_description: "Build and troubleshoot devctl protocol plugins"
+  default_prompt: "Use $devctl-plugin-authoring to build or troubleshoot a repository-specific devctl plugin."
