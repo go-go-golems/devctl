@@ -69,3 +69,11 @@ Expanded the archived context report with concrete read edited added and removed
 ### Related Files
 
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/ttmp/2026/09/13/DEVCTL-ROBUST-LIFECYCLE--explicit-lifecycle-plans-safe-plugin-execution-and-artifact-provenance/reference/02-context-window-and-session-timeline.html — Function-level session implementation audit
+
+## 2026-09-13
+
+Extracted the context-window and classified session-timeline report into a reusable session-context-audit skill with a strict JSON contract, standalone renderer, fixture, escaping tests, and the motivating report as a visual example.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/skills/session-context-audit/SKILL.md — Project skill for evidence-backed session context audits
