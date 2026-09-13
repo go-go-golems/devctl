@@ -67,4 +67,6 @@ Typed artifact provenance is an intentional persisted schema change. `RunSchemaV
 
 The first artifact scope is a directly launched native executable. A service either uses its ordinary command path or explicitly references one produced executable artifact; ambiguous simultaneous declarations are rejected. Interpreter scripts, container images, dynamic libraries, and arbitrary asset sets remain outside the first schema.
 
-Artifact records contain stable identity, immutable publication path, SHA-256, byte size, producer phase/step, and build/recipe identity. The selected record is copied into the service run before wrapper launch and revalidated immediately before apply. Active run references prevent deleting their immutable artifact paths; automatic garbage collection is not introduced in this ticket.
+Artifact records contain only artifact ID, content-addressed path, SHA-256, and byte size. Referenced executables are staged during preparation, published under `.devctl/artifacts/sha256/<digest>/` while the lifecycle lock is held, copied into the service run, and revalidated before wrapper launch.
+
+Garbage collection is included in the first implementation. It protects the artifacts referenced by every service's current and immediately previous run and removes other valid digest directories. Older run records retain identity evidence even when their executable bytes have been collected. No leases, manifests, pinning, quotas, quarantine, or background collector are introduced.
