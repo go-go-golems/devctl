@@ -53,3 +53,11 @@ Shipped a standalone supported Python subprocess runner with shared monotonic bu
 
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/sdk/python/devctl_runner.py — Supported standalone bounded runner for Python plugins
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/sdk/python/test_devctl_runner.py — Runner budget output dry-run cancellation and descendant fixtures
+
+## 2026-09-13
+
+Archived the browser-readable context inventory and classified session timeline beside the investigation diary.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/ttmp/2026/09/13/DEVCTL-ROBUST-LIFECYCLE--explicit-lifecycle-plans-safe-plugin-execution-and-artifact-provenance/reference/02-context-window-and-session-timeline.html — Session context audit requested during Phase 3

@@ -2,14 +2,22 @@
 Title: Investigation diary
 Ticket: DEVCTL-ROBUST-LIFECYCLE
 Status: active
-Topics: [devctl, architecture, plugins, supervisor]
+Topics:
+    - devctl
+    - architecture
+    - plugins
+    - supervisor
 DocType: reference
 Intent: long-term
 Owners: []
-RelatedFiles: []
+RelatedFiles:
+    - Path: repo://ttmp/2026/09/13/DEVCTL-ROBUST-LIFECYCLE--explicit-lifecycle-plans-safe-plugin-execution-and-artifact-provenance/reference/02-context-window-and-session-timeline.html
+      Note: Browser-readable context inventory and classified implementation timeline
 ExternalSources: []
 Summary: Source investigation and reMarkable delivery of the lifecycle robustness design.
 LastUpdated: 2026-09-13T11:00:00Z
+WhatFor: ""
+WhenToUse: ""
 ---
 
 # Investigation diary
@@ -443,3 +451,48 @@ I added a standalone standard-library Python runner for build and prepare subpro
 - Default retained tail is 16 KiB per stream; default TERM grace is one second.
 - Deadline-exhausted-before-start returns exit code 124 without creating a process. Spawn failure returns 127 with a structured error string.
 - Deliberately detached descendants are outside the process-group ownership guarantee and are documented as unsupported.
+
+## Step 8: Archive the context and session timeline beside the diary
+
+I saved the browser-readable context inventory in the ticket's `reference/` directory beside this diary. The report includes turn-numbered context sections, analyzed and edited file inventories, and a classified timeline separating analysis, engineering, support work, and churn with prevention advice.
+
+### Prompt Context
+**User prompt (verbatim):** “save html in the ticket next to diary”
+**Assistant interpretation:** Copy the temporary HTML context report into the ticket's diary directory and preserve it as a tracked artifact.
+**Inferred user intent:** Keep the context audit available with the permanent ticket evidence rather than only through a temporary browser server.
+
+### What I did
+- Copied `/tmp/devctl-context-inventory.html` to `reference/02-context-window-and-session-timeline.html`.
+- Corrected the report's storage note to identify its permanent ticket-relative location.
+- Removed the untracked `.playwright-mcp/` snapshot directory produced while opening the temporary report; it is not ticket evidence.
+- Related the HTML artifact to this diary with docmgr and updated the ticket changelog.
+
+### Why
+- The ticket reference directory is the natural durable location for a session-context artifact explicitly requested beside the diary.
+- Browser automation snapshots are incidental tooling output and should not pollute the implementation commit.
+
+### What worked
+- The archived report is approximately 20 KiB and exists at the requested location.
+- `docmgr doc relate` added the HTML report to this diary's focused RelatedFiles metadata.
+
+### What didn't work
+- No failure occurred while archiving the report.
+
+### What I learned
+- The browser tool writes snapshot metadata under the current repository unless cleaned up; only the authored report belongs in this ticket.
+
+### What was tricky to build
+- N/A; this was a bounded archival checkpoint.
+
+### What warrants a second pair of eyes
+- N/A; reviewers can open the standalone HTML directly.
+
+### What should be done in the future
+- Resume Phase 3 with the lifecycle API and persistence-schema decision record.
+
+### Code review instructions
+- Open `reference/02-context-window-and-session-timeline.html` in a browser and verify the turn, timeline, analyzed-file, and edited-file sections.
+
+### Technical details
+- Permanent ticket-relative path: `reference/02-context-window-and-session-timeline.html`.
+- The temporary source remains at `/tmp/devctl-context-inventory.html` but is no longer the authoritative copy.
