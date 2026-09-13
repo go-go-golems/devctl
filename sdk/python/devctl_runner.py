@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+import ctypes
 import os
 from pathlib import Path
 import signal
@@ -124,6 +125,7 @@ class Runner:
         if budget.remaining() <= 0:
             return RunResult(tuple(argv), 124, 0, timed_out=True)
 
+        self._enable_child_subreaper()
         child_env = os.environ.copy()
         if env:
             child_env.update(env)
@@ -163,6 +165,8 @@ class Runner:
         cleanup_confirmed = True
         while True:
             leader_exited = process.poll() is not None
+            if leader_exited:
+                self._reap_group(process.pid)
             group_alive = self._group_alive(process.pid)
             if leader_exited and not group_alive:
                 break
@@ -210,6 +214,29 @@ class Runner:
                     self.output.flush()
         finally:
             pipe.close()
+
+    @staticmethod
+    def _enable_child_subreaper() -> None:
+        """Adopt orphaned descendants so this process can reap their zombies."""
+        if not sys.platform.startswith("linux"):
+            return
+        libc = ctypes.CDLL(None, use_errno=True)
+        pr_set_child_subreaper = 36
+        if libc.prctl(pr_set_child_subreaper, 1, 0, 0, 0) != 0:
+            error_number = ctypes.get_errno()
+            raise OSError(error_number, os.strerror(error_number))
+
+    @staticmethod
+    def _reap_group(pgid: int) -> None:
+        while True:
+            try:
+                pid, _status = os.waitpid(-pgid, os.WNOHANG)
+            except ChildProcessError:
+                return
+            except InterruptedError:
+                continue
+            if pid <= 0:
+                return
 
     @staticmethod
     def _group_alive(pgid: int) -> bool:

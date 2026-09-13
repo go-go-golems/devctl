@@ -73,17 +73,28 @@ func (f *Factory) Start(ctx context.Context, spec PluginSpec, opts StartOptions)
 		return nil, err
 	}
 
+	if err := enableChildSubreaper(); err != nil {
+		return nil, errors.Wrap(err, "enable plugin child subreaper")
+	}
 	if err := cmd.Start(); err != nil {
 		return nil, errors.Wrapf(err, "failed to start plugin %q (%s %s)", spec.ID, spec.Path, strings.Join(spec.Args, " "))
 	}
 
 	lifetime := newProcessLifetime(cmd)
 	reader := bufio.NewReader(stdout)
-	hs, err := readHandshake(ctx, reader, f.opts.HandshakeTimeout)
+	hs, err := readHandshake(ctx, reader, stdout.Close, f.opts.HandshakeTimeout)
 	if err != nil {
+		// readHandshake synchronizes a canceled read before returning. Drain stderr
+		// to completion before allowing Cmd.Wait to close the remaining pipe.
+		stderrDone := make(chan struct{})
+		stderrTailResult := make(chan string, 1)
+		go func() {
+			defer close(stderrDone)
+			stderrTailResult <- drainStderr(stderr, 2*time.Second, 4096)
+		}()
+		lifetime.startWaitAfter(stderrDone)
 		lifetime.beginShutdown(stdin.Close, f.opts.EOFGraceTimeout, f.opts.ShutdownTimeout)
-		// Capture a bounded stderr tail while the cleanup owner shuts the process down.
-		stderrTail := drainStderr(stderr, 2*time.Second, 4096)
+		stderrTail := <-stderrTailResult
 		cleanupContext, cleanupCancel := context.WithTimeout(context.Background(), f.opts.EOFGraceTimeout+2*f.opts.ShutdownTimeout+time.Second)
 		_, cleanupErr := lifetime.awaitShutdown(cleanupContext)
 		cleanupCancel()
@@ -110,11 +121,11 @@ func mergeEnv(base []string, extra map[string]string) []string {
 	return out
 }
 
-func readHandshake(ctx context.Context, r *bufio.Reader, timeout time.Duration) (protocol.Handshake, error) {
+func readHandshake(ctx context.Context, r *bufio.Reader, closeReader func() error, timeout time.Duration) (protocol.Handshake, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	line, err := readLine(ctx, r)
+	line, err := readLine(ctx, r, closeReader)
 	if err != nil {
 		return protocol.Handshake{}, err
 	}
@@ -129,7 +140,7 @@ func readHandshake(ctx context.Context, r *bufio.Reader, timeout time.Duration) 
 	return hs, nil
 }
 
-func readLine(ctx context.Context, r *bufio.Reader) ([]byte, error) {
+func readLine(ctx context.Context, r *bufio.Reader, closeReader func() error) ([]byte, error) {
 	type result struct {
 		b   []byte
 		err error
@@ -149,6 +160,11 @@ func readLine(ctx context.Context, r *bufio.Reader) ([]byte, error) {
 
 	select {
 	case <-ctx.Done():
+		if closeReader != nil {
+			_ = closeReader()
+		}
+		// Synchronize the canceled pipe consumer before Cmd.Wait may close pipes.
+		<-ch
 		return nil, ctx.Err()
 	case res := <-ch:
 		if res.err != nil {
@@ -178,8 +194,15 @@ func drainStderr(stderr io.ReadCloser, timeout time.Duration, maxBytes int) stri
 		ch <- result{n: n, buf: buf}
 	}()
 
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 	select {
-	case <-time.After(timeout):
+	case <-timer.C:
+		_ = stderr.Close()
+		res := <-ch
+		if res.n > 0 {
+			return string(res.buf[:res.n])
+		}
 		return ""
 	case res := <-ch:
 		if res.n > 0 {

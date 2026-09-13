@@ -941,3 +941,25 @@ The requirement audit, final implementation revision, task ledger, and docmgr hy
 
 ### Remaining requirements and next action
 - N/A for `DEVCTL-ROBUST-LIFECYCLE`.
+
+## Step 17: Address PR dependency and subprocess-ownership review findings
+
+PR #13's isolated CI exposed that devctl still declared Glazed v1.2.5 even though the implementation had migrated against workspace Glazed v1.4 APIs. The completed Codex review then identified two deeper ownership races: `Cmd.Wait` could close plugin pipes before readers became active, and process-group checks could mistake unreaped descendant zombies for live processes. I pinned the required published Glazed revision, synchronized reader completion before transferring `Wait` ownership, and made both the Go and Python owners Linux child subreapers that reap only their adopted plugin process group.
+
+### Prompt Context
+**User prompt (verbatim):** “Address code review issues in https://github.com/go-go-golems/devctl/actions/runs/34764258563/job/103742315378?pr=13”
+**Assistant interpretation:** Diagnose the linked CI failure, inspect the subsequently completed inline review, fix every finding, validate under CI-equivalent module isolation, and update the PR.
+**Inferred user intent:** Make PR #13 independently buildable and robust in containerized CI rather than relying on the local workspace or host PID 1.
+
+### What I did and why
+- Opened Glazed PR #632 so the required `e0cfa33` revision is fetchable by Go module tooling, then updated devctl's `go.mod`/`go.sum` under `GOWORK=off`.
+- Changed `processLifetime` so its sole `Cmd.Wait` owner runs only after stdout and stderr consumers finish. Handshake cancellation explicitly closes and joins the blocked stdout read, while bounded stderr draining closes and joins its reader before allowing `Wait`.
+- Enabled `PR_SET_CHILD_SUBREAPER` before starting plugins on Linux and used nonblocking group-scoped `wait4` after the leader exits. This reaps adopted descendants without competing with `Cmd.Wait` for the leader.
+- Applied the same subreaper and negative-PGID `waitpid` model in the standard-library Python runner.
+
+### Evidence, failures, and review instructions
+- Linked CI failed against `github.com/go-go-golems/glazed@v1.2.5` with duplicate `stream` flags; `GOWORK=off go get ...@e0cfa33` exposed the missing production dependency and initially required `go mod tidy` for `modernc.org/sqlite` sums.
+- `GOWORK=off go test ./... -count=1` passed after the dependency correction.
+- `go test -race ./pkg/runtime -count=10` passed; focused immediate-exit and descendant shutdown cases passed repeatedly, including a new fixture where the plugin exits immediately after its final response.
+- All six Python runner tests passed, and `test_cancel_removes_descendant` passed 20 repetitions.
+- Review `pkg/runtime/factory.go` and `client.go` for pipe handoff, then `process_reaper_linux.go` and `sdk/python/devctl_runner.py` for group-scoped adopted-child reaping.

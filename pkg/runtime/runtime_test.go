@@ -36,6 +36,31 @@ func TestRuntime_HandshakeAndCall(t *testing.T) {
 	require.True(t, out.Pong)
 }
 
+func TestRuntime_ImmediateExitAfterResponsePreservesFrame(t *testing.T) {
+	dir := t.TempDir()
+	plugin := filepath.Join(dir, "plugin.py")
+	code := `import json, sys
+print(json.dumps({"type":"handshake","protocol_version":"v2","plugin_name":"immediate","capabilities":{"ops":["once"]}}), flush=True)
+request = json.loads(sys.stdin.readline())
+print(json.dumps({"type":"response","request_id":request["request_id"],"ok":True,"output":{"done":True}}), flush=True)
+`
+	require.NoError(t, os.WriteFile(plugin, []byte(code), 0o600))
+
+	for range 20 {
+		factory := NewFactory(FactoryOptions{HandshakeTimeout: time.Second, ShutdownTimeout: time.Second})
+		client, err := factory.Start(t.Context(), PluginSpec{
+			ID: "immediate", Path: "python3", Args: []string{plugin}, WorkDir: dir,
+		}, StartOptions{})
+		require.NoError(t, err)
+		var output struct {
+			Done bool `json:"done"`
+		}
+		require.NoError(t, client.Call(t.Context(), "once", nil, &output))
+		require.True(t, output.Done)
+		require.NoError(t, client.Close(t.Context()))
+	}
+}
+
 func TestRuntime_NoiseBeforeHandshakeFailsStart(t *testing.T) {
 	repoRoot, err := os.Getwd()
 	require.NoError(t, err)

@@ -132,3 +132,13 @@ Added effect-free lifecycle recipe explanation, concurrent artifact-preparation 
 ## 2026-09-13
 
 Closed after full offline lifecycle qualification at devctl a14d611 with Glazed dependency e0cfa33
+
+## 2026-09-13
+
+Addressed PR #13 CI and subprocess ownership review: pinned the required published Glazed revision, synchronized pipe readers before Cmd.Wait, and added group-scoped subreaper cleanup for Go and Python plugin subprocesses.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/runtime/process_lifetime.go — Wait ownership and group cleanup
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/runtime/process_reaper_linux.go — Linux adopted-descendant reaping
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/sdk/python/devctl_runner.py — Python subreaper cleanup

@@ -37,6 +37,7 @@ type processLifetime struct {
 	pgid         int
 	done         chan struct{}
 	exit         processExit
+	waitOnce     sync.Once
 	shutdownOnce sync.Once
 	shutdownDone chan struct{}
 	shutdown     ShutdownResult
@@ -49,12 +50,22 @@ func newProcessLifetime(cmd *exec.Cmd) *processLifetime {
 			lifetime.pgid = pgid
 		}
 	}
-	go func() {
-		err := cmd.Wait()
-		lifetime.exit = processExit{err: err, exitCode: processExitCode(err)}
-		close(lifetime.done)
-	}()
 	return lifetime
+}
+
+// startWaitAfter transfers process reaping to the lifetime owner. Cmd.Wait is
+// delayed until every external StdoutPipe/StderrPipe consumer has completed.
+func (l *processLifetime) startWaitAfter(readers ...<-chan struct{}) {
+	l.waitOnce.Do(func() {
+		go func() {
+			for _, readerDone := range readers {
+				<-readerDone
+			}
+			err := l.cmd.Wait()
+			l.exit = processExit{err: err, exitCode: processExitCode(err)}
+			close(l.done)
+		}()
+	})
 }
 
 func processExitCode(err error) *int {
@@ -127,8 +138,11 @@ func (l *processLifetime) wait(timeout time.Duration) bool {
 			pluginExited = true
 		default:
 		}
-		if pluginExited && !l.processGroupAlive() {
-			return true
+		if pluginExited {
+			reapProcessGroup(l.pgid)
+			if !l.processGroupAlive() {
+				return true
+			}
 		}
 		if timeout <= 0 || !time.Now().Before(deadline) {
 			return false

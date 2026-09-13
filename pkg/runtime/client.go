@@ -69,8 +69,11 @@ func newClient(spec PluginSpec, hs protocol.Handshake, meta RequestMeta, cmd *ex
 
 func (c *client) start() {
 	c.startOnce.Do(func() {
-		go c.readStdoutLoop()
-		go c.readStderrLoop()
+		stdoutDone := make(chan struct{})
+		stderrDone := make(chan struct{})
+		go c.readStdoutLoop(stdoutDone)
+		go c.readStderrLoop(stderrDone)
+		c.lifetime.startWaitAfter(stdoutDone, stderrDone)
 	})
 }
 
@@ -228,7 +231,8 @@ func (c *client) writeFrame(v any) error {
 	return err
 }
 
-func (c *client) readStdoutLoop() {
+func (c *client) readStdoutLoop(done chan<- struct{}) {
+	defer close(done)
 	for {
 		line, err := c.stdout.ReadBytes('\n')
 		if err != nil {
@@ -278,7 +282,8 @@ func (c *client) readStdoutLoop() {
 	}
 }
 
-func (c *client) readStderrLoop() {
+func (c *client) readStderrLoop(done chan<- struct{}) {
+	defer close(done)
 	r := bufio.NewReader(c.stderr)
 	for {
 		line, err := r.ReadBytes('\n')
