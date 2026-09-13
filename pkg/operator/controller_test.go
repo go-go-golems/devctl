@@ -20,6 +20,7 @@ import (
 type staticPlanner struct {
 	result      PlanResult
 	err         error
+	prepareErr  error
 	validateErr error
 }
 
@@ -37,8 +38,8 @@ func (p staticPlanner) ResolveRecipe(_ context.Context, operation string, reques
 }
 
 func (p staticPlanner) PrepareReplacement(_ context.Context, recipe LifecycleRecipe) (PreparedLaunch, error) {
-	if p.err != nil {
-		return PreparedLaunch{}, p.err
+	if p.prepareErr != nil {
+		return PreparedLaunch{}, p.prepareErr
 	}
 	return PreparedLaunch{
 		Version: LifecycleRecipeSchemaVersion, Recipe: recipe, Plan: p.result.Plan,
@@ -339,6 +340,28 @@ func TestUpRejectsUnknownSelectionBeforeMutation(t *testing.T) {
 	}
 	if _, loadErr := store.LoadEnvironment(context.Background()); loadErr == nil {
 		t.Fatal("unknown selection unexpectedly created environment state")
+	}
+}
+
+func TestPreparationArtifactErrorsPreserveArtifactCode(t *testing.T) {
+	for _, operation := range []string{"up", "restart"} {
+		t.Run(operation, func(t *testing.T) {
+			repoRoot := t.TempDir()
+			supervisor := &recordingSupervisor{t: t, repoRoot: repoRoot}
+			artifactErr := &OperatorError{Code: CodeArtifactInvalid, Message: "prepare executable artifacts", cause: errors.New("missing output")}
+			controller := newTestController(t, repoRoot, staticPlanner{prepareErr: artifactErr}, supervisor)
+
+			var err error
+			if operation == "up" {
+				_, err = controller.Up(t.Context(), UpRequest{RepoRoot: repoRoot}, nil)
+			} else {
+				_, err = controller.Restart(t.Context(), RestartRequest{RepoRoot: repoRoot}, nil)
+			}
+			var operatorErr *OperatorError
+			if !errors.As(err, &operatorErr) || operatorErr.Code != CodeArtifactInvalid {
+				t.Fatalf("error = %v, want %s", err, CodeArtifactInvalid)
+			}
+		})
 	}
 }
 

@@ -123,6 +123,10 @@ func (c *controller) Up(
 	}
 	prepared, err := c.planner.PrepareReplacement(ctx, recipe)
 	if err != nil {
+		var operatorErr *OperatorError
+		if stderrors.As(err, &operatorErr) {
+			return c.finishWithOperatorError(result, operatorErr)
+		}
 		return c.finishFailed(result, CodeConfigInvalid, "could not prepare replacement", err)
 	}
 	defer cleanupPreparedArtifacts(prepared)
@@ -495,6 +499,10 @@ func (c *controller) Restart(
 	}
 	prepared, err := c.planner.PrepareReplacement(ctx, recipe)
 	if err != nil {
+		var operatorErr *OperatorError
+		if stderrors.As(err, &operatorErr) {
+			return c.finishWithOperatorError(result, operatorErr)
+		}
 		return c.finishFailed(result, CodeConfigInvalid, "could not prepare restart replacement", err)
 	}
 	defer cleanupPreparedArtifacts(prepared)

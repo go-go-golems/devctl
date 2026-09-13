@@ -83,6 +83,36 @@ func TestStageAndPublishReferencedArtifact(t *testing.T) {
 	}
 }
 
+func TestDryRunValidatesArtifactDeclarationWithoutReadingOrStagingBytes(t *testing.T) {
+	repoRoot := t.TempDir()
+	recipe := LifecycleRecipe{
+		Version:  LifecycleRecipeSchemaVersion,
+		ID:       "018f0f65-6c1a-7abc-8def-0123456789ab",
+		RepoRoot: repoRoot,
+		Policy:   PipelinePolicy{DryRun: true},
+	}
+	plan := engine.LaunchPlan{Services: []engine.ServiceSpec{{
+		Name: "api", Executable: &engine.ExecutableRef{ArtifactID: "api", Args: []string{"--port", "8080"}},
+	}}}
+	missingOutput := filepath.Join(repoRoot, "build", "not-created-during-dry-run")
+	records, err := stageReferencedArtifacts(
+		t.Context(), recipe, &plan,
+		&engine.BuildResult{Artifacts: map[string]string{"api": missingOutput}}, nil,
+	)
+	if err != nil {
+		t.Fatalf("dry-run declaration validation: %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("dry-run staged artifacts: %#v", records)
+	}
+	if len(plan.Services[0].Command) != 0 {
+		t.Fatalf("dry-run resolved nonexistent executable command: %v", plan.Services[0].Command)
+	}
+	if _, err := os.Stat(filepath.Join(repoRoot, ".devctl")); !os.IsNotExist(err) {
+		t.Fatalf("dry-run created artifact state: %v", err)
+	}
+}
+
 func TestConcurrentPreparationsUseIndependentStagingAndDeduplicateOnPublish(t *testing.T) {
 	repoRoot := t.TempDir()
 	source := filepath.Join(repoRoot, "build", "api")

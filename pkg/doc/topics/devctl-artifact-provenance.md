@@ -92,6 +92,8 @@ Identical bytes reuse the same path even when later builds produce them again. D
 
 A changed, missing, non-regular, or non-executable file produces `E_ARTIFACT_INVALID`. Restart performs these checks before stopping the current attempt.
 
+During `--dry-run`, devctl validates artifact IDs, launch-form exclusivity, merged build/prepare declarations, and nonempty intended output paths without reading, copying, or requiring the reported executable bytes. A plugin that honors `ctx.dry_run=true` therefore does not need to create its intended output.
+
 ## Inspect selected identity
 
 Structured status output includes the selected executable identity:

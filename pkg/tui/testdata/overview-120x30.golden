@@ -4,8 +4,8 @@ devctl  profile=dev  environment=known  services 2  running 1  unhealthy 0
 ╭─────────────────────────────────────────────────────────────────╮  ╭─────────────────────────────────────────────╮
 │ Services                                                        │  │ Current service                             │
 │   NAME             DESIRED   STATE      HEALTH      PID         │  │ api                                         │
-│ > api              running   ready      -           -           │  │ Desired  running     State   ready          │
-│   worker           running   failed     -           -           │  │ Health   -           Uptime  -              │
+│ > api              running   ready      unknown     -           │  │ Desired  running     State   ready          │
+│   worker           running   failed     not_running -           │  │ Health   unknown     Uptime  -              │
 ╰─────────────────────────────────────────────────────────────────╯  │ Child PID -         Wrapper -               │
                                                                      │ Run      run-api                            │
                                                                      │ Exit     -                                  │

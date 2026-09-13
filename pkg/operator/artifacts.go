@@ -33,7 +33,7 @@ func stageReferencedArtifacts(
 ) ([]runstate.ArtifactRecord, error) {
 	complete := false
 	defer func() {
-		if !complete {
+		if !recipe.Policy.DryRun && !complete {
 			_ = os.RemoveAll(filepath.Join(
 				recipe.RepoRoot, ".devctl", "artifacts", ".staging", recipe.ID,
 			))
@@ -77,6 +77,14 @@ func stageReferencedArtifacts(
 		output, exists := produced[id]
 		if !exists {
 			return nil, errors.Errorf("service %q references undeclared executable artifact %q", service.Name, id)
+		}
+		if output.path == "" {
+			return nil, errors.Errorf("executable artifact %q declares an empty output path", id)
+		}
+		if recipe.Policy.DryRun {
+			// Providers report intended outputs during dry runs; do not require or
+			// copy bytes that correctly have not been produced.
+			continue
 		}
 		record, exists := staged[id]
 		if !exists {

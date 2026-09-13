@@ -198,7 +198,9 @@ func (PipelinePlanner) PrepareReplacement(
 		ctx, recipe, &prepared.Plan, prepared.Build, prepared.Prepare,
 	)
 	if err != nil {
-		return PreparedLaunch{}, err
+		return PreparedLaunch{}, &OperatorError{
+			Code: CodeArtifactInvalid, Message: "prepare executable artifacts", cause: err,
+		}
 	}
 	prepared.RepositoryFingerprint = fingerprint
 	prepared.PreparedAt = time.Now().UTC()

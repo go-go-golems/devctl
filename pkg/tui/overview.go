@@ -56,14 +56,7 @@ func (m OverviewModel) ViewAt(width int, now time.Time) string {
 		if index == m.Selected {
 			cursor = ">"
 		}
-		health := "-"
-		if service.Health != nil {
-			if service.Health.Healthy {
-				health = "healthy"
-			} else {
-				health = "unhealthy"
-			}
-		}
+		health := projectedHealthLabel(service)
 		pid := "-"
 		if service.Child != nil {
 			pid = fmt.Sprintf("%d", service.Child.PID)
@@ -85,14 +78,7 @@ func (m OverviewModel) ViewAt(width int, now time.Time) string {
 	details := "No service selected."
 	if len(m.Snapshot.Services) > 0 {
 		selected := m.Snapshot.Services[m.Selected]
-		health := "-"
-		if selected.Health != nil {
-			if selected.Health.Healthy {
-				health = "healthy"
-			} else {
-				health = "unhealthy"
-			}
-		}
+		health := projectedHealthLabel(selected)
 		pid := processIdentityPID(selected.Child)
 		var detail strings.Builder
 		_, _ = fmt.Fprintf(&detail, "%s\n", titleStyle.Render(selected.Service))
@@ -125,15 +111,7 @@ func (m OverviewModel) ViewAt(width int, now time.Time) string {
 		summary := fmt.Sprintf(
 			"Selected %s %s pid:%s h:%s",
 			selected.Service, selected.Phase, processIdentityPID(selected.Child),
-			func() string {
-				if selected.Health == nil {
-					return "-"
-				}
-				if selected.Health.Healthy {
-					return "healthy"
-				}
-				return "unhealthy"
-			}(),
+			projectedHealthLabel(selected),
 		)
 		return panel("Overview", strings.TrimSuffix(services.String(), "\n")+"\n\n"+summary, width) +
 			"\n" + renderKey("enter", "logs") + "  " + renderKey("u/d/r", "lifecycle") + "  " + renderKey("j/k", "select")
@@ -143,6 +121,10 @@ func (m OverviewModel) ViewAt(width int, now time.Time) string {
 	}
 	return panel("Services", strings.TrimSuffix(services.String(), "\n"), width) + "\n" +
 		panel("Current service", details, width) + "\n" + keys
+}
+
+func projectedHealthLabel(service operator.ServiceSnapshot) string {
+	return string(runstate.ProjectHealth(service.Phase, service.Health).Current)
 }
 
 func serviceUptime(now time.Time, service operator.ServiceSnapshot) string {

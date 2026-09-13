@@ -964,3 +964,18 @@ PR #13's isolated CI exposed that devctl still declared Glazed v1.2.5 even thoug
 - `go test -race ./pkg/runtime -count=10` passed; focused immediate-exit and descendant shutdown cases passed repeatedly, including a new fixture where the plugin exits immediately after its final response.
 - All six Python runner tests passed, and `test_cancel_removes_descendant` passed 20 repetitions.
 - Review `pkg/runtime/factory.go` and `client.go` for pipe handoff, then `process_reaper_linux.go` and `sdk/python/devctl_runner.py` for group-scoped adopted-child reaping.
+
+## Step 18: Address second-review dry-run, error-code, and TUI health findings
+
+The manually requested second Codex review found three P2 consistency gaps. Artifact staging still touched bytes during dry-run, preparation-time artifact errors were flattened to configuration errors, and the TUI bypassed the canonical current-versus-historical health projection. I corrected all three boundaries and added focused regression coverage.
+
+### Prompt Context
+**User prompt (verbatim):** “Address the new P2 findings too: https://github.com/go-go-golems/devctl/pull/13”
+**Assistant interpretation:** Resolve every P2 inline comment from the review of `dfe896d`, update documentation/evidence, validate, push, and respond on the review threads.
+**Inferred user intent:** Make dry-run behavior, machine error classification, and operator views match the public contracts already established by the ticket.
+
+### Changes and evidence
+- Dry-run artifact handling now validates launch-form exclusivity, IDs, merged declarations, and nonempty intended paths without filesystem inspection, staging, cleanup, or command rewriting. A missing intended output succeeds in the focused test and `.devctl` remains absent.
+- `stageReferencedArtifacts` failures are wrapped as `E_ARTIFACT_INVALID`; both up and restart preserve an existing `OperatorError` from preparation rather than reclassifying it as `E_CONFIG_INVALID`.
+- Every TUI health label and the unhealthy summary count now use `runstate.ProjectHealth`; terminal failed/exited attempts display `not_running` while retaining historical check detail.
+- Updated embedded artifact-provenance help and TUI golden fixtures. Focused `go test -race ./pkg/operator ./pkg/tui` passed after one expected golden mismatch exposed the new projected labels.

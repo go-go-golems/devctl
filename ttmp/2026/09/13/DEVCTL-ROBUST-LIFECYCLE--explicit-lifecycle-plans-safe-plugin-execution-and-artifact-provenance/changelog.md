@@ -142,3 +142,13 @@ Addressed PR #13 CI and subprocess ownership review: pinned the required publish
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/runtime/process_lifetime.go — Wait ownership and group cleanup
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/runtime/process_reaper_linux.go — Linux adopted-descendant reaping
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/sdk/python/devctl_runner.py — Python subreaper cleanup
+
+## 2026-09-13
+
+Resolved second PR review findings: artifact dry-runs validate declarations without touching bytes, preparation preserves E_ARTIFACT_INVALID, and TUI health labels/counts use the canonical current-state projection.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/operator/artifacts.go — Side-effect-free dry-run artifact declaration validation
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/operator/controller.go — Artifact-specific preparation error projection
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/tui/overview.go — Canonical projected health labels
