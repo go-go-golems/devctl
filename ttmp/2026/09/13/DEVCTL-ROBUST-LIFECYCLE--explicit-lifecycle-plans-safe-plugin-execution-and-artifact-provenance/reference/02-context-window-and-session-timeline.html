@@ -72,5 +72,48 @@
 <div class="filecol"><h3>Ticket evidence</h3><ul>
 <li><code>ttmp/.../reference/01-investigation-diary.md</code></li><li><code>ttmp/.../tasks.md</code></li><li><code>ttmp/.../changelog.md</code></li></ul><p>The ticket path prefix is <code>ttmp/2026/09/13/DEVCTL-ROBUST-LIFECYCLE--explicit-lifecycle-plans-safe-plugin-execution-and-artifact-provenance/</code>.</p></div>
 </div></section>
-<section class="section"><h2>Repository state at report generation</h2><div class="tc"><ul><li>Working tree: clean before creating this temporary report.</li><li>This HTML report is stored beside the investigation diary at <code>reference/02-context-window-and-session-timeline.html</code>.</li><li>Latest implementation revision: <code>f7abf04</code>.</li><li>Remaining ticket work: API/schema decision record, recipe separation, artifact provenance, and full integration qualification.</li></ul></div></section>
+<section class="section"><h2>API and package inventory</h2><div class="files">
+<div class="filecol"><h3>Read / analyzed</h3><ul>
+<li><code>operator.Controller.Up / Down / Restart / Snapshot</code> — lifecycle coordination, locking, replacement ordering, and durable views.</li>
+<li><code>operator.PipelinePlanner.Plan</code> — current side-effecting config/build/prepare/validate/launch sequence.</li>
+<li><code>engine.Pipeline.MutateConfig / Build / Prepare / Validate / LaunchPlan</code> — typed calls into selected plugins and result merging.</li>
+<li><code>runtime.Factory.Start</code> — plugin process creation, handshake parsing, and startup cleanup.</li>
+<li><code>runtime.Client.Call / StartStream / Close</code> — correlated requests, event subscriptions, and plugin shutdown.</li>
+<li><code>runstate.Store.CreateRun / LoadRun / UpdateRun</code> — versioned per-attempt persistence and validation.</li>
+<li><code>plugincatalog.Fingerprint / Static / Refresh / Load / Validate</code> — command discovery identity, persistence, and trust boundary.</li>
+<li><code>cli.BuildCobraCommandFromCommand</code> — current Glazed v1.4 Cobra builder and structured-output injection.</li>
+<li><code>settings.NewStructuredOutputSection / SetupStructuredOutput / SetupStructuredProcessor</code> — current minimal output configuration and processor assembly.</li>
+<li><code>cli.AddStructuredOutputFlagsToCobraCommand / CreateStructuredOutputProcessorFromCobra</code> — current APIs for raw Cobra commands.</li>
+</ul></div>
+<div class="filecol"><h3>Edited</h3><ul>
+<li><code>runstate.ProjectHealth</code> consumers — one definition of current health while retaining the last observation.</li>
+<li><code>plugincatalog.Fingerprint</code> — now includes explicit repository-contained source content.</li>
+<li><code>plugincatalog.Static / Refresh / Validate</code> — now persist and validate provider provenance.</li>
+<li><code>cmds.addStatusRows / renderHumanStatus</code> — use shared health semantics.</li>
+<li><code>cmds.PluginsCommand</code> — exposes catalog state and provenance.</li>
+<li><code>runtime.Factory.Start / client.close</code> — delegate shutdown to one lifetime owner.</li>
+<li><code>runtime.router.subscribe / publish</code> — serialize event delivery and closure to remove a race.</li>
+<li><code>cmds.buildGlazedCommand / buildDualGlazedCommand</code> — migration in progress from removed output APIs to the current Glazed CLI builder.</li>
+</ul></div>
+<div class="filecol"><h3>Added</h3><ul>
+<li><code>runstate.HealthView / HealthState / ProjectHealth</code> — pure current-versus-history projection.</li>
+<li><code>plugincatalog.Inspect / Inspection / CatalogState</code> — non-executing missing/stale/valid/conflicted catalog diagnostics.</li>
+<li><code>plugincatalog.ProviderRecord</code> and <code>config.Plugin.CatalogInputs</code> — static/handshake source and declared source digests.</li>
+<li><code>runtime.processLifetime</code> — one <code>cmd.Wait</code> owner and EOF/TERM/KILL state machine.</li>
+<li><code>runtime.ShutdownReporter / ShutdownResult</code> — optional terminal cleanup evidence.</li>
+<li><code>cmds.newSchemaCmd</code> — compact JSON description of a Cobra command and its flags.</li>
+<li><code>sdk/python.Budget / Runner / RunResult</code> — supported bounded subprocess execution for Python plugins.</li>
+<li>Fixture suites for health, catalog inspection, phase order, runtime shutdown, command contracts, and Python runner behavior.</li>
+</ul></div>
+<div class="filecol"><h3>Removed / replaced</h3><ul>
+<li><code>runtime.terminateProcessGroup</code> — removed because it created a new <code>cmd.Wait</code> caller per shutdown and signaled immediately.</li>
+<li>Immediate stdin-close-plus-SIGTERM behavior — replaced by a deliberate EOF grace interval and shared cleanup result.</li>
+<li>Ad hoc health-only formatting — replaced by <code>runstate.ProjectHealth</code>.</li>
+<li>Streaming-only Python subprocess example — replaced by the supported runner with deadline and descendant ownership.</li>
+<li>Stale docs claiming restart skipped build/prepare/validate and that status had <code>--tail-lines</code>.</li>
+<li><code>settings.NewGlazedSection</code>, <code>GlazedSlug</code>, <code>SetupTableProcessor</code>, and <code>SetupProcessorOutput</code> usage — currently being removed in the Glazed v1.4 migration because these APIs no longer exist.</li>
+<li>Devctl’s duplicated custom Glazed command-builder implementation — currently being replaced by <code>cli.BuildCobraCommandFromCommand</code>.</li>
+</ul></div>
+</div><div class="note">“Read” means inspected to recover contracts; “edited” means behavior changed; “added” means new session-owned API; “removed” includes code already deleted and migration removals currently in the working tree.</div></section>
+<section class="section"><h2>Repository state at report generation</h2><div class="tc"><ul><li>Working tree: Glazed v1.4 migration currently in progress.</li><li>This HTML report is stored beside the investigation diary at <code>reference/02-context-window-and-session-timeline.html</code>.</li><li>Latest completed implementation revision before the migration: <code>f7abf04</code>; context archive revision: <code>3a2632a</code>.</li><li>Remaining ticket work: complete Glazed migration, API/schema decision record, recipe separation, artifact provenance, and full integration qualification.</li></ul></div></section>
 </main></body></html>

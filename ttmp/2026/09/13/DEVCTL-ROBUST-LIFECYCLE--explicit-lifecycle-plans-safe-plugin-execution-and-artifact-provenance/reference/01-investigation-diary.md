@@ -496,3 +496,57 @@ I saved the browser-readable context inventory in the ticket's `reference/` dire
 ### Technical details
 - Permanent ticket-relative path: `reference/02-context-window-and-session-timeline.html`.
 - The temporary source remains at `/tmp/devctl-context-inventory.html` but is no longer the authoritative copy.
+
+## Step 9: Begin the Glazed v1.4 migration and expand the API inventory
+
+I paused Phase 3 recipe work to adopt the new Glazed command APIs without disabling workspace mode. I mapped removed output symbols to current v1.4 packages and started replacing devctl's duplicated builders; at the user's request, I also expanded the archived HTML with function/package-level read, edited, added, and removed inventories.
+
+### Prompt Context
+**User prompt (verbatim):** “Update devctl to use the new glazed APIs. no GOWORK bypass”
+**Follow-up (verbatim):** “Update the html for the session analysis with the APIs and function names or packages you read, and which you edited, which you removed, and which you added. Also explain concisely what they are for.”
+**Assistant interpretation:** Migrate devctl against the workspace Glazed API and keep the context audit current enough to review exact API exposure and removal.
+**Inferred user intent:** Make devctl build against the actively developed Glazed checkout rather than validating around it, while preserving a precise implementation audit.
+
+### What I did
+- Loaded the Glazed command-authoring skill and read current first-party builder, helper, structured-output, and dual-command APIs.
+- Captured the workspace compile failures caused by removed Glazed symbols.
+- Printed a `P3A START` work slip for the migration.
+- Began replacing custom `buildGlazedCommand` and `buildDualGlazedCommand` internals with `cli.BuildCobraCommandFromCommand` and current parser options.
+- Began propagating command-construction errors instead of calling `cobra.CheckErr` inside reusable constructors.
+- Added a four-column API inventory to `reference/02-context-window-and-session-timeline.html`, with concise purposes for read, edited, added, and removed/replaced functions and packages.
+- Refreshed the browser-visible temporary copy and removed incidental Playwright snapshot output.
+
+### Why
+- The workspace Glazed branch has intentionally removed the legacy broad output API in favor of three structured-output flags and centralized Cobra builders.
+- The HTML report is intended as a review artifact, so package names alone were insufficient without the behavioral purpose of each API.
+
+### What worked
+- The report now identifies concrete APIs including operator controller methods, pipeline phases, runtime ownership, run-state persistence, catalog functions, and new Glazed v1.4 builder/settings functions.
+- Browser reload succeeded at the local report URL.
+
+### What didn't work
+- Baseline workspace compilation currently fails on `OutputFormatterSettings`, `SetupTableProcessor`, `GlazedSlug`, `NewGlazedSection`, and `SetupProcessorOutput`; these diagnostics define the migration scope and are not bypassed.
+- No migration validation is claimed yet because command constructor and streaming-output conversion remains in progress.
+
+### What I learned
+- Current Glazed injects a `structured-output` section automatically and exposes only `--format`, `--output-fields`, and `--max-output-rows`.
+- The upstream dual-mode builder now propagates `RunE` errors, eliminating the reason for devctl's temporary duplicated bridge.
+- Logs/stream custom behavior must move from legacy `--output json` mutation to explicit modern `--format jsonl` or application-owned human processors.
+
+### What was tricky to build
+- Existing devctl builders support custom processors and Cobra output redirection that the canonical builder does not expose as extension hooks. Commands must be simplified around supported JSONL and dual-mode contracts rather than recreating removed framework behavior.
+
+### What warrants a second pair of eyes
+- Review CLI compatibility expectations before deleting old `--output` examples; repository guidance says not to add aliases automatically.
+- Review in-process tests that capture `cmd.SetOut`, because the current Glazed builder serializes through its configured stdout path.
+
+### What should be done in the future
+- Complete constructor error propagation, migrate logs/stream output semantics and tests to `--format`, update all documentation, then run full tests/lint in normal workspace mode.
+
+### Code review instructions
+- Start with the in-progress changes in `cmd/devctl/cmds/lifecycle.go` and `phase.go`, then compare against `../glazed/pkg/cli/cobra.go` and `pkg/settings/structured_output.go`.
+- Open the HTML report and review the new “API and package inventory” section.
+
+### Technical details
+- New builder target: `cli.BuildCobraCommandFromCommand` with `WithDualMode`, `WithGlazeToggleFlag`, and `WithCobraShortHelpSections` where applicable.
+- New output slug: `settings.StructuredOutputSlug`; supported formats include `table`, `json`, `jsonl`, `csv`, `tsv`, and `yaml`.
