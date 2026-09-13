@@ -10,3 +10,7 @@ tmp/
 *.log
 
 .history/
+
+# Python cache
+__pycache__/
+*.py[cod]

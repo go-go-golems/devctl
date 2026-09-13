@@ -62,7 +62,7 @@ func AddDynamicPluginCommands(root *cobra.Command, args []string) error {
 	if len(repo.Specs) == 0 {
 		return nil
 	}
-	reserved := reservedCommandNames(root)
+	reserved := RootCommandNamespace(root).Snapshot()
 	catalog, loadErr := plugincatalog.Load(repo, reserved)
 	if loadErr != nil {
 		if catalog != nil && errors.Is(loadErr, plugincatalog.ErrCatalogConflict) {
@@ -285,30 +285,6 @@ func pluginConflictError(
 		"PLUGIN_COMMAND_CONFLICT: command %q is ambiguous in profile %q across providers %v",
 		name, profile, providers,
 	)
-}
-
-func reservedCommandNames(root *cobra.Command) map[string]bool {
-	reserved := defaultReservedCommandNames()
-	for _, command := range root.Commands() {
-		reserved[command.Name()] = true
-		for _, alias := range command.Aliases {
-			reserved[alias] = true
-		}
-	}
-	return reserved
-}
-
-func defaultReservedCommandNames() map[string]bool {
-	names := []string{
-		"up", "down", "restart", "status", "logs", "doctor", "plan",
-		"build", "prepare", "validate", "profiles", "plugins", "stream",
-		"tui", "completion", "help", "dev", "__wrap-service",
-	}
-	reserved := make(map[string]bool, len(names))
-	for _, name := range names {
-		reserved[name] = true
-	}
-	return reserved
 }
 
 func parseRepoArgs(args []string) (string, string, string, []string, error) {

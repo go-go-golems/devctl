@@ -13,14 +13,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newProfilesCmd() *cobra.Command {
+func newProfilesCmd() (*cobra.Command, error) {
 	command := &cobra.Command{
 		Use:   "profiles",
 		Short: "List and inspect devctl profiles",
 	}
-	command.AddCommand(buildProfilesSubcommand("list"))
-	command.AddCommand(buildProfilesSubcommand("active"))
-	return command
+	for _, kind := range []string{"list", "active"} {
+		subcommand, err := buildProfilesSubcommand(kind)
+		if err != nil {
+			return nil, err
+		}
+		command.AddCommand(subcommand)
+	}
+	return command, nil
 }
 
 type ProfilesCommand struct {
@@ -103,8 +108,10 @@ func (c *ProfilesCommand) RunIntoGlazeProcessor(
 	}
 }
 
-func buildProfilesSubcommand(kind string) *cobra.Command {
+func buildProfilesSubcommand(kind string) (*cobra.Command, error) {
 	command, err := NewProfilesCommand(kind)
-	cobra.CheckErr(err)
+	if err != nil {
+		return nil, err
+	}
 	return buildGlazedCommand(command)
 }

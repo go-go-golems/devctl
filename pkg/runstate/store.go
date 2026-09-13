@@ -355,6 +355,11 @@ func (s *Store) validateRun(run *RunRecord) error {
 	if !validRunPhase(run.Phase) {
 		return errors.Wrapf(ErrInvalidState, "run %q has invalid phase %q", run.RunID, run.Phase)
 	}
+	if run.Artifact != nil {
+		if err := ValidateArtifactRecord(*run.Artifact); err != nil {
+			return errors.Wrapf(ErrInvalidState, "run %q has invalid artifact identity: %v", run.RunID, err)
+		}
+	}
 	if run.CreatedAt.IsZero() || run.UpdatedAt.IsZero() {
 		return errors.Wrapf(ErrInvalidState, "run %q timestamps are required", run.RunID)
 	}

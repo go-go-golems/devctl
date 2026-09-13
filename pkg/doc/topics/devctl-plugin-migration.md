@@ -81,9 +81,17 @@ Confirm that repository services have exited. Do not delete state while its
 recorded processes remain alive. The old state is the information the old
 binary needs to perform a controlled shutdown.
 
+After shutdown, make a clean schema cut by removing the repository-local devctl
+state. This discards old run history, logs, and cached command catalogs; archive
+them elsewhere first if they are needed for diagnosis.
+
+```bash
+rm -rf -- .devctl
+```
+
 If the new version is already installed and rejects existing state, reinstall
-the old binary temporarily, stop the environment, and then return to the new
-version. Do not fabricate a v2 state document.
+the old binary temporarily, stop the environment, remove `.devctl`, and then
+return to the new version. Do not fabricate or partially edit v2 state.
 
 ## Step 2: Audit the handshake and protocol streams
 
@@ -209,7 +217,7 @@ For each service, verify:
 Run the planner without starting services:
 
 ```bash
-devctl plan --output json
+devctl plan --format json
 ```
 
 Inspect every service name, command argument, working directory, environment
@@ -231,10 +239,10 @@ developer notes for removed forms.
 Automation should request structured output explicitly:
 
 ```bash
-devctl status --output json
-devctl doctor --output json
-devctl logs api --output json
-devctl logs api --follow --output json
+devctl status --with-glaze-output --format json
+devctl doctor --format json
+devctl logs api --with-glaze-output --format json
+devctl logs api --follow --with-glaze-output --format jsonl
 ```
 
 Followed JSON output is JSON Lines: each line is one complete record. Do not
@@ -289,20 +297,20 @@ queues, or external resources.
 devctl doctor
 devctl plan
 devctl up
-devctl status --output json
-devctl logs --output json
+devctl status --with-glaze-output --format json
+devctl logs --with-glaze-output --format json
 devctl restart SERVICE_NAME
-devctl status --output json
+devctl status --with-glaze-output --format json
 devctl down
-devctl status --output json
+devctl status --with-glaze-output --format json
 ```
 
 For a multi-plugin repository, repeat the matrix for each named profile:
 
 ```bash
 devctl --profile PROFILE_NAME plugins refresh
-devctl --profile PROFILE_NAME plan --output json
-devctl --profile PROFILE_NAME doctor --output json
+devctl --profile PROFILE_NAME plan --format json
+devctl --profile PROFILE_NAME doctor --format json
 devctl --profile PROFILE_NAME up
 devctl --profile PROFILE_NAME down
 ```
@@ -353,7 +361,7 @@ definitions remain plugin responsibilities.
 | A dynamic command disappeared | The catalog is stale or the command conflicts | Run `plugins refresh`, inspect the provider, and check `plugins commands` |
 | `PLUGIN_COMMAND_CONFLICT` appears | Multiple selected providers advertise the same name | Rename one command or invoke it with provider-qualified `plugins run` |
 | `PLUGIN_CATALOG_STALE` appears | The executable or handshake changed after catalog creation | Refresh the catalog and verify stable plugin identity and command metadata |
-| JSON automation receives a table | The script relies on the human renderer | Add `--output json`; consume followed output as JSON Lines |
+| JSON automation receives human output | `status` and `logs` default to their human renderers | Add `--with-glaze-output --format json`; use `--format jsonl` for followed logs |
 | Shutdown risks signaling an unrelated process | A plugin still uses PID-only ownership | Remove plugin shutdown logic and let devctl validate PID plus process start identity |
 
 ## See Also

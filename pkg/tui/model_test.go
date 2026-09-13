@@ -44,6 +44,18 @@ func TestSameRevisionUpdatesHealthWithoutAddingRunHistory(t *testing.T) {
 	require.Contains(t, model.runs.View(24), "run-api")
 }
 
+func TestOverviewProjectsTerminalHealthAsNotRunning(t *testing.T) {
+	snapshot := operator.Snapshot{Exists: true, Services: []operator.ServiceSnapshot{{
+		Service: "api", Phase: runstate.RunFailed,
+		Health: &runstate.HealthResult{Healthy: false, Detail: "historical failure"},
+	}}}
+	view := (OverviewModel{Snapshot: snapshot}).ViewAt(100, time.Now())
+	require.Contains(t, view, "not_running")
+	require.NotContains(t, view, "unhealthy")
+	_, unhealthy := snapshotCounts(snapshot)
+	require.Zero(t, unhealthy)
+}
+
 func TestLogViewStripsTerminalControlSequences(t *testing.T) {
 	logs := NewLogsModel()
 	logs.Add(runlog.LogRecord{

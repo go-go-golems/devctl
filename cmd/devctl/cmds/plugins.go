@@ -9,6 +9,8 @@ import (
 	"github.com/go-go-golems/devctl/pkg/repository"
 	"github.com/go-go-golems/devctl/pkg/runtime"
 	glazedcmds "github.com/go-go-golems/glazed/pkg/cmds"
+	"github.com/go-go-golems/glazed/pkg/cmds/fields"
+	"github.com/go-go-golems/glazed/pkg/cmds/schema"
 	"github.com/go-go-golems/glazed/pkg/cmds/values"
 	"github.com/go-go-golems/glazed/pkg/middlewares"
 	"github.com/go-go-golems/glazed/pkg/types"
@@ -16,28 +18,34 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newPluginsCmd() *cobra.Command {
+func newPluginsCmd(namespace *CommandNamespace) (*cobra.Command, error) {
 	command := &cobra.Command{
 		Use:   "plugins",
 		Short: "Inspect plugins and manage the dynamic command catalog",
 	}
-	command.AddCommand(newPluginsListCmd())
-	command.AddCommand(newPluginsCommandsCmd())
-	command.AddCommand(newPluginsInspectCmd())
-	command.AddCommand(newPluginsRunCmd())
-	command.AddCommand(newPluginsRefreshCmd())
-	return command
+	for _, kind := range []string{"list", "commands", "catalog", "inspect", "refresh"} {
+		subcommand, err := buildPluginsSubcommand(kind, namespace)
+		if err != nil {
+			return nil, err
+		}
+		command.AddCommand(subcommand)
+	}
+	command.AddCommand(newPluginsRunCmd(namespace))
+	return command, nil
 }
 
 type PluginsCommand struct {
 	*glazedcmds.CommandDescription
-	kind       string
-	providerID string
+	kind      string
+	namespace *CommandNamespace
 }
 
 var _ glazedcmds.GlazeCommand = (*PluginsCommand)(nil)
 
-func NewPluginsCommand(kind string) (*PluginsCommand, error) {
+func NewPluginsCommand(kind string, namespace *CommandNamespace) (*PluginsCommand, error) {
+	if namespace == nil {
+		return nil, errors.New("plugins command requires a command namespace")
+	}
 	repoSection, err := getRepoLayer()
 	if err != nil {
 		return nil, err
@@ -45,20 +53,27 @@ func NewPluginsCommand(kind string) (*PluginsCommand, error) {
 	short := map[string]string{
 		"list":     "List selected configured plugins without starting them",
 		"commands": "List validated dynamic root commands",
+		"catalog":  "Inspect command catalog state and provenance without starting plugins",
 		"inspect":  "Inspect one selected plugin and its catalog commands",
 		"refresh":  "Start selected providers and refresh the command catalog",
 	}[kind]
 	if short == "" {
 		return nil, errors.Errorf("unknown plugins command %q", kind)
 	}
+	options := []glazedcmds.CommandDescriptionOption{
+		glazedcmds.WithShort(short),
+		glazedcmds.WithParents("plugins"),
+		glazedcmds.WithSections(repoSection),
+	}
+	if kind == "inspect" {
+		options = append(options, glazedcmds.WithArguments(
+			fields.New("plugin", fields.TypeString, fields.WithRequired(true), fields.WithHelp("Selected plugin ID")),
+		))
+	}
 	return &PluginsCommand{
-		CommandDescription: glazedcmds.NewCommandDescription(
-			kind,
-			glazedcmds.WithShort(short),
-			glazedcmds.WithParents("plugins"),
-			glazedcmds.WithSections(repoSection),
-		),
-		kind: kind,
+		CommandDescription: glazedcmds.NewCommandDescription(kind, options...),
+		kind:               kind,
+		namespace:          namespace,
 	}, nil
 }
 
@@ -96,25 +111,40 @@ func (c *PluginsCommand) RunIntoGlazeProcessor(
 			}
 		}
 		return nil
+	case "catalog":
+		inspection, err := plugincatalog.Inspect(repo, c.namespace.Snapshot())
+		if err != nil {
+			return err
+		}
+		return addCatalogInspectionRows(ctx, processor, repo, inspection)
 	case "commands":
-		catalog, err := loadDiagnosticCatalog(repo)
+		catalog, err := loadDiagnosticCatalog(repo, c.namespace.Snapshot())
 		if err != nil {
 			return err
 		}
 		return addCatalogRows(ctx, processor, catalog)
 	case "inspect":
-		spec, exists := repo.SpecByID[c.providerID]
+		pluginValues, exists := vals.Get(schema.DefaultSlug)
 		if !exists {
-			return errors.Errorf("E_USAGE: plugin %q is not selected", c.providerID)
+			return errors.New("inspect arguments are unavailable")
 		}
-		catalog, err := loadDiagnosticCatalog(repo)
+		providerIDValue, exists := pluginValues.GetField("plugin")
+		providerID, ok := providerIDValue.(string)
+		if !exists || !ok || providerID == "" {
+			return errors.New("E_USAGE: inspect requires exactly one plugin ID")
+		}
+		spec, exists := repo.SpecByID[providerID]
+		if !exists {
+			return errors.Errorf("E_USAGE: plugin %q is not selected", providerID)
+		}
+		catalog, err := loadDiagnosticCatalog(repo, c.namespace.Snapshot())
 		if err != nil {
 			return err
 		}
 		return addPluginInspectionRows(ctx, processor, repo.ProfileName, spec, catalog)
 	case "refresh":
 		catalog, refreshErr := plugincatalog.Refresh(ctx, repo, plugincatalog.RefreshOptions{
-			Reserved: defaultReservedCommandNames(),
+			Reserved: c.namespace.Snapshot(),
 		})
 		if catalog != nil {
 			if err := addCatalogRows(ctx, processor, catalog); err != nil {
@@ -125,24 +155,6 @@ func (c *PluginsCommand) RunIntoGlazeProcessor(
 	default:
 		return errors.Errorf("unsupported plugins command %q", c.kind)
 	}
-}
-
-func (c *PluginsCommand) ConfigureCobra(command *cobra.Command) {
-	if c.kind == "inspect" {
-		command.Use = "inspect PLUGIN"
-		command.Args = cobra.ExactArgs(1)
-	}
-}
-
-func (c *PluginsCommand) SetCobraArgs(args []string) error {
-	if c.kind != "inspect" {
-		return nil
-	}
-	if len(args) != 1 {
-		return errors.Errorf("E_USAGE: inspect requires exactly one plugin ID")
-	}
-	c.providerID = args[0]
-	return nil
 }
 
 type runtimePluginSpec struct {
@@ -162,6 +174,68 @@ func pluginRows(repo *repository.Repository) []runtimePluginSpec {
 		})
 	}
 	return rows
+}
+
+func addCatalogInspectionRows(
+	ctx context.Context,
+	processor middlewares.Processor,
+	repo *repository.Repository,
+	inspection plugincatalog.Inspection,
+) error {
+	staticCommandsByID := map[string]int{}
+	if repo.Config != nil {
+		for _, plugin := range repo.Config.Plugins {
+			staticCommandsByID[plugin.ID] = len(plugin.Commands)
+		}
+	}
+	for _, spec := range repo.Specs {
+		source := "handshake"
+		inputCount := 0
+		if staticCommandsByID[spec.ID] > 0 {
+			source = "static"
+		}
+		if inspection.Catalog != nil {
+			if provider, ok := inspection.Catalog.Providers[spec.ID]; ok {
+				source = provider.Source
+				inputCount = len(provider.CatalogInputs)
+			}
+		}
+		commandCount := staticCommandsByID[spec.ID]
+		if inspection.Catalog != nil {
+			commandCount = 0
+			for _, entry := range inspection.Catalog.Commands {
+				if entry.ProviderID == spec.ID {
+					commandCount++
+				}
+			}
+			for _, entries := range inspection.Catalog.Conflicts {
+				for _, entry := range entries {
+					if entry.ProviderID == spec.ID {
+						commandCount++
+					}
+				}
+			}
+		}
+		action := inspection.Action
+		if source == "static" && inspection.State != plugincatalog.CatalogConflicted {
+			action = "none; static commands are read from configuration"
+		}
+		if err := processor.AddRow(ctx, types.NewRow(
+			types.MRP("provider_id", spec.ID),
+			types.MRP("profile", repo.ProfileName),
+			types.MRP("commands", commandCount),
+			types.MRP("source", source),
+			types.MRP("catalog_inputs", inputCount),
+			types.MRP("catalog_state", string(inspection.State)),
+			types.MRP("generated_at", inspection.GeneratedAt),
+			types.MRP("stored_fingerprint", inspection.StoredFingerprint),
+			types.MRP("expected_fingerprint", inspection.ExpectedFingerprint),
+			types.MRP("action", action),
+		)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func addCatalogRows(
@@ -211,8 +285,8 @@ func addCatalogRows(
 	return nil
 }
 
-func loadDiagnosticCatalog(repo *repository.Repository) (*plugincatalog.Catalog, error) {
-	catalog, loadErr := plugincatalog.Load(repo, defaultReservedCommandNames())
+func loadDiagnosticCatalog(repo *repository.Repository, reserved map[string]bool) (*plugincatalog.Catalog, error) {
+	catalog, loadErr := plugincatalog.Load(repo, reserved)
 	if loadErr == nil || stderrors.Is(loadErr, plugincatalog.ErrCatalogConflict) {
 		return catalog, nil
 	}
@@ -220,7 +294,7 @@ func loadDiagnosticCatalog(repo *repository.Repository) (*plugincatalog.Catalog,
 		!stderrors.Is(loadErr, plugincatalog.ErrCatalogStale) {
 		return nil, loadErr
 	}
-	return plugincatalog.Static(repo, defaultReservedCommandNames())
+	return plugincatalog.Static(repo, reserved)
 }
 
 func addPluginInspectionRows(
@@ -266,29 +340,15 @@ func addPluginInspectionRows(
 	return nil
 }
 
-func buildPluginsSubcommand(kind string) *cobra.Command {
-	command, err := NewPluginsCommand(kind)
-	cobra.CheckErr(err)
+func buildPluginsSubcommand(kind string, namespace *CommandNamespace) (*cobra.Command, error) {
+	command, err := NewPluginsCommand(kind, namespace)
+	if err != nil {
+		return nil, err
+	}
 	return buildGlazedCommand(command)
 }
 
-func newPluginsListCmd() *cobra.Command {
-	return buildPluginsSubcommand("list")
-}
-
-func newPluginsCommandsCmd() *cobra.Command {
-	return buildPluginsSubcommand("commands")
-}
-
-func newPluginsInspectCmd() *cobra.Command {
-	return buildPluginsSubcommand("inspect")
-}
-
-func newPluginsRefreshCmd() *cobra.Command {
-	return buildPluginsSubcommand("refresh")
-}
-
-func newPluginsRunCmd() *cobra.Command {
+func newPluginsRunCmd(namespace *CommandNamespace) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "run PLUGIN COMMAND -- [ARGS...]",
 		Short: "Run a catalog command through an explicit provider",
@@ -305,7 +365,7 @@ func newPluginsRunCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			catalog, err := loadDiagnosticCatalog(repo)
+			catalog, err := loadDiagnosticCatalog(repo, namespace.Snapshot())
 			if err != nil {
 				return err
 			}

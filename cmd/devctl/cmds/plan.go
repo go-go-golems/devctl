@@ -105,8 +105,10 @@ func addPlanRow(
 	))
 }
 
-func newPlanCmd() *cobra.Command {
+func newPlanCmd() (*cobra.Command, error) {
 	command, err := NewPlanCommand()
-	cobra.CheckErr(err)
+	if err != nil {
+		return nil, err
+	}
 	return buildGlazedCommand(command)
 }

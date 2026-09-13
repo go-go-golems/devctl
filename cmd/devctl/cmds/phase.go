@@ -194,20 +194,22 @@ func runValidatePhase(
 	return runner.pipe.Validate(operationContext, configuration)
 }
 
-func buildPhaseCommand(kind string) *cobra.Command {
+func buildPhaseCommand(kind string) (*cobra.Command, error) {
 	command, err := NewPhaseCommand(kind)
-	cobra.CheckErr(err)
+	if err != nil {
+		return nil, err
+	}
 	return buildGlazedCommand(command)
 }
 
-func newBuildCmd() *cobra.Command {
+func newBuildCmd() (*cobra.Command, error) {
 	return buildPhaseCommand("build")
 }
 
-func newPrepareCmd() *cobra.Command {
+func newPrepareCmd() (*cobra.Command, error) {
 	return buildPhaseCommand("prepare")
 }
 
-func newValidateCmd() *cobra.Command {
+func newValidateCmd() (*cobra.Command, error) {
 	return buildPhaseCommand("validate")
 }

@@ -230,7 +230,7 @@ func TestDynamicCommands_UnrelatedCatalogConflictDoesNotDisableCommand(t *testin
 	})
 	require.NoError(t, err)
 	_, err = plugincatalog.Refresh(t.Context(), repo, plugincatalog.RefreshOptions{
-		Reserved: defaultReservedCommandNames(),
+		Reserved: builtInNamespaceForTest(t).Snapshot(),
 	})
 	require.ErrorIs(t, err, plugincatalog.ErrCatalogConflict)
 
@@ -262,9 +262,34 @@ func refreshDynamicCatalogForTest(
 	})
 	require.NoError(t, err)
 	_, err = plugincatalog.Refresh(t.Context(), repo, plugincatalog.RefreshOptions{
-		Reserved: defaultReservedCommandNames(),
+		Reserved: builtInNamespaceForTest(t).Snapshot(),
 	})
 	require.NoError(t, err)
+}
+
+func builtInNamespaceForTest(t *testing.T) *CommandNamespace {
+	t.Helper()
+	root := &cobra.Command{Use: "devctl"}
+	require.NoError(t, AddCommands(root))
+	return RootCommandNamespace(root)
+}
+
+func TestBuiltInNamespaceRejectsSchemaDuringCatalogRefresh(t *testing.T) {
+	repoRoot := t.TempDir()
+	configPath := filepath.Join(repoRoot, ".devctl.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`plugins:
+  - id: plugin
+    path: /bin/true
+    commands: [{name: schema}]
+`), 0o600))
+	repo, err := repository.Load(repository.Options{
+		RepoRoot: repoRoot, ConfigPath: configPath, Cwd: repoRoot,
+	})
+	require.NoError(t, err)
+	_, err = plugincatalog.Refresh(t.Context(), repo, plugincatalog.RefreshOptions{
+		Reserved: builtInNamespaceForTest(t).Snapshot(),
+	})
+	require.ErrorIs(t, err, plugincatalog.ErrCatalogConflict)
 }
 
 func TestDynamicCommands_SkipsWrapService(t *testing.T) {

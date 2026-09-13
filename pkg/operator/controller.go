@@ -117,11 +117,20 @@ func (c *controller) Up(
 	}
 	request.RepoRoot = store.RepoRoot()
 
-	planResult, err := c.planner.Plan(ctx, request)
+	recipe, err := c.planner.ResolveRecipe(ctx, "up", request)
 	if err != nil {
-		return c.finishFailed(result, CodeConfigInvalid, "could not resolve launch plan", err)
+		return c.finishFailed(result, CodeConfigInvalid, "could not resolve lifecycle recipe", err)
 	}
-	services, selectionErr := selectPlannedServices(planResult.Plan.Services, request.Select)
+	prepared, err := c.planner.PrepareReplacement(ctx, recipe)
+	if err != nil {
+		var operatorErr *OperatorError
+		if stderrors.As(err, &operatorErr) {
+			return c.finishWithOperatorError(result, operatorErr)
+		}
+		return c.finishFailed(result, CodeConfigInvalid, "could not prepare replacement", err)
+	}
+	defer cleanupPreparedArtifacts(prepared)
+	services, selectionErr := selectPlannedServices(prepared.Plan.Services, request.Select)
 	if selectionErr != nil {
 		return c.finishWithOperatorError(result, selectionErr)
 	}
@@ -148,7 +157,23 @@ func (c *controller) Up(
 		OperationID: result.OperationID,
 		Command:     []string{"devctl", "up"},
 	}, func(lockContext context.Context) error {
-		return c.upLocked(lockContext, store, planResult.ProfileName, services, timeout, sink, &result)
+		if err := c.planner.ValidatePrepared(lockContext, prepared); err != nil {
+			return err
+		}
+		if _, err := protectedArtifactDigests(lockContext, store); err != nil {
+			return &OperatorError{Code: CodeStateCorrupt, Message: "validate artifact retention state", cause: err}
+		}
+		if err := publishPreparedArtifacts(&prepared); err != nil {
+			return &OperatorError{Code: CodeArtifactInvalid, Message: "publish prepared artifacts", cause: err}
+		}
+		services, selectionErr = selectPlannedServices(prepared.Plan.Services, request.Select)
+		if selectionErr != nil {
+			return selectionErr
+		}
+		if err := c.upLocked(lockContext, store, prepared.Recipe.ProfileName, services, prepared.Artifacts, timeout, sink, &result); err != nil {
+			return err
+		}
+		return collectArtifacts(lockContext, store)
 	})
 	if lockErr != nil {
 		if stderrors.Is(lockErr, runstate.ErrOperationBusy) {
@@ -170,6 +195,7 @@ func (c *controller) upLocked(
 	store *runstate.Store,
 	profile string,
 	services []engine.ServiceSpec,
+	artifacts []runstate.ArtifactRecord,
 	timeout time.Duration,
 	sink EventSink,
 	result *OperationResult,
@@ -196,9 +222,10 @@ func (c *controller) upLocked(
 			return newError(CodeStateCorrupt, "generate service run ID", err)
 		}
 		run := runstate.RunRecord{
-			RunID:   runID,
-			Service: service.Name,
-			Phase:   runstate.RunPlanned,
+			RunID:    runID,
+			Service:  service.Name,
+			Phase:    runstate.RunPlanned,
+			Artifact: artifactForService(service, artifacts),
 			Spec: runstate.ServiceSpecRecord{
 				Name:        service.Name,
 				Command:     append([]string{}, service.Command...),
@@ -469,11 +496,20 @@ func (c *controller) Restart(
 	}
 
 	upRequest := UpRequest(request)
-	planResult, err := c.planner.Plan(ctx, upRequest)
+	recipe, err := c.planner.ResolveRecipe(ctx, "restart", upRequest)
 	if err != nil {
-		return c.finishFailed(result, CodeConfigInvalid, "could not resolve restart plan", err)
+		return c.finishFailed(result, CodeConfigInvalid, "could not resolve restart recipe", err)
 	}
-	services, selectionErr := selectPlannedServices(planResult.Plan.Services, request.Select)
+	prepared, err := c.planner.PrepareReplacement(ctx, recipe)
+	if err != nil {
+		var operatorErr *OperatorError
+		if stderrors.As(err, &operatorErr) {
+			return c.finishWithOperatorError(result, operatorErr)
+		}
+		return c.finishFailed(result, CodeConfigInvalid, "could not prepare restart replacement", err)
+	}
+	defer cleanupPreparedArtifacts(prepared)
+	services, selectionErr := selectPlannedServices(prepared.Plan.Services, request.Select)
 	if selectionErr != nil {
 		return c.finishWithOperatorError(result, selectionErr)
 	}
@@ -502,6 +538,19 @@ func (c *controller) Restart(
 		OperationID: result.OperationID,
 		Command:     []string{"devctl", "restart"},
 	}, func(lockContext context.Context) error {
+		if err := c.planner.ValidatePrepared(lockContext, prepared); err != nil {
+			return err
+		}
+		if _, err := protectedArtifactDigests(lockContext, store); err != nil {
+			return &OperatorError{Code: CodeStateCorrupt, Message: "validate artifact retention state", cause: err}
+		}
+		if err := publishPreparedArtifacts(&prepared); err != nil {
+			return &OperatorError{Code: CodeArtifactInvalid, Message: "publish prepared artifacts", cause: err}
+		}
+		services, selectionErr = selectPlannedServices(prepared.Plan.Services, request.Select)
+		if selectionErr != nil {
+			return selectionErr
+		}
 		timeout := normalizedTimeout(request.Policy.Timeout)
 		if err := c.downLocked(lockContext, store, request.Select, timeout, sink, &result); err != nil {
 			return err
@@ -511,7 +560,10 @@ func (c *controller) Restart(
 				return newError(CodePartialFailure, "restart stopped after an unproven service termination", outcome.Error)
 			}
 		}
-		return c.upLocked(lockContext, store, planResult.ProfileName, services, timeout, sink, &result)
+		if err := c.upLocked(lockContext, store, prepared.Recipe.ProfileName, services, prepared.Artifacts, timeout, sink, &result); err != nil {
+			return err
+		}
+		return collectArtifacts(lockContext, store)
 	})
 	if lockErr != nil {
 		if stderrors.Is(lockErr, runstate.ErrOperationBusy) {
@@ -587,6 +639,7 @@ func (c *controller) Snapshot(ctx context.Context, request SnapshotRequest) (Sna
 			service.UpdatedAt = run.UpdatedAt
 			service.Exit = run.Exit
 			service.LastError = run.LastError
+			service.Artifact = run.Artifact
 			runDir, pathErr := store.RunDir(run.RunID)
 			if pathErr == nil {
 				service.StdoutPath = filepath.Join(runDir, supervise.StdoutLogName)

@@ -17,6 +17,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestStartPreparedServiceRejectsCorruptArtifactBeforeWrapperLaunch(t *testing.T) {
+	repoRoot := t.TempDir()
+	artifactPath := filepath.Join(repoRoot, ".devctl", "artifacts", "sha256", "digest", "executable")
+	require.NoError(t, os.MkdirAll(filepath.Dir(artifactPath), 0o700))
+	require.NoError(t, os.WriteFile(artifactPath, []byte("first"), 0o500))
+	digest, size, _, err := runstate.InspectArtifact(artifactPath)
+	require.NoError(t, err)
+	runID, err := runstate.NewRunID()
+	require.NoError(t, err)
+	store, err := runstate.NewStore(repoRoot)
+	require.NoError(t, err)
+	spec := engine.ServiceSpec{Name: "api", Command: []string{artifactPath}}
+	require.NoError(t, store.CreateRun(t.Context(), runstate.RunRecord{
+		RunID: runID, Service: spec.Name, Phase: runstate.RunPlanned,
+		Spec:     runstate.ServiceSpecRecord{Name: spec.Name, Command: spec.Command},
+		Artifact: &runstate.ArtifactRecord{ID: "api", Path: artifactPath, SHA256: digest, SizeBytes: size},
+	}))
+	require.NoError(t, os.Chmod(artifactPath, 0o700))
+	require.NoError(t, os.WriteFile(artifactPath, []byte("changed"), 0o700))
+	require.NoError(t, os.Chmod(artifactPath, 0o500))
+
+	supervisor := New(Options{RepoRoot: repoRoot, WrapperExe: "/bin/true"})
+	_, err = supervisor.StartPreparedService(t.Context(), spec, runID)
+	require.ErrorContains(t, err, "artifact bytes do not match recorded identity")
+	run, loadErr := store.LoadRun(t.Context(), runID)
+	require.NoError(t, loadErr)
+	require.Equal(t, runstate.RunFailed, run.Phase)
+	require.Equal(t, "ARTIFACT_INVALID", run.LastError.Code)
+}
+
 func TestSupervisor_StartStop_Sleep(t *testing.T) {
 	repoRoot, err := os.MkdirTemp("", "devctl-supervise-test-*")
 	require.NoError(t, err)

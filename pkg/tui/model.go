@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/go-go-golems/devctl/pkg/operator"
 	"github.com/go-go-golems/devctl/pkg/runlog"
+	"github.com/go-go-golems/devctl/pkg/runstate"
 )
 
 type Options struct {
@@ -409,7 +410,7 @@ func snapshotCounts(snapshot operator.Snapshot) (int, int) {
 		if service.Phase == "ready" || service.Phase == "starting" {
 			running++
 		}
-		if service.Health != nil && !service.Health.Healthy {
+		if runstate.ProjectHealth(service.Phase, service.Health).Current == runstate.HealthUnhealthy {
 			unhealthy++
 		}
 	}

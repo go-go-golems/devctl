@@ -177,7 +177,7 @@ For long-running builds, increase `--timeout`. Plugins should stream human-reada
 ```bash
 devctl up                          # Run pipeline, start services
 devctl status                      # Show running services, PIDs, health
-devctl status --tail-lines 10      # Include stderr tails for dead services
+devctl status --with-glaze-output --format json       # Include structured run and health evidence
 devctl logs api                         # Show stdout and stderr for a service
 devctl logs api --stream stderr         # Show only stderr
 devctl logs api --follow                # Live tail
@@ -203,6 +203,15 @@ devctl start web          # Start a stopped or crashed tracked service
 
 `start` refuses to duplicate a service whose tracked PID is still alive. Use `restart` when you intentionally want to replace a running process.
 
+Preview lifecycle intent without executing plugins or phases:
+
+```bash
+devctl up --explain --format json
+devctl restart api --explain --format json
+```
+
+Explain output lists enabled and skipped phases, selected services and steps, and unresolved launch facts. It does not run builds to make the preview appear more complete.
+
 ### Stop and cleanup
 
 ```bash
@@ -213,6 +222,8 @@ devctl down   # Stop all services, remove state
 terminate its child process group, escalates when graceful shutdown exceeds the
 timeout, and records the terminal outcome. Completed `.devctl/runs/`
 directories remain available for diagnosis.
+
+When a plugin explicitly launches a native executable returned by `build.run` or `prepare.run`, devctl runs a verified content-addressed copy under `.devctl/artifacts/sha256/`. The current and immediately previous run for each service protect their executable bytes from garbage collection. Older run records retain SHA-256 identity evidence, but their stored executable may be collected.
 
 ## Profiles and local overrides
 

@@ -34,13 +34,14 @@ type Profile struct {
 }
 
 type Plugin struct {
-	ID       string                 `yaml:"id"`
-	Path     string                 `yaml:"path"`
-	Args     []string               `yaml:"args,omitempty"`
-	Priority int                    `yaml:"priority,omitempty"`
-	WorkDir  string                 `yaml:"workdir,omitempty"`
-	Env      map[string]string      `yaml:"env,omitempty"`
-	Commands []protocol.CommandSpec `yaml:"commands,omitempty"`
+	ID            string                 `yaml:"id"`
+	Path          string                 `yaml:"path"`
+	Args          []string               `yaml:"args,omitempty"`
+	Priority      int                    `yaml:"priority,omitempty"`
+	WorkDir       string                 `yaml:"workdir,omitempty"`
+	Env           map[string]string      `yaml:"env,omitempty"`
+	Commands      []protocol.CommandSpec `yaml:"commands,omitempty"`
+	CatalogInputs []string               `yaml:"catalog_inputs,omitempty"`
 }
 
 func DefaultPath(repoRoot string) string {
@@ -227,6 +228,7 @@ func clonePlugin(in Plugin) Plugin {
 	out.Args = cloneStringSlice(in.Args)
 	out.Env = cloneStringMap(in.Env)
 	out.Commands = append([]protocol.CommandSpec{}, in.Commands...)
+	out.CatalogInputs = cloneStringSlice(in.CatalogInputs)
 	return out
 }
 
@@ -271,6 +273,9 @@ func mergePlugin(base, override Plugin) Plugin {
 	}
 	if len(override.Commands) > 0 {
 		out.Commands = append([]protocol.CommandSpec{}, override.Commands...)
+	}
+	if len(override.CatalogInputs) > 0 {
+		out.CatalogInputs = cloneStringSlice(override.CatalogInputs)
 	}
 	out.Env = mergeStringMaps(out.Env, override.Env)
 	return out

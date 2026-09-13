@@ -44,6 +44,7 @@ type ServiceSnapshot struct {
 	UpdatedAt  time.Time                 `json:"updated_at,omitempty"`
 	Exit       *runstate.ExitSummary     `json:"exit,omitempty"`
 	LastError  *runstate.ErrorRecord     `json:"last_error,omitempty"`
+	Artifact   *runstate.ArtifactRecord  `json:"artifact,omitempty"`
 	StdoutPath string                    `json:"stdout_path,omitempty"`
 	StderrPath string                    `json:"stderr_path,omitempty"`
 }

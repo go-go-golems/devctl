@@ -379,7 +379,7 @@ devctl validate
 Each standalone phase command first runs `config.mutate`, then runs the named
 phase and emits a Glazed row containing the mutated `config` plus the phase
 result (`build`, `prepare`, or `validate`). The default renderer is
-human-readable; automation should request `--output json`. For live progress,
+human-readable; automation should request `--format json`. For live progress,
 plugins should write human-readable progress to **stderr**. Plugin stdout must
 remain protocol NDJSON only.
 

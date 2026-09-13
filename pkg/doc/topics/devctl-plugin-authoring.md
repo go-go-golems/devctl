@@ -383,7 +383,9 @@ These ops are for deterministic side-effect steps (compilation, generating files
 | `steps[].name` | `string` | yes | Step identifier (used for merging across plugins). |
 | `steps[].ok` | `boolean` | yes | Whether the step succeeded. |
 | `steps[].duration_ms` | `number` | optional | How long the step took. |
-| `artifacts` | `map<string,string>` | optional | Named paths to build outputs (e.g. `{"backend-bin": "dist/server"}`). |
+| `artifacts` | `map<string,string>` | optional | Named paths to build outputs (e.g. `{"backend-bin": "dist/server"}`). A service may select a native executable by this name. |
+
+Artifact paths may be absolute or relative to `repo_root`. When `launch.plan` selects one as an executable, devctl copies and hashes the file, publishes it under `.devctl/artifacts/sha256/<digest>/executable`, launches that read-only copy, and records its ID, path, SHA-256, and size in the service run. Only regular files with an executable mode are accepted.
 
 **Dry-run behavior:**
 
@@ -404,25 +406,24 @@ devctl prepare --step pnpm-install
 
 Keep stdout reserved for protocol frames. If a build, install, migration, or code-generation command takes a while, stream human-readable progress to stderr. devctl reads plugin stderr while the request is running, so operators can watch progress without corrupting the NDJSON protocol on stdout.
 
-A safe Python pattern is to pipe subprocess output to stderr while emitting exactly one JSON response on stdout:
+Use the supported runner in `sdk/python/devctl_runner.py` rather than copying a streaming-only helper. One `Budget` must be shared by every build or prepare step in the request:
 
 ```python
-def run_streaming(argv, cwd):
-    proc = subprocess.Popen(
-        argv,
-        cwd=cwd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-    for line in proc.stdout:
-        sys.stderr.write(line)
-        sys.stderr.flush()
-    return proc.wait()
+from devctl_runner import Budget, Runner
+
+runner = Runner(output=sys.stderr)
+runner.install_signal_handlers()
+budget = Budget.from_deadline_ms(req["ctx"]["deadline_ms"])
+
+result = runner.run(
+    ["go", "build", "-o", output, "./cmd/server"],
+    cwd=req["ctx"]["repo_root"],
+    budget=budget,
+    dry_run=req["ctx"].get("dry_run", False),
+)
 ```
 
-Avoid `print()` for progress unless it writes to stderr. Any non-JSON text on stdout is protocol contamination and will fail the plugin.
+The runner uses argv without shell parsing, streams both child outputs to plugin stderr, bounds retained diagnostic tails, owns a separate process group, escalates TERM to KILL, and reaps the main child. Treat `timed_out`, `canceled`, nonzero `exit_code`, or false `cleanup_confirmed` as operation failure. Avoid `print()` for progress unless it writes to stderr. Any non-JSON text on stdout is protocol contamination and will fail the plugin.
 
 ### 6.4. `launch.plan`: describe services devctl should supervise
 
@@ -452,7 +453,8 @@ The launch plan is what devctl turns into processes, logs, health checks, and `d
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | `string` | yes | Stable identifier for `logs`, `status`, and `down`. |
-| `command` | `string[]` | yes | argv array. No shell parsing — use `["bash","-lc","..."]` if you need a shell. |
+| `command` | `string[]` | conditionally | argv array. No shell parsing — use `["bash","-lc","..."]` if you need a shell. Mutually exclusive with `executable`. |
+| `executable` | `{artifact_id:string,args?:string[]}` | conditionally | Select a native executable returned by `build.run` or `prepare.run`, plus its argv tail. Mutually exclusive with `command`. |
 | `cwd` | `string` | optional | Working directory. Relative paths resolved against `repo_root`. |
 | `env` | `map<string,string>` | optional | Extra env vars merged with the parent environment. |
 | `health` | `HealthCheck` | optional | Readiness check before devctl considers `up` successful. |
@@ -460,6 +462,20 @@ The launch plan is what devctl turns into processes, logs, health checks, and `d
 | `health.address` | `string` | for `tcp` | Host:port to dial (e.g. `"127.0.0.1:8080"`). |
 | `health.url` | `string` | for `http` | URL to GET. 2xx–4xx counts as healthy. |
 | `health.timeout_ms` | `number` | optional | How long to wait for the service to become ready (default: 30s). |
+
+A service must provide exactly one of `command` or `executable`. For a build-produced native service, return for example:
+
+```json
+{
+  "name": "backend",
+  "executable": {
+    "artifact_id": "backend-bin",
+    "args": ["--port", "8083"]
+  }
+}
+```
+
+Devctl retains executable bytes referenced by each service's current and immediately previous run. After a successful locked lifecycle update, it removes other valid content-addressed digest directories. Older run records keep their digest evidence but may no longer have launchable bytes.
 
 **Important:** devctl starts services in the order they appear in your `launch.plan`, then runs health checks in parallel. A service without `health` is considered immediately ready.
 
@@ -794,9 +810,11 @@ When `backend` is active, the `api` plugin receives `LOG_LEVEL=debug`.
 
 ### Planning phases must be safe to re-run
 
-`devctl start <service>` and `devctl restart <service>` re-run `config.mutate` and `launch.plan` to recover the current service specification without persisting raw service environments in `.devctl/state.json`. They do not run `build.run`, `prepare.run`, or `validate.run`.
+`devctl restart <service>` runs `config.mutate`, then build, prepare, and validation unless their explicit skip flags are set, and finally `launch.plan`. Replacement preparation completes before devctl stops the selected current service. A preparation or planning failure therefore leaves the current attempt running. `devctl plan` is narrower: it runs only `config.mutate` and `launch.plan`.
 
-For plugin authors, this creates a clear rule: keep `config.mutate` and `launch.plan` idempotent planning phases. They should compute config and service specs. They should not create external resources, mutate databases, start background processes, or perform setup that belongs in `prepare.run`.
+Use `devctl up --explain` or `devctl restart SERVICE --explain` when you need an effect-free recipe. Explain mode loads static repository configuration but does not start plugins or run any phase. Its rows identify enabled/skipped phases, requested step and service selections, and launch facts that remain unresolved until preparation.
+
+For plugin authors, this creates a clear rule: keep `config.mutate` and `launch.plan` idempotent planning phases. They should compute config and service specs. They should not create external resources, mutate databases, start background processes, or perform setup that belongs in `prepare.run`. Build and prepare may have effects and must honor dry-run and request deadlines.
 
 For profile details, see `devctl help profiles-guide`.
 

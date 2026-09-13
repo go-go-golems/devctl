@@ -66,12 +66,12 @@ func executeProfilesCommand(t *testing.T, args ...string) []map[string]any {
 	t.Helper()
 	root := &cobra.Command{Use: "devctl"}
 	require.NoError(t, AddCommands(root))
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&out)
-	root.SetArgs(append(args, "--output", "json"))
-	require.NoError(t, root.Execute())
+	var stderr bytes.Buffer
+	root.SetErr(&stderr)
+	root.SetArgs(append(args, "--format", "json"))
+	stdout, err := captureProcessStdout(t, root.Execute)
+	require.NoError(t, err, stderr.String())
 	var rows []map[string]any
-	require.NoError(t, json.Unmarshal(out.Bytes(), &rows))
+	require.NoError(t, json.Unmarshal([]byte(stdout), &rows))
 	return rows
 }

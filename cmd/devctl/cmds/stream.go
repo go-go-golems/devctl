@@ -18,7 +18,6 @@ import (
 	"github.com/go-go-golems/glazed/pkg/cmds/schema"
 	"github.com/go-go-golems/glazed/pkg/cmds/values"
 	"github.com/go-go-golems/glazed/pkg/middlewares"
-	glazedsettings "github.com/go-go-golems/glazed/pkg/settings"
 	"github.com/go-go-golems/glazed/pkg/types"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -37,16 +36,27 @@ type StreamCommand struct {
 }
 
 var _ glazedcmds.GlazeCommand = (*StreamCommand)(nil)
+var _ glazedcmds.BareCommand = (*StreamCommand)(nil)
 
-func newStreamCmd() *cobra.Command {
+func (c *StreamCommand) Run(ctx context.Context, vals *values.Values) error {
+	return c.RunIntoGlazeProcessor(ctx, vals, &humanEventProcessor{writer: os.Stdout})
+}
+
+func newStreamCmd() (*cobra.Command, error) {
 	command := &cobra.Command{
 		Use:   "stream",
 		Short: "Start and inspect protocol streams",
 	}
 	streamCommand, err := NewStreamCommand()
-	cobra.CheckErr(err)
-	command.AddCommand(buildGlazedCommand(streamCommand))
-	return command
+	if err != nil {
+		return nil, err
+	}
+	built, err := buildDualGlazedCommand(streamCommand)
+	if err != nil {
+		return nil, err
+	}
+	command.AddCommand(built)
+	return command, nil
 }
 
 func NewStreamCommand() (*StreamCommand, error) {
@@ -66,57 +76,6 @@ func NewStreamCommand() (*StreamCommand, error) {
 		),
 		glazedcmds.WithSections(repoSection),
 	)}, nil
-}
-
-func (c *StreamCommand) PrepareGlazedValues(vals *values.Values) error {
-	outputValues, exists := vals.Get(glazedsettings.GlazedSlug)
-	if !exists {
-		return errors.New("glazed output settings are unavailable")
-	}
-	settings, err := glazedsettings.NewOutputFormatterSettings(outputValues)
-	if err != nil {
-		return err
-	}
-	if humanStreamOutput(settings) {
-		return nil
-	}
-	if value, ok := outputValues.Fields.Get("stream"); ok {
-		value.Value = true
-	}
-	if value, ok := outputValues.Fields.Get("output-as-objects"); ok {
-		value.Value = true
-	}
-	return nil
-}
-
-func (c *StreamCommand) BuildGlazedProcessor(
-	vals *values.Values,
-	writer io.Writer,
-) (middlewares.Processor, bool, error) {
-	outputValues, exists := vals.Get(glazedsettings.GlazedSlug)
-	if !exists {
-		return nil, false, errors.New("glazed output settings are unavailable")
-	}
-	settings, err := glazedsettings.NewOutputFormatterSettings(outputValues)
-	if err != nil {
-		return nil, false, err
-	}
-	if !humanStreamOutput(settings) {
-		if settings.Output == "json" {
-			processor, err := newJSONLinesProcessor(outputValues, writer)
-			return processor, true, err
-		}
-		return nil, false, nil
-	}
-	return &humanEventProcessor{writer: writer}, true, nil
-}
-
-func humanStreamOutput(settings *glazedsettings.OutputFormatterSettings) bool {
-	return settings.Output == "table" &&
-		settings.TableFormat != "csv" &&
-		settings.TableFormat != "tsv" &&
-		settings.TableFormat != "markdown" &&
-		settings.TableFormat != "html"
 }
 
 func (c *StreamCommand) RunIntoGlazeProcessor(

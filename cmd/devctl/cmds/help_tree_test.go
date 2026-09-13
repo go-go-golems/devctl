@@ -27,6 +27,7 @@ help	Help about any command
 logs	Show or follow service logs
 plan	Compute a merged launch plan from selected plugins
 plugins	Inspect plugins and manage the dynamic command catalog
+  catalog	Inspect command catalog state and provenance without starting plugins
   commands	List validated dynamic root commands
   inspect	Inspect one selected plugin and its catalog commands
   list	List selected configured plugins without starting them
@@ -37,6 +38,7 @@ profiles	List and inspect devctl profiles
   active	Show the resolved active profile
   list	List profiles from repository configuration
 restart	Restart all or selected services
+schema	Print a compact JSON schema for a command
 status	Show durable service status
 stream	Start and inspect protocol streams
   start	Start a stream operation and emit its events
