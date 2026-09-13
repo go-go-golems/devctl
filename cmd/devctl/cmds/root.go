@@ -13,6 +13,7 @@ func AddCommands(root *cobra.Command) error {
 	root.AddCommand(newValidateCmd())
 	root.AddCommand(newPluginsCmd())
 	root.AddCommand(newProfilesCmd())
+	root.AddCommand(newSchemaCmd())
 
 	root.AddCommand(newUpCmd())
 	root.AddCommand(newDownCmd())

@@ -21,6 +21,19 @@ This guide is the "how do I actually ship this?" companion to the protocol refer
 
 If you're starting from a big `startdev.sh`, the most important mindset shift is: your plugin computes *facts* (config, validation, and a plan), and devctl owns the lifecycle (starting processes, tracking state, capturing logs).
 
+For agent-friendly raw documentation and command metadata, use the existing help export plus the compact schema command:
+
+```sh
+# Raw Markdown content with no terminal rendering:
+devctl help export --slug plugin-authoring --select content
+
+# Stable JSON describing one executable command surface:
+devctl schema restart
+devctl schema plugins catalog
+```
+
+`devctl schema` reports command path, usage, summary, and local/inherited flags without running the command. Use `devctl help export --output json` when you need help metadata and content together.
+
 ## 1. The two hard rules: handshake first, stdout is sacred
 
 devctl plugins are NDJSON-over-stdio programs. That’s deliberately boring: if you can write to stdin/stdout, you can write a plugin in almost any language.
@@ -253,7 +266,21 @@ while IFS= read -r line; do
 done
 ```
 
-## 7. Testing loops that catch real problems early
+## 7. Tested lifecycle phase matrix
+
+The command surface and fixture tests enforce this current phase order:
+
+| Command | Ordered plugin operations |
+|---|---|
+| `devctl plan` | `config.mutate`, `launch.plan` |
+| `devctl build` | `config.mutate`, `build.run` |
+| `devctl prepare` | `config.mutate`, `prepare.run` |
+| `devctl validate` | `config.mutate`, `validate.run` |
+| `devctl up` / `devctl restart` | `config.mutate`, `build.run`, `prepare.run`, `validate.run`, `launch.plan` |
+
+The lifecycle skip flags remove only their named optional phase. Restart prepares a valid replacement before stopping the selected current attempt. An explicit build followed by `devctl restart <service> --skip-build` avoids repeating build, but prepare and validation still run unless separately skipped.
+
+## 8. Testing loops that catch real problems early
 
 Good plugin testing is less about unit tests and more about tight feedback loops: validate handshake, validate pipeline behavior, validate timeouts and failure reporting.
 
@@ -303,7 +330,7 @@ profiles:
 
 For the complete profile model, see `devctl help profiles-guide`.
 
-## 8. Common pitfalls (and how to avoid them)
+## 9. Common pitfalls (and how to avoid them)
 
 The failure modes are predictable. If you build guardrails into your plugin from day one, you’ll avoid most of them.
 
@@ -313,7 +340,7 @@ The failure modes are predictable. If you build guardrails into your plugin from
 - **Hiding validation failures:** put clear, actionable error messages into `validate.run` output.
 - **Doing lifecycle inside the plugin:** return a service plan; let devctl supervise it.
 
-## 9. Where to go next
+## 10. Where to go next
 
 If you want the complete protocol details (schemas, more examples, and deeper guidance on merging/strictness), use the authoring guide:
 

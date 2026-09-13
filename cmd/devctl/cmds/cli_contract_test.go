@@ -90,6 +90,38 @@ func TestBuiltCLIContracts(t *testing.T) {
 		require.NoFileExists(t, markerPath)
 	})
 
+	t.Run("raw help and command schema are machine readable", func(t *testing.T) {
+		stdout, stderr, err := runCLI(binary,
+			"help", "export", "--slug", "plugin-authoring", "--select", "content",
+		)
+		require.NoError(t, err, stderr)
+		require.Contains(t, stdout, "devctl plugins let you take")
+
+		stdout, stderr, err = runCLI(binary, "schema", "restart")
+		require.NoError(t, err, stderr)
+		var schema map[string]any
+		require.NoError(t, json.Unmarshal([]byte(stdout), &schema))
+		require.Equal(t, "devctl restart", schema["path"])
+		require.Contains(t, schema["use"], "restart")
+		require.NotEmpty(t, schema["flags"])
+	})
+
+	t.Run("catalog inspection does not start provider", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		configPath, markerPath := writeCountingCommandPlugin(t, repoRoot)
+		stdout, stderr, err := runCLI(binary,
+			"plugins", "catalog", "--repo-root", repoRoot, "--config", configPath,
+			"--output", "json",
+		)
+		require.NoError(t, err, stderr)
+		require.NoFileExists(t, markerPath)
+		var rows []map[string]any
+		require.NoError(t, json.Unmarshal([]byte(stdout), &rows))
+		require.Len(t, rows, 1)
+		require.Equal(t, "missing", rows[0]["catalog_state"])
+		require.Equal(t, "handshake", rows[0]["source"])
+	})
+
 	t.Run("catalog command starts exactly one provider", func(t *testing.T) {
 		repoRoot := t.TempDir()
 		configPath, markerPath := writeCountingCommandPlugin(t, repoRoot)

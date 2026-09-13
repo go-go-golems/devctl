@@ -26,3 +26,12 @@ Added non-executing catalog inspection, static-versus-handshake provenance, sche
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/cmd/devctl/cmds/plugins.go — plugins catalog command output
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/plugincatalog/catalog.go — Schema-v2 provider provenance and declared source hashing
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/plugincatalog/inspection.go — Non-executing missing stale valid and conflicted catalog inspection
+
+## 2026-09-13
+
+Added tested raw help export and compact JSON command schema discovery, corrected stale lifecycle examples, and locked the current lifecycle phase order with an executable fixture journal.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/cmd/devctl/cmds/schema.go — Machine-readable command schema surface
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/operator/planner_test.go — Executable default and skipped phase-order matrix

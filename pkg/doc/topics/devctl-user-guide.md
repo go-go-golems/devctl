@@ -177,7 +177,7 @@ For long-running builds, increase `--timeout`. Plugins should stream human-reada
 ```bash
 devctl up                          # Run pipeline, start services
 devctl status                      # Show running services, PIDs, health
-devctl status --tail-lines 10      # Include stderr tails for dead services
+devctl status --output json       # Include structured run and health evidence
 devctl logs api                         # Show stdout and stderr for a service
 devctl logs api --stream stderr         # Show only stderr
 devctl logs api --follow                # Live tail

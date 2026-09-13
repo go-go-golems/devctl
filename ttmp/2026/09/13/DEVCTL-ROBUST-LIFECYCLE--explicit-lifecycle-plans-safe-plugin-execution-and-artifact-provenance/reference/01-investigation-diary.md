@@ -266,3 +266,59 @@ I added an inspection-only catalog surface and made interpreted plugin source ch
 - Catalog schema changed from 1 to 2; old cache parses but validation returns stale because its version is unsupported.
 - Provider source values are `static` and `handshake`; catalog states are `missing`, `stale`, `valid`, and `conflicted`.
 - Declared input keys use normalized slash-separated repository-relative paths; persisted values are lowercase SHA-256 hex digests.
+
+## Step 5: Make help and lifecycle examples executable contracts
+
+I completed Phase 1 by exposing compact JSON command schemas, documenting raw Markdown help export, correcting stale lifecycle examples, and adding a fixture that records the exact default and skipped planner operation order.
+
+### Prompt Context
+**User prompt (verbatim):** See Step 2.
+**Assistant interpretation:** Finish Phase 1's documentation discoverability and executable phase-matrix task before entering process-lifetime work.
+**Inferred user intent:** Prevent operator and agent guidance from drifting away from Cobra flags and actual plugin calls.
+
+### What I did
+- Added `devctl schema [COMMAND...]`, which outputs command path, usage, summary, and local/inherited flag metadata as indented JSON without executing the selected command.
+- Added CLI contract tests for raw `help export --select content`, schema JSON, and non-executing catalog inspection.
+- Added a `PipelinePlanner` fixture plugin that journals operations and asserts the full default sequence and all-optionals-skipped sequence.
+- Corrected the unsupported `status --tail-lines` user-guide example.
+- Corrected plugin-authoring claims that restart omitted build, prepare, and validation.
+- Added a tested phase matrix and raw/schema recipes to the scripting guide.
+- Checked ticket task `xmy4` and updated the changelog.
+
+### Why
+- Glazed already provides raw help content through `help export`, but it was not discoverable in devctl guidance.
+- The inherited `--print-schema` flag produced no useful output for the tested command, so an explicit compact schema surface provides stable machine-readable command metadata.
+- A fixture journal verifies semantic phase order; parsing flags alone would not prove which plugin effects occur.
+
+### What worked
+- `GOWORK=off go test ./pkg/operator -run TestPipelinePlannerPhaseMatrix -v` passed both default and skipped cases.
+- `GOWORK=off go test ./cmd/devctl/cmds -run 'TestBuiltCLIContracts|TestPublicHelpCommandTreeGolden'` passed.
+- Raw help export returned the unrendered plugin-authoring Markdown body, and schema output decoded as JSON for `devctl restart`.
+
+### What didn't work
+- Testing `devctl help export --slug devctl-plugin-authoring` returned no rows because the actual embedded slug is `plugin-authoring`; listing export metadata identified the authoritative slug.
+- The inherited `devctl plugins catalog --print-schema` exited successfully but emitted only a newline. Rather than documenting a nonfunctional inherited flag, I added and tested the explicit `devctl schema` command.
+
+### What I learned
+- Current `PipelinePlanner.Plan` runs config, build, prepare, validate, and launch for up/restart, while the standalone `plan` command only invokes config and launch.
+- The plugin-authoring guide still described an older `start`/restart behavior and required correction before it could serve as implementation evidence.
+
+### What was tricky to build
+- A command schema must locate nested Cobra commands without invoking their `RunE`. `Root().Find` provides command metadata safely; unresolved path suffixes are rejected rather than silently treated as positional args.
+- Documentation needed to distinguish preview-style `plan` from the currently side-effecting operator planner despite their similar names.
+
+### What warrants a second pair of eyes
+- Review whether the schema format should receive an explicit version before external tooling depends on it.
+- The lifecycle recipe refactor will intentionally change this phase model; update the fixture and docs in the same future checkpoint.
+
+### What should be done in the future
+- Print the Phase 1 completion slip, then start Phase 2 and implement one-owner graceful plugin shutdown with cancellation fixtures.
+
+### Code review instructions
+- Run `GOWORK=off go test ./pkg/operator -run TestPipelinePlannerPhaseMatrix -v` and the focused CLI contract command above.
+- Compare the matrix in `pkg/doc/topics/devctl-scripting-guide.md` with `pkg/operator/planner_test.go` and current `PipelinePlanner.Plan`.
+
+### Technical details
+- Default operator sequence: `config.mutate`, `build.run`, `prepare.run`, `validate.run`, `launch.plan`.
+- Optional skip sequence under all three skip flags: `config.mutate`, `launch.plan`.
+- Raw topic command: `devctl help export --slug plugin-authoring --select content`.

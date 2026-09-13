@@ -8,5 +8,5 @@
 - [ ] Ship supported bounded subprocess runner and cancellation fixtures <!-- t:hslp -->
 - [ ] Separate lifecycle recipe resolution preparation and application <!-- t:jyam -->
 - [ ] Add typed immutable artifact provenance to service runs <!-- t:22at -->
-- [ ] Test documentation examples phase matrix and raw/schema help discoverability <!-- t:xmy4 -->
+- [x] Test documentation examples phase matrix and raw/schema help discoverability <!-- t:xmy4 -->
 - [ ] Qualify complete offline lifecycle and failure matrix <!-- t:tqur -->

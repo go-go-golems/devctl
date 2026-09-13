@@ -38,6 +38,7 @@ profiles	List and inspect devctl profiles
   active	Show the resolved active profile
   list	List profiles from repository configuration
 restart	Restart all or selected services
+schema	Print a compact JSON schema for a command
 status	Show durable service status
 stream	Start and inspect protocol streams
   start	Start a stream operation and emit its events

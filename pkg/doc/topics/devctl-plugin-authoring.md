@@ -794,9 +794,9 @@ When `backend` is active, the `api` plugin receives `LOG_LEVEL=debug`.
 
 ### Planning phases must be safe to re-run
 
-`devctl start <service>` and `devctl restart <service>` re-run `config.mutate` and `launch.plan` to recover the current service specification without persisting raw service environments in `.devctl/state.json`. They do not run `build.run`, `prepare.run`, or `validate.run`.
+`devctl restart <service>` runs `config.mutate`, then build, prepare, and validation unless their explicit skip flags are set, and finally `launch.plan`. Replacement preparation completes before devctl stops the selected current service. A preparation or planning failure therefore leaves the current attempt running. `devctl plan` is narrower: it runs only `config.mutate` and `launch.plan`.
 
-For plugin authors, this creates a clear rule: keep `config.mutate` and `launch.plan` idempotent planning phases. They should compute config and service specs. They should not create external resources, mutate databases, start background processes, or perform setup that belongs in `prepare.run`.
+For plugin authors, this creates a clear rule: keep `config.mutate` and `launch.plan` idempotent planning phases. They should compute config and service specs. They should not create external resources, mutate databases, start background processes, or perform setup that belongs in `prepare.run`. Build and prepare may have effects and must honor dry-run and request deadlines.
 
 For profile details, see `devctl help profiles-guide`.
 
