@@ -611,3 +611,66 @@ I converted the context-window inventory and classified session timeline into a 
 - Allowed timeline categories: `analysis`, `engineering`, `menial/support`, and `issue/churn`.
 - Every issue/churn model entry must contain at least one concrete prevention-advice item.
 - The renderer has no remote assets or JavaScript and uses only the Python standard library.
+
+## Step 11: Install the skill and publish its technical deep dive
+
+I installed the reusable skill into the shared skill repository, committed only its six files despite unrelated existing changes there, and wrote a long-form technical article for the go-go-parc Obsidian vault. The article explains the evidence model, report schema, renderer, safety properties, validation strategy, archival workflow, failure modes, and extension points in direct textbook prose without analogies.
+
+### Prompt Context
+**User prompt (verbatim):**
+> commit the skill in the skill directory. and write a report about it.  write a detailed project report for the obsidian vault as a deep dive technical analysis blog post using a textbook writing style (no analogies, see skill).
+>  Commit and push the bsidian vault when done (go-go-parc vault).
+
+**Assistant interpretation:** Install and commit the skill in the canonical shared skills Git repository, then author, commit, and push an article-style technical report in go-go-parc.
+**Inferred user intent:** Make the capability globally reusable and preserve its design as durable, publishable engineering knowledge.
+
+### What I did
+- Loaded the Obsidian vault writing and textbook-authoring skills and read the vault's article and project exemplars.
+- Copied `skills/session-context-audit` to `/home/manuel/.pi/agent/skills/session-context-audit`, which resolves to the Git repository `/home/manuel/.codex/skills`.
+- Re-ran all four renderer tests from the installed location.
+- Staged only `session-context-audit/` and committed it in the shared skill repository.
+- Wrote `Projects/2026/09/13/ARTICLE - Session Context Audits - Evidence Models Timelines and Reusable HTML Reports.md` in go-go-parc.
+- Validated frontmatter shape, links, diff whitespace, word count, and absence of prohibited analogy/filler phrases.
+- Committed and pushed the vault's `main` branch.
+- Printed the report completion slip with both repository revisions.
+
+### Why
+- A project-local skill is available only through that package; installation in the shared skills repository makes it discoverable across trusted projects.
+- The report is reusable technical knowledge rather than a project status note, so it uses the vault's `ARTICLE - ...` convention and generalizes beyond devctl.
+- Selective staging protected unrelated pre-existing modifications in the shared skill repository.
+
+### What worked
+- Installed skill tests passed: four tests, including required sections, HTML escaping, churn advice enforcement, and standalone output.
+- Shared skill commit: `4e6e3d5` — `feat(skill): add session context audit workflow`.
+- The article contains 2,967 words and 487 lines, with architecture diagrams, JSON and pseudocode, commands, failure analysis, design decisions, and extension paths.
+- Vault commit: `d11ffec` — `docs(article): add session context audit deep dive`.
+- Push succeeded: `origin/main` advanced from `9d7f5f9` to `d11ffec`.
+- Thermal completion print returned `printed: true` at `2026-09-13T11:21:08Z`.
+
+### What didn't work
+- No failure occurred in the installation, article authoring, commit, or push workflow.
+
+### What I learned
+- `/home/manuel/.pi/agent/skills` resolves to `/home/manuel/.codex/skills`, so that repository is the authoritative shared-skill commit location on this machine.
+- The shared skill repository contained unrelated modified and untracked files; path-restricted status and staging were necessary.
+
+### What was tricky to build
+- The article needed to explain provenance and classification precisely without exposing chain-of-thought or using analogies. It uses defined terms, concrete model fragments, sequence steps, and Mermaid data flows instead.
+- The report had to distinguish a session-audit skill from transcript-analysis systems: the current skill models active evidence manually, while future transcript adapters can target the same JSON contract.
+
+### What warrants a second pair of eyes
+- Review whether the report model should gain an explicit schema version before external generators depend on it.
+- Review whether the example report asset should eventually become synthetic and smaller.
+- The shared skill commit has not been pushed because the user explicitly requested push only for the Obsidian vault.
+
+### What should be done in the future
+- Resume and finish the in-progress Glazed v1.4 migration without `GOWORK=off`.
+
+### Code review instructions
+- Skill: inspect `/home/manuel/.codex/skills/session-context-audit` at `4e6e3d5` and run its unittest command.
+- Article: inspect the vault note at `d11ffec`, beginning with the evidence model, architecture, rendering safety, and failure-mode sections.
+
+### Technical details
+- Vault note: `/home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/09/13/ARTICLE - Session Context Audits - Evidence Models Timelines and Reusable HTML Reports.md`.
+- Shared skill origin was left untouched; only a local commit was requested there.
+- Vault push target: `ssh://git@github.com/go-go-golems/go-go-parc`, branch `main`.

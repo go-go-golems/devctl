@@ -77,3 +77,11 @@ Extracted the context-window and classified session-timeline report into a reusa
 ### Related Files
 
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/skills/session-context-audit/SKILL.md — Project skill for evidence-backed session context audits
+
+## 2026-09-13
+
+Installed and committed the session-context-audit skill in the shared skill repository, then published a 2,967-word textbook-style technical deep dive to the go-go-parc Obsidian vault.
+
+### Related Files
+
+- /home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/09/13/ARTICLE - Session Context Audits - Evidence Models Timelines and Reusable HTML Reports.md — Published technical analysis of the skill architecture and evidence model
