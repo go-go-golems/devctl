@@ -240,6 +240,44 @@ func TestRuntime_CallUnsupportedFailsFast(t *testing.T) {
 	require.Equal(t, "E_UNSUPPORTED", opErr.Code)
 }
 
+func TestRuntime_CloseCancelsAbandonedStreamDelivery(t *testing.T) {
+	dir := t.TempDir()
+	plugin := filepath.Join(dir, "plugin.py")
+	code := `import json, sys
+
+def emit(value):
+    print(json.dumps(value), flush=True)
+
+emit({"type":"handshake","protocol_version":"v2","plugin_name":"abandoned","capabilities":{"ops":["stream.start"]}})
+for line in sys.stdin:
+    request = json.loads(line)
+    emit({"type":"response","request_id":request["request_id"],"ok":True,"output":{"stream_id":"s1"}})
+    for index in range(1000):
+        emit({"type":"event","stream_id":"s1","event":"log","message":str(index)})
+    emit({"type":"event","stream_id":"s1","event":"end","ok":True})
+`
+	require.NoError(t, os.WriteFile(plugin, []byte(code), 0o600))
+	factory := NewFactory(FactoryOptions{
+		HandshakeTimeout: time.Second,
+		EOFGraceTimeout:  100 * time.Millisecond,
+		ShutdownTimeout:  time.Second,
+	})
+	client, err := factory.Start(t.Context(), PluginSpec{
+		ID: "abandoned", Path: "python3", Args: []string{plugin}, WorkDir: dir,
+	}, StartOptions{})
+	require.NoError(t, err)
+	_, _, err = client.StartStream(t.Context(), "stream.start", map[string]any{})
+	require.NoError(t, err)
+	// Deliberately leave the returned event channel unread until its buffer fills.
+	time.Sleep(50 * time.Millisecond)
+	closeContext, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	require.NoError(t, client.Close(closeContext))
+	result, ok := client.(ShutdownReporter).ShutdownResult()
+	require.True(t, ok)
+	require.NotEqual(t, ShutdownUnconfirmed, result.Mode)
+}
+
 func TestRuntime_StartStreamUnsupportedFailsFast(t *testing.T) {
 	repoRoot, err := os.Getwd()
 	require.NoError(t, err)

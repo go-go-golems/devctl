@@ -6,17 +6,24 @@ import (
 )
 
 func AddCommands(root *cobra.Command) error {
-	root.AddCommand(dev.NewCmd())
-	root.AddCommand(newSchemaCmd())
-	root.AddCommand(newTuiCmd())
-	root.AddCommand(newWrapServiceCmd())
+	namespace := RootCommandNamespace(root)
+	for _, command := range []*cobra.Command{
+		dev.NewCmd(),
+		newSchemaCmd(),
+		newTuiCmd(),
+		newWrapServiceCmd(),
+	} {
+		if err := namespace.Add(root, command); err != nil {
+			return err
+		}
+	}
 
 	constructors := []func() (*cobra.Command, error){
 		newPlanCmd,
 		newBuildCmd,
 		newPrepareCmd,
 		newValidateCmd,
-		newPluginsCmd,
+		func() (*cobra.Command, error) { return newPluginsCmd(namespace) },
 		newProfilesCmd,
 		newUpCmd,
 		newDownCmd,
@@ -31,7 +38,9 @@ func AddCommands(root *cobra.Command) error {
 		if err != nil {
 			return err
 		}
-		root.AddCommand(command)
+		if err := namespace.Add(root, command); err != nil {
+			return err
+		}
 	}
 	return nil
 }

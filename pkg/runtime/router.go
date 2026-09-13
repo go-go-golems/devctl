@@ -8,11 +8,13 @@ import (
 )
 
 type router struct {
-	mu      sync.Mutex
-	pending map[string]chan protocol.Response
-	streams map[string][]chan protocol.Event
-	buffer  map[string][]protocol.Event
-	fatal   error
+	mu       sync.Mutex
+	pending  map[string]chan protocol.Response
+	streams  map[string][]chan protocol.Event
+	buffer   map[string][]protocol.Event
+	fatal    error
+	stopOnce sync.Once
+	stopped  chan struct{}
 }
 
 func newRouter() *router {
@@ -20,6 +22,7 @@ func newRouter() *router {
 		pending: map[string]chan protocol.Response{},
 		streams: map[string][]chan protocol.Event{},
 		buffer:  map[string][]protocol.Event{},
+		stopped: make(chan struct{}),
 	}
 }
 
@@ -83,6 +86,9 @@ func (r *router) cancel(rid string, err error) {
 }
 
 func (r *router) failAll(err error) {
+	// Closing this channel does not require r.mu, so it can release a publisher
+	// blocked on an abandoned stream before failAll acquires the router lock.
+	r.stopOnce.Do(func() { close(r.stopped) })
 	r.mu.Lock()
 	r.fatal = err
 	pending := make(map[string]chan protocol.Response, len(r.pending))
@@ -158,7 +164,11 @@ func (r *router) publish(ev protocol.Event) {
 		return
 	}
 	for _, ch := range subs {
-		ch <- ev
+		select {
+		case ch <- ev:
+		case <-r.stopped:
+			return
+		}
 	}
 	if ev.Event == "end" {
 		delete(r.streams, ev.StreamID)

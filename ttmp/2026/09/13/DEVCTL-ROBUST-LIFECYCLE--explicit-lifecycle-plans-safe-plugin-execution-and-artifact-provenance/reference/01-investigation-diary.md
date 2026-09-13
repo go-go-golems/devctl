@@ -979,3 +979,20 @@ The manually requested second Codex review found three P2 consistency gaps. Arti
 - `stageReferencedArtifacts` failures are wrapped as `E_ARTIFACT_INVALID`; both up and restart preserve an existing `OperatorError` from preparation rather than reclassifying it as `E_CONFIG_INVALID`.
 - Every TUI health label and the unhealthy summary count now use `runstate.ProjectHealth`; terminal failed/exited attempts display `not_running` while retaining historical check detail.
 - Updated embedded artifact-provenance help and TUI golden fixtures. Focused `go test -race ./pkg/operator ./pkg/tui` passed after one expected golden mismatch exposed the new projected labels.
+
+## Step 19: Centralize command namespaces and unblock abandoned stream shutdown
+
+A third Codex pass identified two P2 issues: the static built-in-name list could drift from Cobra registration, and an unread stream channel could block stdout forever now that `Cmd.Wait` correctly waits for pipe consumers. The user asked to extract the namespace pattern into a generic utility and preserve the design trace in the ticket.
+
+### Prompt Context
+**User prompts (verbatim):** “address the 2 new review points.” and “ok, extract the pattern into its own more generic utility in a separate file, and use that to simplify the esign and avoid similar issues in the future.”
+**Assistant interpretation:** Fix both findings, replace the duplicated command-name list with one reusable registration/discovery abstraction, and add a concise ticket design document.
+**Inferred user intent:** Prevent recurrence rather than merely append `schema` to another manually synchronized list.
+
+### Changes and evidence
+- Added generic `CommandNamespace` registration, alias collision detection, root discovery, and immutable snapshots in `cmd/devctl/cmds/command_namespace.go`.
+- `AddCommands` now registers every built-in through the namespace. Plugin inspect/refresh/static/run paths retain that same populated namespace, while dynamic bootstrap discovers the completed Cobra root. The duplicated `defaultReservedCommandNames` and `reservedCommandNames` lists are gone.
+- Added an integration test proving a static plugin command named `schema` is rejected during catalog refresh, plus generic name/alias collision tests.
+- Added a router stop channel that shutdown can close without acquiring the router mutex. A publisher blocked on a full abandoned stream wakes, releases the mutex, and lets `failAll` close subscriptions before lifecycle waiting proceeds.
+- Added an abandoned 1,000-event stream regression; focused race tests for commands and runtime passed.
+- Wrote and related `design-doc/03-command-namespace-registry-design.md` as the concise architectural trace.

@@ -152,3 +152,13 @@ Resolved second PR review findings: artifact dry-runs validate declarations with
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/operator/artifacts.go — Side-effect-free dry-run artifact declaration validation
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/operator/controller.go — Artifact-specific preparation error projection
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/tui/overview.go — Canonical projected health labels
+
+## 2026-09-13
+
+Replaced duplicated reserved-command lists with a shared CommandNamespace registry and made shutdown cancel blocked abandoned-stream delivery; added schema-collision and stream-backpressure regressions plus a concise registry design doc.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/cmd/devctl/cmds/command_namespace.go — Generic command and alias namespace utility
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/runtime/router.go — Shutdown-aware stream publication
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/ttmp/2026/09/13/DEVCTL-ROBUST-LIFECYCLE--explicit-lifecycle-plans-safe-plugin-execution-and-artifact-provenance/design-doc/03-command-namespace-registry-design.md — Concise design trace

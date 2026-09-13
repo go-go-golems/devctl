@@ -309,6 +309,7 @@ func (c *client) close(ctx context.Context) error {
 		return nil
 	}
 	c.closing.Store(true)
+	c.router.failAll(errors.New("plugin client is closing"))
 	c.lifetime.beginShutdown(c.stdin.Close, c.eofGraceTimeout, c.shutdownTimeout)
 	_, err := c.lifetime.awaitShutdown(ctx)
 	return err
