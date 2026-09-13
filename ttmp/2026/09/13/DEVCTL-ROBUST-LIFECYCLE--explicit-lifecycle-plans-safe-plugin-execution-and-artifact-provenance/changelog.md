@@ -162,3 +162,13 @@ Replaced duplicated reserved-command lists with a shared CommandNamespace regist
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/cmd/devctl/cmds/command_namespace.go — Generic command and alias namespace utility
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/runtime/router.go — Shutdown-aware stream publication
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/ttmp/2026/09/13/DEVCTL-ROBUST-LIFECYCLE--explicit-lifecycle-plans-safe-plugin-execution-and-artifact-provenance/design-doc/03-command-namespace-registry-design.md — Concise design trace
+
+## 2026-09-13
+
+Made v2 state migration an explicit clean cut: up/restart now reject legacy run references before any lifecycle mutation, regression coverage proves no service starts, and embedded migration guides tell users to stop with the old binary then archive/remove .devctl.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/doc/topics/devctl-plugin-migration.md — Clean-cut user and plugin upgrade procedure
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/operator/artifacts.go — Shared referenced-run validation and digest collection
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/operator/controller.go — Fail-fast retention-state validation before lifecycle mutation

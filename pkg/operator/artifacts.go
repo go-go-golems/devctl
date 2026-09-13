@@ -262,26 +262,9 @@ func validatePreparedArtifacts(prepared PreparedLaunch) error {
 // after their executable bytes are collected. The caller must hold the
 // lifecycle lock.
 func collectArtifacts(ctx context.Context, store *runstate.Store) error {
-	protected := map[string]bool{}
-	environment, err := loadEnvironmentOptional(ctx, store)
+	protected, err := protectedArtifactDigests(ctx, store)
 	if err != nil {
 		return err
-	}
-	if environment != nil {
-		for _, slot := range environment.Services {
-			for _, runID := range []string{slot.CurrentRunID, slot.LastRunID} {
-				if runID == "" {
-					continue
-				}
-				run, err := store.LoadRun(ctx, runID)
-				if err != nil {
-					return err
-				}
-				if run.Artifact != nil {
-					protected[run.Artifact.SHA256] = true
-				}
-			}
-		}
 	}
 	root := filepath.Join(store.RepoRoot(), ".devctl", "artifacts", "sha256")
 	entries, err := os.ReadDir(root)
@@ -306,4 +289,33 @@ func collectArtifacts(ctx context.Context, store *runstate.Store) error {
 		}
 	}
 	return nil
+}
+
+// protectedArtifactDigests validates every run referenced by artifact
+// retention before lifecycle mutation. Legacy schemas remain a clean-cut
+// migration error instead of surfacing after a new service has started.
+func protectedArtifactDigests(ctx context.Context, store *runstate.Store) (map[string]bool, error) {
+	protected := map[string]bool{}
+	environment, err := loadEnvironmentOptional(ctx, store)
+	if err != nil {
+		return nil, err
+	}
+	if environment == nil {
+		return protected, nil
+	}
+	for _, slot := range environment.Services {
+		for _, runID := range []string{slot.CurrentRunID, slot.LastRunID} {
+			if runID == "" {
+				continue
+			}
+			run, err := store.LoadRun(ctx, runID)
+			if err != nil {
+				return nil, err
+			}
+			if run.Artifact != nil {
+				protected[run.Artifact.SHA256] = true
+			}
+		}
+	}
+	return protected, nil
 }

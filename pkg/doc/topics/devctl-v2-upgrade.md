@@ -113,10 +113,11 @@ automatic retention deletion. Archive or remove old `.devctl/runs/<run-id>/`
 directories only after confirming they are not current in `devctl status
 --with-glaze-output --format json`.
 
-Do not delete `.devctl/state.json` to recover from an ownership error. Run
-`devctl doctor` and preserve both state and run artifacts for diagnosis.
+Do not delete `.devctl/state.json` to recover from an ownership error while an
+environment may still be running. Run `devctl doctor` and preserve both state
+and run artifacts until the older binary has completed shutdown.
 
-Run records now use schema version 2 when they can include native executable provenance. Version-1 run records are rejected rather than silently upgraded. Stop environments with the earlier binary before upgrading. Build-produced executables explicitly selected by `launch.plan` are copied to `.devctl/artifacts/sha256/`; current and immediately previous service runs retain their bytes while older run records retain digest evidence only.
+Run records now use schema version 2 when they can include native executable provenance. Version-1 run records are rejected rather than silently upgraded. This is a clean-cut migration: stop the environment with the earlier binary, optionally archive `.devctl` for diagnosis, then remove the entire `.devctl` directory before the first v2 command. Build-produced executables explicitly selected by `launch.plan` are copied to `.devctl/artifacts/sha256/`; current and immediately previous service runs retain their bytes while older v2 run records retain digest evidence only.
 
 ## Verify dynamic commands after the upgrade
 
@@ -140,7 +141,7 @@ metadata.
 
 | Problem | Cause | Solution |
 |---|---|---|
-| State is rejected after installing the new binary | The repository still has v1 or unversioned state | Reinstall the old binary, stop its environment, then return to the new binary; do not fabricate v2 ownership |
+| State is rejected after installing the new binary | The repository still has v1 or unversioned state | Reinstall the old binary, stop its environment, archive if needed, remove `.devctl`, then return to the new binary |
 | A former command is unknown | The command was consolidated rather than aliased | Use the replacement table above and update scripts |
 | Completed logs still consume disk | Run retention is intentionally manual | Verify current run IDs, then archive or remove only old run directories |
 | A dynamic command is absent | The catalog is stale, conflicted, or its provider identity changed | Run `plugins refresh`, `plugins inspect`, and use provider-qualified `plugins run` |

@@ -160,6 +160,9 @@ func (c *controller) Up(
 		if err := c.planner.ValidatePrepared(lockContext, prepared); err != nil {
 			return err
 		}
+		if _, err := protectedArtifactDigests(lockContext, store); err != nil {
+			return &OperatorError{Code: CodeStateCorrupt, Message: "validate artifact retention state", cause: err}
+		}
 		if err := publishPreparedArtifacts(&prepared); err != nil {
 			return &OperatorError{Code: CodeArtifactInvalid, Message: "publish prepared artifacts", cause: err}
 		}
@@ -537,6 +540,9 @@ func (c *controller) Restart(
 	}, func(lockContext context.Context) error {
 		if err := c.planner.ValidatePrepared(lockContext, prepared); err != nil {
 			return err
+		}
+		if _, err := protectedArtifactDigests(lockContext, store); err != nil {
+			return &OperatorError{Code: CodeStateCorrupt, Message: "validate artifact retention state", cause: err}
 		}
 		if err := publishPreparedArtifacts(&prepared); err != nil {
 			return &OperatorError{Code: CodeArtifactInvalid, Message: "publish prepared artifacts", cause: err}

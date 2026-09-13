@@ -81,9 +81,17 @@ Confirm that repository services have exited. Do not delete state while its
 recorded processes remain alive. The old state is the information the old
 binary needs to perform a controlled shutdown.
 
+After shutdown, make a clean schema cut by removing the repository-local devctl
+state. This discards old run history, logs, and cached command catalogs; archive
+them elsewhere first if they are needed for diagnosis.
+
+```bash
+rm -rf -- .devctl
+```
+
 If the new version is already installed and rejects existing state, reinstall
-the old binary temporarily, stop the environment, and then return to the new
-version. Do not fabricate a v2 state document.
+the old binary temporarily, stop the environment, remove `.devctl`, and then
+return to the new version. Do not fabricate or partially edit v2 state.
 
 ## Step 2: Audit the handshake and protocol streams
 

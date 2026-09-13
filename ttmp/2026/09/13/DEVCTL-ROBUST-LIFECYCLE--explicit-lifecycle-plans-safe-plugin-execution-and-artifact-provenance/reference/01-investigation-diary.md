@@ -996,3 +996,20 @@ A third Codex pass identified two P2 issues: the static built-in-name list could
 - Added a router stop channel that shutdown can close without acquiring the router mutex. A publisher blocked on a full abandoned stream wakes, releases the mutex, and lets `failAll` close subscriptions before lifecycle waiting proceeds.
 - Added an abandoned 1,000-event stream regression; focused race tests for commands and runtime passed.
 - Wrote and related `design-doc/03-command-namespace-registry-design.md` as the concise architectural trace.
+
+## Step 20: Make the v2 state migration a fail-fast clean cut
+
+A final Codex review observed that a retained version-1 `LastRunID` was not read until post-start artifact collection, so the first v2 `up` could start a service and then report partial failure. The user explicitly chose a clean compatibility cut rather than legacy migration logic: users stop with the old binary and clear repository-local devctl state before using v2.
+
+### Prompt Context
+**User prompts (verbatim):** “noo need to be overly cuatious here. An old run v1, no need to migrate or handle everything, users can legit just clear things out” and “Yeah, we shouldn't care too much about legacy compatibility, clean cut is fine, except a migration guide for users if they need to upgrade their current plugins”
+**Assistant interpretation:** Preserve strict v2 schema rejection, avoid a compatibility reader, document clearing `.devctl`, and ensure stale legacy references fail before lifecycle mutation.
+**Inferred user intent:** Keep implementation semantics simple while preventing a misleading partial-success upgrade experience.
+
+### Changes and evidence
+- Extracted artifact-retention reference loading into `protectedArtifactDigests`; both `up` and `restart` validate all current/last run references under the lifecycle lock before publishing artifacts, stopping, or starting services.
+- A retained version-1 run now returns `E_STATE_CORRUPT` before service startup rather than being interpreted as artifact-free compatibility data.
+- Added a controller regression that constructs a v2 environment with a legacy `LastRunID` and proves no supervisor start is attempted.
+- Updated the plugin migration, v2 upgrade, and artifact provenance help pages: stop with the old binary, optionally archive `.devctl`, remove it entirely, then begin with fresh v2 state. Partial JSON edits are explicitly discouraged.
+- Focused operator and runstate tests passed; `GOWORK=off go test ./... -count=1` and `go test -race ./pkg/operator -count=1` also passed.
+- The first `git push` pre-push hook ran lint and GoReleaser concurrently. GoReleaser's `--clean` removed `dist/linux_amd64/devctl-linux_linux_amd64_v1` while golangci-lint traversed it, producing `typechecking error: pattern ./...: readdirent ...: no such file or directory`; lint had passed in the pre-commit hook and the release/test jobs passed, so lint was rerun independently before a nonduplicative push.

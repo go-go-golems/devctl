@@ -288,6 +288,51 @@ func TestUpCollectsUnreferencedContentAddressedArtifact(t *testing.T) {
 	}
 }
 
+func TestUpRejectsLegacyLastRunBeforeStartingService(t *testing.T) {
+	repoRoot := t.TempDir()
+	store, err := runstate.NewStore(repoRoot)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	legacyID := "018f0f65-6c1a-7abc-8def-0123456789ac"
+	legacyDir, err := store.RunDir(legacyID)
+	if err != nil {
+		t.Fatalf("legacy run dir: %v", err)
+	}
+	if err := os.MkdirAll(legacyDir, 0o700); err != nil {
+		t.Fatalf("mkdir legacy run: %v", err)
+	}
+	legacyJSON := `{"version":1,"run_id":"` + legacyID + `","service":"web","phase":"exited"}`
+	if err := os.WriteFile(filepath.Join(legacyDir, "run.json"), []byte(legacyJSON), 0o600); err != nil {
+		t.Fatalf("write legacy run: %v", err)
+	}
+	if err := store.CreateEnvironment(t.Context(), runstate.EnvironmentState{
+		Services: map[string]runstate.ServiceSlot{"web": {
+			Name: "web", LastRunID: legacyID, Desired: runstate.DesiredStopped,
+		}},
+	}); err != nil {
+		t.Fatalf("create environment: %v", err)
+	}
+	supervisor := &recordingSupervisor{t: t, repoRoot: repoRoot}
+	controller := newTestController(t, repoRoot, staticPlanner{result: PlanResult{
+		Plan: engine.LaunchPlan{Services: []engine.ServiceSpec{{Name: "web", Command: []string{"serve"}}}},
+	}}, supervisor)
+
+	result, err := controller.Up(t.Context(), UpRequest{RepoRoot: repoRoot}, nil)
+	if err == nil {
+		t.Fatalf("up unexpectedly accepted legacy run: %#v", result)
+	}
+	var operatorErr *OperatorError
+	if !errors.As(err, &operatorErr) || operatorErr.Code != CodeStateCorrupt {
+		t.Fatalf("error = %v, want %s (result %#v)", err, CodeStateCorrupt, result)
+	}
+	supervisor.mu.Lock()
+	defer supervisor.mu.Unlock()
+	if len(supervisor.attempted) != 0 {
+		t.Fatalf("service started before legacy state rejection: %v", supervisor.attempted)
+	}
+}
+
 func TestUpStartsEveryWrapperBeforeCompletingHealth(t *testing.T) {
 	repoRoot := t.TempDir()
 	supervisor := &recordingSupervisor{t: t, repoRoot: repoRoot}

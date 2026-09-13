@@ -117,7 +117,7 @@ Collection ignores malformed directory names and symlink entries. If authoritati
 
 ## Run schema compatibility
 
-Artifact provenance advances service run records to schema version 2. Devctl rejects version-1 run records instead of silently fabricating missing identity. Stop environments with the older binary before moving a repository to this version.
+Artifact provenance advances service run records to schema version 2. Devctl rejects version-1 run records instead of silently fabricating missing identity or mixing retention semantics. Use a clean-cut upgrade: stop with the older binary, archive `.devctl` if its evidence matters, remove `.devctl`, and let the current binary create fresh v2 state.
 
 ## Troubleshooting
 
@@ -128,7 +128,7 @@ Artifact provenance advances service run records to schema version 2. Devctl rej
 | Service declares both launch forms | `launch.plan` contains both `command` and `executable` | Keep exactly one; use `executable` only for a selected build-produced native binary. |
 | Artifact ID is undeclared | `executable.artifact_id` does not match a build or prepare result key | Use the same stable ID in both protocol responses. |
 | A historical artifact path no longer exists | The run is older than the current and immediately previous attempt | Use the retained SHA-256 as evidence; rebuild explicitly if executable bytes are needed again. |
-| Version-1 run state is rejected | The record predates executable provenance | Stop with the earlier binary, then start again with the current version; do not edit run JSON manually. |
+| Version-1 run state is rejected | The record predates executable provenance | Stop with the earlier binary, archive if needed, remove `.devctl`, then start with the current version. |
 
 ## See Also
 
