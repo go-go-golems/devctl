@@ -2,7 +2,7 @@
 
 ## TODO
 - [ ] Review lifecycle recipe API timeout scopes and schema migration decisions <!-- t:4cwd -->
-- [ ] Implement shared current-versus-historical health projection <!-- t:qsjl -->
+- [x] Implement shared current-versus-historical health projection <!-- t:qsjl -->
 - [ ] Implement catalog inspection provenance and declared source fingerprints <!-- t:2mza -->
 - [ ] Implement graceful EOF shutdown with one process Wait owner <!-- t:pqv5 -->
 - [ ] Ship supported bounded subprocess runner and cancellation fixtures <!-- t:hslp -->

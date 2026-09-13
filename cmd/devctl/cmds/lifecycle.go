@@ -365,15 +365,8 @@ func processPID(identity *runstate.ProcessIdentity) int {
 	return identity.PID
 }
 
-func healthStatus(health *runstate.HealthResult) string {
-	switch {
-	case health == nil:
-		return ""
-	case health.Healthy:
-		return "healthy"
-	default:
-		return "unhealthy"
-	}
+func healthStatus(phase runstate.RunPhase, health *runstate.HealthResult) string {
+	return string(runstate.ProjectHealth(phase, health).Current)
 }
 
 func exitCode(exit *runstate.ExitSummary) any {

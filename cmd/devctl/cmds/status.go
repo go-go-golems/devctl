@@ -130,6 +130,7 @@ func addStatusRows(ctx context.Context, processor middlewares.Processor, result 
 		))
 	}
 	for _, service := range result.Services {
+		health := runstate.ProjectHealth(service.Phase, service.Health)
 		row := types.NewRow(
 			types.MRP("environment", "present"),
 			types.MRP("profile", result.Snapshot.Profile),
@@ -139,7 +140,10 @@ func addStatusRows(ctx context.Context, processor middlewares.Processor, result 
 			types.MRP("run_id", service.RunID),
 			types.MRP("wrapper_pid", processPID(service.Wrapper)),
 			types.MRP("child_pid", processPID(service.Child)),
-			types.MRP("health", healthStatus(service.Health)),
+			types.MRP("health", string(health.Current)),
+			types.MRP("last_health_healthy", lastHealthHealthy(health.Last)),
+			types.MRP("last_health_checked_at", lastHealthCheckedAt(health.Last)),
+			types.MRP("last_health_detail", lastHealthDetail(health.Last)),
 			types.MRP("started_at", service.CreatedAt),
 			types.MRP("uptime", uptime(result.Now, service).String()),
 			types.MRP("exit_code", exitCode(service.Exit)),
@@ -165,7 +169,7 @@ func renderHumanStatus(result statusResult) error {
 		if service.Phase == runstate.RunReady || service.Phase == runstate.RunStarting {
 			running++
 		}
-		if service.Health != nil && !service.Health.Healthy {
+		if runstate.ProjectHealth(service.Phase, service.Health).Current == runstate.HealthUnhealthy {
 			unhealthy++
 		}
 	}
@@ -177,7 +181,7 @@ func renderHumanStatus(result statusResult) error {
 	}
 	for _, service := range result.Services {
 		if _, err := fmt.Fprintf(os.Stdout, "%-16s %-9s %-10s %-11s %-7s %s\n",
-			service.Service, service.Desired, service.Phase, healthStatus(service.Health),
+			service.Service, service.Desired, service.Phase, healthStatus(service.Phase, service.Health),
 			humanPID(service.Child), humanUptime(result.Now, service)); err != nil {
 			return err
 		}
@@ -208,6 +212,27 @@ func renderHumanStatus(result statusResult) error {
 		}
 	}
 	return nil
+}
+
+func lastHealthHealthy(health *runstate.HealthResult) any {
+	if health == nil {
+		return nil
+	}
+	return health.Healthy
+}
+
+func lastHealthCheckedAt(health *runstate.HealthResult) any {
+	if health == nil || health.CheckedAt.IsZero() {
+		return nil
+	}
+	return health.CheckedAt
+}
+
+func lastHealthDetail(health *runstate.HealthResult) string {
+	if health == nil {
+		return ""
+	}
+	return health.Detail
 }
 
 func humanPID(identity *runstate.ProcessIdentity) string {
