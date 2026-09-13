@@ -35,3 +35,12 @@ Added tested raw help export and compact JSON command schema discovery, correcte
 
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/cmd/devctl/cmds/schema.go — Machine-readable command schema surface
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/operator/planner_test.go — Executable default and skipped phase-order matrix
+
+## 2026-09-13
+
+Implemented one-owner plugin process waiting with idempotent graceful EOF, TERM, and KILL shutdown, cancellation-safe background cleanup, descendant verification, and race-tested fixtures.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/runtime/process_lifetime.go — Single Wait owner and bounded process-group shutdown state machine
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/runtime/shutdown_test.go — EOF TERM KILL descendant concurrent and canceled Close fixtures

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"os"
@@ -27,6 +28,7 @@ type PluginSpec struct {
 
 type FactoryOptions struct {
 	HandshakeTimeout time.Duration
+	EOFGraceTimeout  time.Duration
 	ShutdownTimeout  time.Duration
 }
 
@@ -41,6 +43,9 @@ type StartOptions struct {
 func NewFactory(opts FactoryOptions) *Factory {
 	if opts.HandshakeTimeout <= 0 {
 		opts.HandshakeTimeout = 2 * time.Second
+	}
+	if opts.EOFGraceTimeout <= 0 {
+		opts.EOFGraceTimeout = 250 * time.Millisecond
 	}
 	if opts.ShutdownTimeout <= 0 {
 		opts.ShutdownTimeout = 2 * time.Second
@@ -72,20 +77,24 @@ func (f *Factory) Start(ctx context.Context, spec PluginSpec, opts StartOptions)
 		return nil, errors.Wrapf(err, "failed to start plugin %q (%s %s)", spec.ID, spec.Path, strings.Join(spec.Args, " "))
 	}
 
+	lifetime := newProcessLifetime(cmd)
 	reader := bufio.NewReader(stdout)
 	hs, err := readHandshake(ctx, reader, f.opts.HandshakeTimeout)
 	if err != nil {
-		// Try to capture stderr to make the error actionable.
+		lifetime.beginShutdown(stdin.Close, f.opts.EOFGraceTimeout, f.opts.ShutdownTimeout)
+		// Capture a bounded stderr tail while the cleanup owner shuts the process down.
 		stderrTail := drainStderr(stderr, 2*time.Second, 4096)
-		_ = terminateProcessGroup(cmd, f.opts.ShutdownTimeout)
+		cleanupContext, cleanupCancel := context.WithTimeout(context.Background(), f.opts.EOFGraceTimeout+2*f.opts.ShutdownTimeout+time.Second)
+		_, cleanupErr := lifetime.awaitShutdown(cleanupContext)
+		cleanupCancel()
 		pluginCmd := fmt.Sprintf("%s %s", spec.Path, strings.Join(spec.Args, " "))
 		if stderrTail != "" {
-			return nil, errors.Errorf("plugin %q (%s) failed handshake: %v\n\nstderr:\n%s", spec.ID, pluginCmd, err, stderrTail)
+			return nil, stderrors.Join(errors.Errorf("plugin %q (%s) failed handshake: %v\n\nstderr:\n%s", spec.ID, pluginCmd, err, stderrTail), cleanupErr)
 		}
-		return nil, errors.Errorf("plugin %q (%s) failed handshake: %v", spec.ID, pluginCmd, err)
+		return nil, stderrors.Join(errors.Errorf("plugin %q (%s) failed handshake: %v", spec.ID, pluginCmd, err), cleanupErr)
 	}
 
-	c := newClient(spec, hs, opts.Meta, cmd, stdin, reader, stderr, f.opts.ShutdownTimeout)
+	c := newClient(spec, hs, opts.Meta, cmd, stdin, reader, stderr, lifetime, f.opts.EOFGraceTimeout, f.opts.ShutdownTimeout)
 	c.start()
 	return c, nil
 }
@@ -177,32 +186,5 @@ func drainStderr(stderr io.ReadCloser, timeout time.Duration, maxBytes int) stri
 			return string(res.buf[:res.n])
 		}
 		return ""
-	}
-}
-
-func terminateProcessGroup(cmd *exec.Cmd, timeout time.Duration) error {
-	if cmd.Process == nil {
-		return nil
-	}
-	pgid, err := syscall.Getpgid(cmd.Process.Pid)
-	if err == nil {
-		_ = syscall.Kill(-pgid, syscall.SIGTERM)
-	} else {
-		_ = cmd.Process.Kill()
-	}
-	done := make(chan error, 1)
-	go func() {
-		done <- cmd.Wait()
-	}()
-	select {
-	case <-time.After(timeout):
-		if err == nil {
-			_ = syscall.Kill(-pgid, syscall.SIGKILL)
-		} else {
-			_ = cmd.Process.Kill()
-		}
-		return errors.New("timeout waiting for process to exit")
-	case err := <-done:
-		return err
 	}
 }

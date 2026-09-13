@@ -322,3 +322,64 @@ I completed Phase 1 by exposing compact JSON command schemas, documenting raw Ma
 - Default operator sequence: `config.mutate`, `build.run`, `prepare.run`, `validate.run`, `launch.plan`.
 - Optional skip sequence under all three skip flags: `config.mutate`, `launch.plan`.
 - Raw topic command: `devctl help export --slug plugin-authoring --select content`.
+
+## Step 6: Give plugin shutdown one Wait owner
+
+I replaced immediate signal-and-wait shutdown with one process-lifetime owner that starts waiting immediately after process creation. Close now rejects new work, closes stdin, allows an EOF grace interval, escalates through TERM and KILL only as needed, and keeps bounded cleanup running even if the calling context is already canceled.
+
+### Prompt Context
+**User prompt (verbatim):** See Step 2.
+**User clarification (verbatim):** “what's this leader exited thing about?” followed by “perfect, continue”.
+**Assistant interpretation:** Implement Phase 2 process ownership and explain that the main plugin process exiting is distinct from all owned descendants exiting.
+**Inferred user intent:** Ensure terminology and implementation make orphan prevention understandable and correct.
+
+### What I did
+- Added `processLifetime`, with exactly one goroutine calling `cmd.Wait` and one shared terminal result.
+- Registered the wait owner immediately after `cmd.Start`, including handshake-failure cleanup.
+- Added EOF, TERM, KILL, and unconfirmed shutdown modes plus optional `ShutdownReporter` inspection.
+- Made concurrent/repeated Close calls share one cleanup and made canceled Close return promptly without abandoning internal cleanup.
+- Verified both plugin exit and process-group disappearance before declaring cleanup complete; renamed the local state from `leaderExited` to the clearer `pluginExited` after user feedback.
+- Added fixture cases for EOF exit, pre-Close exit, TERM exit, TERM-ignore/KILL, child descendants, concurrent Close, and canceled Close.
+- Serialized router stream publication/subscription closure after the race detector exposed an existing send/close race.
+- Checked ticket task `pqv5` and updated the changelog.
+
+### Why
+- Calling `cmd.Wait` from each termination path risks competing reapers and inconsistent errors.
+- `cmd.Wait` proves only that the main plugin process was reaped. A child can retain the owned process group after the plugin exits, so both conditions are required.
+- Caller cancellation must not transfer a known live child into an ownerless state.
+
+### What worked
+- `GOWORK=off go test -race ./pkg/runtime` passed.
+- `GOWORK=off go test ./...` passed.
+- Fixture timings prove EOF avoids premature TERM, TERM occurs only after EOF grace, and KILL occurs only after TERM grace.
+- The descendant fixture records its child PID and verifies it no longer exists after Close.
+
+### What didn't work
+- The initial descendant fixture expected TERM cleanup but its Python SIGTERM handler intentionally returned for `child` mode, forcing KILL. I corrected the fixture so child mode exits on TERM while preserving the child PID marker; the rerun passed.
+- The first full race run exposed an existing router race between `subscribe` sending buffered events and `publish` closing the channel at `pkg/runtime/router.go:149` and `:178`. I moved stream sends and closure under the router mutex and sized a new subscriber channel for all already-buffered events. The complete runtime race suite then passed.
+
+### What I learned
+- “Plugin exited” and “owned process group disappeared” are separate completion facts. The implementation now names and tests both directly.
+- Starting the wait owner before handshake parsing removes the handshake-failure exception from process ownership.
+- The parent workspace still requires `GOWORK=off` to use devctl's pinned dependency graph.
+
+### What was tricky to build
+- If the main plugin exits on EOF while a descendant retains the group, checking only the Wait channel would falsely report graceful completion. Process-group existence is polled under the same bounded stages, and signals still target the group after the main process exits.
+- Multiple Close callers may have different contexts. Cleanup begins once in an internal goroutine; each caller independently waits for the shared result or its own cancellation.
+
+### What warrants a second pair of eyes
+- Review Unix process-group assumptions and the intentionally unsupported case of a malicious descendant that creates a new session.
+- Review whether `ShutdownReporter` should become part of the primary `Client` interface in a future API revision; it remains optional to avoid forcing unrelated test clients to implement it.
+- Stream publication still applies backpressure while holding the router mutex; this preserves delivery and eliminates close races but merits load review for high-volume streams.
+
+### What should be done in the future
+- Implement and publish the supported bounded Python subprocess runner, then close Phase 2 with its completion slip.
+
+### Code review instructions
+- Start with `pkg/runtime/process_lifetime.go`, then follow construction in `factory.go` and Close in `client.go`.
+- Run `GOWORK=off go test -race ./pkg/runtime` and inspect `shutdown_test.go` fixture modes.
+
+### Technical details
+- Default EOF grace is 250ms. Existing `ShutdownTimeout` is used independently for TERM and post-KILL confirmation.
+- A canceled Close does not claim success; it returns the context error while the single cleanup owner continues.
+- Expected TERM/KILL exits are represented by shutdown mode and exit code rather than returned as cleanup failures.

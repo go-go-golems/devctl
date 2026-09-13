@@ -116,38 +116,32 @@ func (r *router) failAll(err error) {
 
 func (r *router) subscribe(streamID string) <-chan protocol.Event {
 	r.mu.Lock()
-	ch := make(chan protocol.Event, 16)
+	defer r.mu.Unlock()
+	buf := append([]protocol.Event{}, r.buffer[streamID]...)
+	capacity := 16
+	if len(buf) > capacity {
+		capacity = len(buf)
+	}
+	ch := make(chan protocol.Event, capacity)
 	if r.fatal != nil {
-		r.mu.Unlock()
 		close(ch)
 		return ch
 	}
-	buf := append([]protocol.Event{}, r.buffer[streamID]...)
 	delete(r.buffer, streamID)
 
 	ended := false
 	for _, ev := range buf {
+		ch <- ev
 		if ev.Event == "end" {
 			ended = true
-			break
 		}
 	}
-
 	if ended {
-		r.mu.Unlock()
-		for _, ev := range buf {
-			ch <- ev
-		}
 		close(ch)
 		return ch
 	}
 
 	r.streams[streamID] = append(r.streams[streamID], ch)
-	r.mu.Unlock()
-
-	for _, ev := range buf {
-		ch <- ev
-	}
 	return ch
 }
 
@@ -157,23 +151,17 @@ func (r *router) publish(ev protocol.Event) {
 	}
 
 	r.mu.Lock()
-	subs := append([]chan protocol.Event{}, r.streams[ev.StreamID]...)
+	defer r.mu.Unlock()
+	subs := r.streams[ev.StreamID]
 	if len(subs) == 0 {
 		r.buffer[ev.StreamID] = append(r.buffer[ev.StreamID], ev)
+		return
 	}
-	r.mu.Unlock()
-
-	if len(subs) > 0 {
-		for _, ch := range subs {
-			ch <- ev
-		}
+	for _, ch := range subs {
+		ch <- ev
 	}
-
 	if ev.Event == "end" {
-		r.mu.Lock()
-		subs = r.streams[ev.StreamID]
 		delete(r.streams, ev.StreamID)
-		r.mu.Unlock()
 		for _, ch := range subs {
 			close(ch)
 		}

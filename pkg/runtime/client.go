@@ -25,6 +25,11 @@ type Client interface {
 	Close(ctx context.Context) error
 }
 
+// ShutdownReporter exposes the terminal cleanup result after Close completes.
+type ShutdownReporter interface {
+	ShutdownResult() (ShutdownResult, bool)
+}
+
 type client struct {
 	spec PluginSpec
 	hs   protocol.Handshake
@@ -34,6 +39,8 @@ type client struct {
 	stdin           io.WriteCloser
 	stdout          *bufio.Reader
 	stderr          io.ReadCloser
+	lifetime        *processLifetime
+	eofGraceTimeout time.Duration
 	shutdownTimeout time.Duration
 
 	writerMu sync.Mutex
@@ -44,7 +51,7 @@ type client struct {
 	closing   atomic.Bool
 }
 
-func newClient(spec PluginSpec, hs protocol.Handshake, meta RequestMeta, cmd *exec.Cmd, stdin io.WriteCloser, stdout *bufio.Reader, stderr io.ReadCloser, shutdownTimeout time.Duration) *client {
+func newClient(spec PluginSpec, hs protocol.Handshake, meta RequestMeta, cmd *exec.Cmd, stdin io.WriteCloser, stdout *bufio.Reader, stderr io.ReadCloser, lifetime *processLifetime, eofGraceTimeout, shutdownTimeout time.Duration) *client {
 	return &client{
 		spec:            spec,
 		hs:              hs,
@@ -53,6 +60,8 @@ func newClient(spec PluginSpec, hs protocol.Handshake, meta RequestMeta, cmd *ex
 		stdin:           stdin,
 		stdout:          stdout,
 		stderr:          stderr,
+		lifetime:        lifetime,
+		eofGraceTimeout: eofGraceTimeout,
 		shutdownTimeout: shutdownTimeout,
 		router:          newRouter(),
 	}
@@ -71,6 +80,9 @@ func (c *client) SupportsOp(op string) bool       { return contains(c.hs.Capabil
 func (c *client) Close(ctx context.Context) error { return c.close(ctx) }
 
 func (c *client) Call(ctx context.Context, op string, input any, output any) error {
+	if c.closing.Load() {
+		return errors.New("plugin client is closing")
+	}
 	if !c.SupportsOp(op) {
 		return &OpError{
 			PluginID: c.spec.ID,
@@ -131,6 +143,9 @@ func (c *client) Call(ctx context.Context, op string, input any, output any) err
 }
 
 func (c *client) StartStream(ctx context.Context, op string, input any) (string, <-chan protocol.Event, error) {
+	if c.closing.Load() {
+		return "", nil, errors.New("plugin client is closing")
+	}
 	// Stream start is still a request op; treat capabilities.ops as the authoritative allowlist
 	// to avoid hanging on "streams-only" declarations from misbehaving plugins.
 	if !contains(c.hs.Capabilities.Ops, op) {
@@ -285,13 +300,25 @@ func (c *client) readStderrLoop() {
 }
 
 func (c *client) close(ctx context.Context) error {
-	if c.cmd == nil {
+	if c.lifetime == nil {
 		return nil
 	}
 	c.closing.Store(true)
-	_ = c.stdin.Close()
-	_ = terminateProcessGroup(c.cmd, c.shutdownTimeout)
-	return nil
+	c.lifetime.beginShutdown(c.stdin.Close, c.eofGraceTimeout, c.shutdownTimeout)
+	_, err := c.lifetime.awaitShutdown(ctx)
+	return err
+}
+
+func (c *client) ShutdownResult() (ShutdownResult, bool) {
+	if c.lifetime == nil {
+		return ShutdownResult{Mode: ShutdownEOF}, true
+	}
+	select {
+	case <-c.lifetime.shutdownDone:
+		return c.lifetime.shutdown, true
+	default:
+		return ShutdownResult{}, false
+	}
 }
 
 func contains(list []string, v string) bool {
