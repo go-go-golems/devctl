@@ -959,7 +959,8 @@ PR #13's isolated CI exposed that devctl still declared Glazed v1.2.5 even thoug
 
 ### Evidence, failures, and review instructions
 - Linked CI failed against `github.com/go-go-golems/glazed@v1.2.5` with duplicate `stream` flags; `GOWORK=off go get ...@e0cfa33` exposed the missing production dependency and initially required `go mod tidy` for `modernc.org/sqlite` sums.
-- `GOWORK=off go test ./... -count=1` passed after the dependency correction.
+- `GOWORK=off go test ./... -count=1` passed after the dependency correction; the rerun's unit and both smoke jobs passed on GitHub Actions.
+- The first rerun's lint job failed before analysis because action-pinned golangci-lint v2.4.0 was built with Go 1.25 and refused the new Go 1.26.1 target. I aligned the workflow with Glazed's verified `version-file` pattern and pinned v2.11.2 in `.golangci-lint-version`.
 - `go test -race ./pkg/runtime -count=10` passed; focused immediate-exit and descendant shutdown cases passed repeatedly, including a new fixture where the plugin exits immediately after its final response.
 - All six Python runner tests passed, and `test_cancel_removes_descendant` passed 20 repetitions.
 - Review `pkg/runtime/factory.go` and `client.go` for pipe handoff, then `process_reaper_linux.go` and `sdk/python/devctl_runner.py` for group-scoped adopted-child reaping.
