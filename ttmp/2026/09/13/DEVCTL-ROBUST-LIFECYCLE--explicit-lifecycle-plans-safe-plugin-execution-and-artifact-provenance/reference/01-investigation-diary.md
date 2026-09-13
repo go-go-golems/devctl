@@ -206,3 +206,63 @@ cmd/devctl/cmds/lifecycle.go:267:40: too many errors
 ### Technical details
 - Current health values are `healthy`, `unhealthy`, `unknown`, and `not_running`.
 - Historical values remain represented by the existing timestamped `runstate.HealthResult`; no durable schema migration was required.
+
+## Step 4: Make catalog state and source provenance inspectable
+
+I added an inspection-only catalog surface and made interpreted plugin source changes participate in catalog freshness. Catalog schema v2 records whether each provider's commands came from static configuration or a handshake, along with digests of explicitly declared nonsecret source files.
+
+### Prompt Context
+**User prompt (verbatim):** See Step 2.
+**Assistant interpretation:** Complete the catalog half of Phase 1 without weakening the rule that ordinary inspection must not execute plugins.
+**Inferred user intent:** Let operators understand why commands are absent or stale and make script edits invalidate cached handshakes deterministically.
+
+### What I did
+- Added `catalog_inputs` to plugin configuration, including clone and override behavior.
+- Changed catalog persistence to schema version 2 and added provider source/input provenance.
+- Added repository-contained regular-file validation, symlink escape rejection, deterministic ordering, and SHA-256 content fingerprints for declared inputs.
+- Added `plugincatalog.Inspect`, which reports missing, stale, valid, or conflicted state and never starts providers.
+- Added `devctl plugins catalog` with profile, source, input count, command count, generation time, stored/expected fingerprints, state, and action.
+- Documented refresh, inspection, trust boundaries, and `catalog_inputs` in the scripting guide.
+- Added unit tests for source-content invalidation and non-executing missing-catalog inspection, plus the public help-tree contract.
+
+### Why
+- Interpreter executable metadata identifies Python, not the plugin script bytes. Declared source inputs close that known freshness gap without guessing which argv tokens are files.
+- A separate inspection result preserves the trust boundary: missing help metadata does not justify executing arbitrary repository programs.
+- Schema v2 intentionally treats prior cache files as stale and requires explicit refresh; no compatibility reader was added.
+
+### What worked
+- `GOWORK=off go test ./pkg/config ./pkg/plugincatalog ./cmd/devctl/cmds` passed.
+- `GOWORK=off go test ./...` passed across the repository.
+- CLI smoke showed a static provider as `missing` then `stale` after a declared source edit, while correctly reporting `source: static` and no required provider execution.
+- The no-execution test configures a provider that would create a marker file if started; inspection reports `missing` and the marker remains absent.
+
+### What didn't work
+- The first draft of `inspection_test.go` contained malformed generated text in the source-rewrite assertions. Reading the file exposed the typo immediately; I replaced that exact block before running tests. No behavior was debugged against the malformed fixture.
+- The prior Step 3 diagnosis called the Glazed failure “pre-existing” without identifying its source. Investigation here showed the parent `go.work` overlays `../glazed` on branch `task/devctl-improve`, whose API is incompatible with this repository's pinned `glazed v1.2.5`. Running with `GOWORK=off` validates the repository against its declared module dependency and passes. The failure is workspace-induced, not a defect in the committed devctl baseline.
+- The first catalog checkpoint commit attempt passed `go test ./...` but lint identified an exhaustive-switch omission in the earlier health projection: `pkg/runstate/health.go:22:2: missing cases ... RunPlanned, RunStarting, RunStopping, RunUnknown`. I added an explicit grouped case preserving the intended `unknown` default, then reran the gate.
+
+### What I learned
+- Static command configuration remains usable even when no persisted cache exists, so per-provider action output must say no refresh is needed while still reporting the underlying cache as missing or stale.
+- The cache is repository-scoped and profile-specific only through its fingerprint; profile-separated cache files remain a future usability decision rather than part of this task.
+
+### What was tricky to build
+- Hashing arbitrary paths could turn catalog inspection into a secret oracle. Inputs are therefore explicit, repository-relative regular files and must remain inside the repository after symlink resolution.
+- Catalog command counts must come from current static configuration when cache is absent, but from persisted entries when a catalog exists; otherwise static commands are double-counted.
+
+### What warrants a second pair of eyes
+- Review the schema-v2 invalidation decision and the `catalog_inputs` name before release.
+- Review whether profile-specific cache paths should be introduced separately; this implementation deliberately preserves the existing one-cache policy.
+- SHA-256 input digests are persisted but intentionally not printed individually by `plugins catalog`.
+
+### What should be done in the future
+- Finish Phase 1 with executable documentation/phase-matrix and raw-help discoverability tests, then print the completion slip.
+
+### Code review instructions
+- Start with `pkg/plugincatalog/inspection.go` and `fingerprintCatalogInputs` in `pkg/plugincatalog/catalog.go`.
+- Review output assembly in `cmd/devctl/cmds/plugins.go` and run `GOWORK=off go test ./pkg/config ./pkg/plugincatalog ./cmd/devctl/cmds`.
+- Manually run `GOWORK=off go run ./cmd/devctl --repo-root <fixture> plugins catalog --output json` before and after refresh/source modification.
+
+### Technical details
+- Catalog schema changed from 1 to 2; old cache parses but validation returns stale because its version is unsupported.
+- Provider source values are `static` and `handshake`; catalog states are `missing`, `stale`, `valid`, and `conflicted`.
+- Declared input keys use normalized slash-separated repository-relative paths; persisted values are lowercase SHA-256 hex digests.

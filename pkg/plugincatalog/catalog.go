@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	SchemaVersion = 1
+	SchemaVersion = 2
 	cacheDirName  = "cache"
 	cacheFileName = "plugin-catalog.json"
 )
@@ -44,11 +44,17 @@ type CommandEntry struct {
 	Fingerprint string                `json:"fingerprint"`
 }
 
+type ProviderRecord struct {
+	Source        string            `json:"source"`
+	CatalogInputs map[string]string `json:"catalog_inputs,omitempty"`
+}
+
 type Catalog struct {
 	Version           int                       `json:"version"`
 	ConfigFingerprint string                    `json:"config_fingerprint"`
 	Profile           string                    `json:"profile,omitempty"`
 	GeneratedAt       time.Time                 `json:"generated_at"`
+	Providers         map[string]ProviderRecord `json:"providers"`
 	Commands          map[string]CommandEntry   `json:"commands"`
 	Conflicts         map[string][]CommandEntry `json:"conflicts"`
 }
@@ -74,9 +80,10 @@ func Fingerprint(repo *repository.Repository) (string, error) {
 		Missing bool        `json:"missing,omitempty"`
 	}
 	type pluginMaterial struct {
-		Spec       runtime.PluginSpec     `json:"spec"`
-		Commands   []protocol.CommandSpec `json:"commands,omitempty"`
-		Executable executableIdentity     `json:"executable"`
+		Spec          runtime.PluginSpec     `json:"spec"`
+		Commands      []protocol.CommandSpec `json:"commands,omitempty"`
+		Executable    executableIdentity     `json:"executable"`
+		CatalogInputs map[string]string      `json:"catalog_inputs,omitempty"`
 	}
 	configByID := configPluginsByID(repo.Config)
 	material := struct {
@@ -103,8 +110,13 @@ func Fingerprint(repo *repository.Repository) (string, error) {
 		} else {
 			identity.Missing = true
 		}
+		inputs, inputErr := fingerprintCatalogInputs(repo.Root, configByID[spec.ID].CatalogInputs)
+		if inputErr != nil {
+			return "", errors.Wrapf(inputErr, "fingerprint plugin %q catalog inputs", spec.ID)
+		}
 		material.Plugins = append(material.Plugins, pluginMaterial{
 			Spec: spec, Commands: configByID[spec.ID].Commands, Executable: identity,
+			CatalogInputs: inputs,
 		})
 	}
 	data, err := json.Marshal(material)
@@ -123,7 +135,17 @@ func Static(repo *repository.Repository, reserved map[string]bool) (*Catalog, er
 	catalog := newCatalog(repo, fingerprint)
 	configByID := configPluginsByID(repo.Config)
 	for _, spec := range repo.Specs {
-		for _, command := range configByID[spec.ID].Commands {
+		pluginConfig := configByID[spec.ID]
+		inputs, inputErr := fingerprintCatalogInputs(repo.Root, pluginConfig.CatalogInputs)
+		if inputErr != nil {
+			return nil, errors.Wrapf(inputErr, "fingerprint plugin %q catalog inputs", spec.ID)
+		}
+		source := "handshake"
+		if len(pluginConfig.Commands) > 0 {
+			source = "static"
+		}
+		catalog.Providers[spec.ID] = ProviderRecord{Source: source, CatalogInputs: inputs}
+		for _, command := range pluginConfig.Commands {
 			addCommand(catalog, CommandEntry{
 				Name: command.Name, Help: command.Help, ProviderID: spec.ID,
 				Args:        append([]protocol.CommandArg{}, command.ArgsSpec...),
@@ -161,8 +183,15 @@ func Refresh(
 	catalog := newCatalog(repo, fingerprint)
 	configByID := configPluginsByID(repo.Config)
 	for _, spec := range repo.Specs {
-		staticCommands := configByID[spec.ID].Commands
+		pluginConfig := configByID[spec.ID]
+		staticCommands := pluginConfig.Commands
+		inputs, inputErr := fingerprintCatalogInputs(repo.Root, pluginConfig.CatalogInputs)
+		if inputErr != nil {
+			return nil, errors.Wrapf(inputErr, "fingerprint plugin %q catalog inputs", spec.ID)
+		}
+		catalog.Providers[spec.ID] = ProviderRecord{Source: "handshake", CatalogInputs: inputs}
 		if len(staticCommands) > 0 {
+			catalog.Providers[spec.ID] = ProviderRecord{Source: "static", CatalogInputs: inputs}
 			for _, command := range staticCommands {
 				addCommand(catalog, CommandEntry{
 					Name: command.Name, Help: command.Help, ProviderID: spec.ID,
@@ -241,6 +270,16 @@ func Validate(catalog *Catalog, expectedFingerprint string, reserved map[string]
 	if catalog.ConfigFingerprint != expectedFingerprint {
 		return errors.Wrap(ErrCatalogStale, "configuration fingerprint changed")
 	}
+	for providerID, provider := range catalog.Providers {
+		if providerID == "" || provider.Source != "static" && provider.Source != "handshake" {
+			return errors.Wrap(ErrCatalogStale, "catalog provider provenance is invalid")
+		}
+		for path, digest := range provider.CatalogInputs {
+			if path == "" || len(digest) != sha256.Size*2 {
+				return errors.Wrap(ErrCatalogStale, "catalog input provenance is invalid")
+			}
+		}
+	}
 	for name, entry := range catalog.Commands {
 		if name != entry.Name || entry.ProviderID == "" || entry.Fingerprint != expectedFingerprint {
 			return errors.Wrap(ErrCatalogStale, "catalog command identity is invalid")
@@ -287,7 +326,7 @@ func newCatalog(repo *repository.Repository, fingerprint string) *Catalog {
 	return &Catalog{
 		Version: SchemaVersion, ConfigFingerprint: fingerprint,
 		Profile: repo.ProfileName, GeneratedAt: time.Now().UTC(),
-		Commands: map[string]CommandEntry{}, Conflicts: map[string][]CommandEntry{},
+		Providers: map[string]ProviderRecord{}, Commands: map[string]CommandEntry{}, Conflicts: map[string][]CommandEntry{},
 	}
 }
 
@@ -325,6 +364,51 @@ func configPluginsByID(file *config.File) map[string]config.Plugin {
 		result[plugin.ID] = plugin
 	}
 	return result
+}
+
+func fingerprintCatalogInputs(repoRoot string, inputs []string) (map[string]string, error) {
+	if len(inputs) == 0 {
+		return nil, nil
+	}
+	root, err := filepath.EvalSymlinks(repoRoot)
+	if err != nil {
+		return nil, errors.Wrap(err, "resolve repository root")
+	}
+	ordered := append([]string{}, inputs...)
+	sort.Strings(ordered)
+	fingerprints := make(map[string]string, len(ordered))
+	for _, input := range ordered {
+		clean := filepath.Clean(input)
+		if input == "" || filepath.IsAbs(input) || clean == "." || clean == ".." || len(clean) >= 3 && clean[:3] == ".."+string(filepath.Separator) {
+			return nil, errors.Errorf("catalog input %q must be a repository-relative file", input)
+		}
+		if _, exists := fingerprints[filepath.ToSlash(clean)]; exists {
+			return nil, errors.Errorf("catalog input %q is duplicated", input)
+		}
+		path := filepath.Join(root, clean)
+		resolved, resolveErr := filepath.EvalSymlinks(path)
+		if resolveErr != nil {
+			return nil, errors.Wrapf(resolveErr, "resolve catalog input %q", input)
+		}
+		relative, relativeErr := filepath.Rel(root, resolved)
+		if relativeErr != nil || relative == ".." || len(relative) >= 3 && relative[:3] == ".."+string(filepath.Separator) {
+			return nil, errors.Errorf("catalog input %q resolves outside the repository", input)
+		}
+		info, statErr := os.Stat(resolved)
+		if statErr != nil {
+			return nil, errors.Wrapf(statErr, "stat catalog input %q", input)
+		}
+		if !info.Mode().IsRegular() {
+			return nil, errors.Errorf("catalog input %q is not a regular file", input)
+		}
+		data, readErr := os.ReadFile(resolved)
+		if readErr != nil {
+			return nil, errors.Wrapf(readErr, "read catalog input %q", input)
+		}
+		sum := sha256.Sum256(data)
+		fingerprints[filepath.ToSlash(clean)] = hex.EncodeToString(sum[:])
+	}
+	return fingerprints, nil
 }
 
 func contains(values []string, target string) bool {

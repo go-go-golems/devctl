@@ -16,3 +16,13 @@ Implemented a shared runstate health projection that separates current liveness 
 
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/cmd/devctl/cmds/status.go — Structured and human status projection consumer
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/runstate/health.go — Canonical current-versus-historical health projection
+
+## 2026-09-13
+
+Added non-executing catalog inspection, static-versus-handshake provenance, schema-v2 declared catalog source fingerprints, and documented catalog_inputs.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/cmd/devctl/cmds/plugins.go — plugins catalog command output
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/plugincatalog/catalog.go — Schema-v2 provider provenance and declared source hashing
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/plugincatalog/inspection.go — Non-executing missing stale valid and conflicted catalog inspection

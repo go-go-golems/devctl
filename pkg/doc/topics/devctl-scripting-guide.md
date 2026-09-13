@@ -185,6 +185,28 @@ Example `command.run` response:
 { "type": "response", "request_id": "x", "ok": true, "output": { "exit_code": 0 } }
 ```
 
+Register and inspect the catalog explicitly:
+
+```sh
+devctl plugins catalog
+devctl plugins refresh
+devctl plugins catalog
+```
+
+`plugins catalog` is inspection-only: it reports the selected profile, provider source, stored and expected fingerprints, generation time, and the required action without starting a plugin. `plugins refresh` may start handshake-discovered providers. Providers with commands declared directly in `.devctl.yaml` have a `static` source and do not need execution for discovery.
+
+For interpreted providers, declare repository-relative, nonsecret source files whose content controls the handshake catalog. Devctl hashes these files and reports the stored catalog as stale after their contents change:
+
+```yaml
+plugins:
+  - id: tools
+    path: python3
+    args: [plugins/devctl.py]
+    catalog_inputs: [plugins/devctl.py]
+```
+
+Catalog inputs must be regular files that remain inside the repository after symlink resolution. Do not list secret files: a digest can disclose information about low-entropy secrets.
+
 Practical guidance:
 
 - `argv` should behave like a normal CLI argv: treat it as untrusted user input.

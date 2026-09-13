@@ -23,6 +23,7 @@ func newPluginsCmd() *cobra.Command {
 	}
 	command.AddCommand(newPluginsListCmd())
 	command.AddCommand(newPluginsCommandsCmd())
+	command.AddCommand(newPluginsCatalogCmd())
 	command.AddCommand(newPluginsInspectCmd())
 	command.AddCommand(newPluginsRunCmd())
 	command.AddCommand(newPluginsRefreshCmd())
@@ -45,6 +46,7 @@ func NewPluginsCommand(kind string) (*PluginsCommand, error) {
 	short := map[string]string{
 		"list":     "List selected configured plugins without starting them",
 		"commands": "List validated dynamic root commands",
+		"catalog":  "Inspect command catalog state and provenance without starting plugins",
 		"inspect":  "Inspect one selected plugin and its catalog commands",
 		"refresh":  "Start selected providers and refresh the command catalog",
 	}[kind]
@@ -96,6 +98,12 @@ func (c *PluginsCommand) RunIntoGlazeProcessor(
 			}
 		}
 		return nil
+	case "catalog":
+		inspection, err := plugincatalog.Inspect(repo, defaultReservedCommandNames())
+		if err != nil {
+			return err
+		}
+		return addCatalogInspectionRows(ctx, processor, repo, inspection)
 	case "commands":
 		catalog, err := loadDiagnosticCatalog(repo)
 		if err != nil {
@@ -162,6 +170,68 @@ func pluginRows(repo *repository.Repository) []runtimePluginSpec {
 		})
 	}
 	return rows
+}
+
+func addCatalogInspectionRows(
+	ctx context.Context,
+	processor middlewares.Processor,
+	repo *repository.Repository,
+	inspection plugincatalog.Inspection,
+) error {
+	staticCommandsByID := map[string]int{}
+	if repo.Config != nil {
+		for _, plugin := range repo.Config.Plugins {
+			staticCommandsByID[plugin.ID] = len(plugin.Commands)
+		}
+	}
+	for _, spec := range repo.Specs {
+		source := "handshake"
+		inputCount := 0
+		if staticCommandsByID[spec.ID] > 0 {
+			source = "static"
+		}
+		if inspection.Catalog != nil {
+			if provider, ok := inspection.Catalog.Providers[spec.ID]; ok {
+				source = provider.Source
+				inputCount = len(provider.CatalogInputs)
+			}
+		}
+		commandCount := staticCommandsByID[spec.ID]
+		if inspection.Catalog != nil {
+			commandCount = 0
+			for _, entry := range inspection.Catalog.Commands {
+				if entry.ProviderID == spec.ID {
+					commandCount++
+				}
+			}
+			for _, entries := range inspection.Catalog.Conflicts {
+				for _, entry := range entries {
+					if entry.ProviderID == spec.ID {
+						commandCount++
+					}
+				}
+			}
+		}
+		action := inspection.Action
+		if source == "static" && inspection.State != plugincatalog.CatalogConflicted {
+			action = "none; static commands are read from configuration"
+		}
+		if err := processor.AddRow(ctx, types.NewRow(
+			types.MRP("provider_id", spec.ID),
+			types.MRP("profile", repo.ProfileName),
+			types.MRP("commands", commandCount),
+			types.MRP("source", source),
+			types.MRP("catalog_inputs", inputCount),
+			types.MRP("catalog_state", string(inspection.State)),
+			types.MRP("generated_at", inspection.GeneratedAt),
+			types.MRP("stored_fingerprint", inspection.StoredFingerprint),
+			types.MRP("expected_fingerprint", inspection.ExpectedFingerprint),
+			types.MRP("action", action),
+		)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func addCatalogRows(
@@ -278,6 +348,10 @@ func newPluginsListCmd() *cobra.Command {
 
 func newPluginsCommandsCmd() *cobra.Command {
 	return buildPluginsSubcommand("commands")
+}
+
+func newPluginsCatalogCmd() *cobra.Command {
+	return buildPluginsSubcommand("catalog")
 }
 
 func newPluginsInspectCmd() *cobra.Command {

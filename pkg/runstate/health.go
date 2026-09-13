@@ -22,6 +22,8 @@ func ProjectHealth(phase RunPhase, last *HealthResult) HealthView {
 	switch phase {
 	case RunExited, RunFailed:
 		view.Current = HealthNotRunning
+	case RunPlanned, RunStarting, RunStopping, RunUnknown:
+		// The process is either not yet ready or its current health cannot be proven.
 	case RunReady:
 		if last == nil {
 			return view

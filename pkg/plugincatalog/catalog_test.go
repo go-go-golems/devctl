@@ -50,6 +50,64 @@ func TestStaticCatalogFingerprintIsStableAcrossPluginOrdering(t *testing.T) {
 	}
 }
 
+func TestFingerprintTracksDeclaredCatalogInputs(t *testing.T) {
+	repoRoot := t.TempDir()
+	configPath := filepath.Join(repoRoot, config.DefaultConfigFilename)
+	scriptPath := filepath.Join(repoRoot, "plugin.py")
+	content := `plugins:
+  - id: plugin
+    path: python3
+    args: [plugin.py]
+    catalog_inputs: [plugin.py]
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if err := os.WriteFile(scriptPath, []byte("print('first')\n"), 0o600); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+	repo := loadCatalogRepo(t, repoRoot, configPath, "")
+	first, err := Fingerprint(repo)
+	if err != nil {
+		t.Fatalf("first fingerprint: %v", err)
+	}
+	if err := os.WriteFile(scriptPath, []byte("print('second')\n"), 0o600); err != nil {
+		t.Fatalf("rewrite script: %v", err)
+	}
+	second, err := Fingerprint(repo)
+	if err != nil {
+		t.Fatalf("second fingerprint: %v", err)
+	}
+	if first == second {
+		t.Fatal("fingerprint did not change with declared source content")
+	}
+}
+
+func TestFingerprintRejectsCatalogInputOutsideRepository(t *testing.T) {
+	repoRoot := t.TempDir()
+	outsideRoot := t.TempDir()
+	outside := filepath.Join(outsideRoot, "secret")
+	if err := os.WriteFile(outside, []byte("not catalog material"), 0o600); err != nil {
+		t.Fatalf("write outside file: %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(repoRoot, "plugin.py")); err != nil {
+		t.Fatalf("symlink outside file: %v", err)
+	}
+	configPath := filepath.Join(repoRoot, config.DefaultConfigFilename)
+	content := `plugins:
+  - id: plugin
+    path: python3
+    catalog_inputs: [plugin.py]
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	repo := loadCatalogRepo(t, repoRoot, configPath, "")
+	if _, err := Fingerprint(repo); err == nil {
+		t.Fatal("Fingerprint() accepted catalog input resolving outside repository")
+	}
+}
+
 func TestRefreshRejectsDeterministicPluginCollision(t *testing.T) {
 	repoRoot := t.TempDir()
 	configPath := filepath.Join(repoRoot, config.DefaultConfigFilename)
