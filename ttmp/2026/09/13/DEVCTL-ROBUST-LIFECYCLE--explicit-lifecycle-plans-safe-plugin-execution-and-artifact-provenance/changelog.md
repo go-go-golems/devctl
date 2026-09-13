@@ -96,3 +96,13 @@ Migrated devctl to Glazed v1.4 command builders and structured-output flags, rem
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/cmd/devctl/cmds/logs.go — Human/structured dual-mode log output
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/cmd/devctl/cmds/stream.go — Human/JSONL dual-mode stream output
 - /home/manuel/workspaces/2026-09-13/devctl-improve/glazed/pkg/cli/cobra.go — Structured-output flushing and Cobra writer ownership
+
+## 2026-09-13
+
+Separated lifecycle recipe resolution, effectful replacement preparation, and under-lock stale validation while retaining build and prepare results for artifact provenance.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/operator/planner.go — Versioned recipes prepared launches phase results and configuration fingerprints
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/operator/controller.go — Stale validation before applying up or stopping during restart
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/ttmp/2026/09/13/DEVCTL-ROBUST-LIFECYCLE--explicit-lifecycle-plans-safe-plugin-execution-and-artifact-provenance/reference/03-lifecycle-recipe-and-schema-decisions.md — Accepted timeout and migration decisions

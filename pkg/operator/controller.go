@@ -117,11 +117,15 @@ func (c *controller) Up(
 	}
 	request.RepoRoot = store.RepoRoot()
 
-	planResult, err := c.planner.Plan(ctx, request)
+	recipe, err := c.planner.ResolveRecipe(ctx, "up", request)
 	if err != nil {
-		return c.finishFailed(result, CodeConfigInvalid, "could not resolve launch plan", err)
+		return c.finishFailed(result, CodeConfigInvalid, "could not resolve lifecycle recipe", err)
 	}
-	services, selectionErr := selectPlannedServices(planResult.Plan.Services, request.Select)
+	prepared, err := c.planner.PrepareReplacement(ctx, recipe)
+	if err != nil {
+		return c.finishFailed(result, CodeConfigInvalid, "could not prepare replacement", err)
+	}
+	services, selectionErr := selectPlannedServices(prepared.Plan.Services, request.Select)
 	if selectionErr != nil {
 		return c.finishWithOperatorError(result, selectionErr)
 	}
@@ -148,7 +152,10 @@ func (c *controller) Up(
 		OperationID: result.OperationID,
 		Command:     []string{"devctl", "up"},
 	}, func(lockContext context.Context) error {
-		return c.upLocked(lockContext, store, planResult.ProfileName, services, timeout, sink, &result)
+		if err := c.planner.ValidatePrepared(lockContext, prepared); err != nil {
+			return err
+		}
+		return c.upLocked(lockContext, store, prepared.Recipe.ProfileName, services, timeout, sink, &result)
 	})
 	if lockErr != nil {
 		if stderrors.Is(lockErr, runstate.ErrOperationBusy) {
@@ -469,11 +476,15 @@ func (c *controller) Restart(
 	}
 
 	upRequest := UpRequest(request)
-	planResult, err := c.planner.Plan(ctx, upRequest)
+	recipe, err := c.planner.ResolveRecipe(ctx, "restart", upRequest)
 	if err != nil {
-		return c.finishFailed(result, CodeConfigInvalid, "could not resolve restart plan", err)
+		return c.finishFailed(result, CodeConfigInvalid, "could not resolve restart recipe", err)
 	}
-	services, selectionErr := selectPlannedServices(planResult.Plan.Services, request.Select)
+	prepared, err := c.planner.PrepareReplacement(ctx, recipe)
+	if err != nil {
+		return c.finishFailed(result, CodeConfigInvalid, "could not prepare restart replacement", err)
+	}
+	services, selectionErr := selectPlannedServices(prepared.Plan.Services, request.Select)
 	if selectionErr != nil {
 		return c.finishWithOperatorError(result, selectionErr)
 	}
@@ -502,6 +513,9 @@ func (c *controller) Restart(
 		OperationID: result.OperationID,
 		Command:     []string{"devctl", "restart"},
 	}, func(lockContext context.Context) error {
+		if err := c.planner.ValidatePrepared(lockContext, prepared); err != nil {
+			return err
+		}
 		timeout := normalizedTimeout(request.Policy.Timeout)
 		if err := c.downLocked(lockContext, store, request.Select, timeout, sink, &result); err != nil {
 			return err
@@ -511,7 +525,7 @@ func (c *controller) Restart(
 				return newError(CodePartialFailure, "restart stopped after an unproven service termination", outcome.Error)
 			}
 		}
-		return c.upLocked(lockContext, store, planResult.ProfileName, services, timeout, sink, &result)
+		return c.upLocked(lockContext, store, prepared.Recipe.ProfileName, services, timeout, sink, &result)
 	})
 	if lockErr != nil {
 		if stderrors.Is(lockErr, runstate.ErrOperationBusy) {

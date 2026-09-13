@@ -11,6 +11,7 @@ const (
 	CodeStateVersion               = "E_STATE_VERSION"
 	CodeStateCorrupt               = "E_STATE_CORRUPT"
 	CodeOperationBusy              = "E_OPERATION_BUSY"
+	CodeRecipeStale                = "E_RECIPE_STALE"
 	CodeServiceUnknown             = "E_SERVICE_UNKNOWN"
 	CodeServiceAlreadyRunning      = "E_SERVICE_ALREADY_RUNNING"
 	CodeProcessIdentityUnsupported = "E_PROCESS_IDENTITY_UNSUPPORTED"

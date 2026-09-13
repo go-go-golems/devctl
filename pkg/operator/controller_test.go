@@ -16,14 +16,35 @@ import (
 )
 
 type staticPlanner struct {
-	result PlanResult
-	err    error
+	result      PlanResult
+	err         error
+	validateErr error
 }
 
 var _ Planner = staticPlanner{}
 
-func (p staticPlanner) Plan(context.Context, UpRequest) (PlanResult, error) {
-	return p.result, p.err
+func (p staticPlanner) ResolveRecipe(_ context.Context, operation string, request UpRequest) (LifecycleRecipe, error) {
+	if p.err != nil {
+		return LifecycleRecipe{}, p.err
+	}
+	return LifecycleRecipe{
+		Version: LifecycleRecipeSchemaVersion, ID: "recipe-test", Operation: operation,
+		RepoRoot: request.RepoRoot, ProfileName: p.result.ProfileName,
+		Selection: request.Select, Policy: request.Policy,
+	}, nil
+}
+
+func (p staticPlanner) PrepareReplacement(_ context.Context, recipe LifecycleRecipe) (PreparedLaunch, error) {
+	if p.err != nil {
+		return PreparedLaunch{}, p.err
+	}
+	return PreparedLaunch{
+		Version: LifecycleRecipeSchemaVersion, Recipe: recipe, Plan: p.result.Plan,
+	}, nil
+}
+
+func (p staticPlanner) ValidatePrepared(context.Context, PreparedLaunch) error {
+	return p.validateErr
 }
 
 type recordingSupervisor struct {
@@ -399,6 +420,32 @@ func TestRestartPlanningFailureDoesNotStopService(t *testing.T) {
 	}
 	if len(supervisor.stopped) != 0 {
 		t.Fatalf("planning failure stopped services: %v", supervisor.stopped)
+	}
+}
+
+func TestRestartStalePreparedRecipeDoesNotStopService(t *testing.T) {
+	repoRoot := t.TempDir()
+	supervisor := &recordingSupervisor{t: t, repoRoot: repoRoot}
+	plan := PlanResult{Plan: engine.LaunchPlan{Services: []engine.ServiceSpec{
+		{Name: "web", Command: []string{"serve"}},
+	}}}
+	working := newTestController(t, repoRoot, staticPlanner{result: plan}, supervisor)
+	if _, err := working.Up(context.Background(), UpRequest{RepoRoot: repoRoot}, nil); err != nil {
+		t.Fatalf("initial up: %v", err)
+	}
+	stale := &OperatorError{Code: CodeRecipeStale, Message: "injected stale recipe"}
+	controller := newTestController(t, repoRoot, staticPlanner{result: plan, validateErr: stale}, supervisor)
+
+	_, err := controller.Restart(context.Background(), RestartRequest{RepoRoot: repoRoot}, nil)
+	if err == nil {
+		t.Fatal("restart unexpectedly succeeded")
+	}
+	var operatorErr *OperatorError
+	if !errors.As(err, &operatorErr) || operatorErr.Code != CodeRecipeStale {
+		t.Fatalf("restart error = %v, want %s", err, CodeRecipeStale)
+	}
+	if len(supervisor.stopped) != 0 {
+		t.Fatalf("stale prepared recipe stopped services: %v", supervisor.stopped)
 	}
 }
 

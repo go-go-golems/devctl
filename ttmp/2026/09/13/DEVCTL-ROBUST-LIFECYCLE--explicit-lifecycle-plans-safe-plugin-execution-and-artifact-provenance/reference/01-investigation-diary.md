@@ -734,3 +734,61 @@ I completed the paused command migration in normal workspace mode. Devctl now de
 - Dependency commit: Glazed `e0cfa33` (`fix(cli): flush structured output on command errors`).
 - Structured formats: `table`, `json`, `jsonl`, `csv`, `tsv`, and `yaml`.
 - Human-default machine-output form: `--with-glaze-output --format <format>`.
+
+## Step 13: Separate recipe resolution, replacement preparation, and apply validation
+
+I split lifecycle planning into an effect-free recipe stage, an effectful preparation stage, and a stale-data check at the locked apply boundary. The replacement is fully prepared before restart stops an existing service, and configuration drift rejects the operation before any stop.
+
+### Prompt Context
+**User prompt (verbatim):** “continue”
+**Assistant interpretation:** Continue the active lifecycle ticket after committing and printing the Glazed migration checkpoint.
+**Inferred user intent:** Advance the next unfinished ticket phase with executable evidence and documented API decisions.
+
+### What I did
+- Added schema-versioned `LifecycleRecipe`, `RecipePhase`, and `PreparedLaunch` types.
+- Replaced the monolithic planner method with `ResolveRecipe`, `PrepareReplacement`, and `ValidatePrepared`.
+- Made resolution load and fingerprint configuration without starting plugins; launch services, commands, and health remain explicitly unresolved.
+- Retained `BuildResult` and `PrepareResult` in the prepared launch instead of discarding them.
+- Rechecked the canonical configuration fingerprint under the lifecycle lock before both up and restart apply.
+- Added `E_RECIPE_STALE` and ensured restart rejects stale preparation before calling `downLocked`.
+- Wrote `reference/03-lifecycle-recipe-and-schema-decisions.md` to settle timeout scope, recipe schema, staleness identity, and the upcoming run-state migration.
+- Completed ticket tasks `4cwd` and `jyam` through docmgr.
+
+### Why
+- Builds and preparation must finish before an old service is stopped, but long preparation must not hold the lifecycle lock.
+- A prepared launch derived from changed configuration cannot be applied safely without explicit replanning.
+- Build and prepare outputs are required inputs to artifact provenance and could not remain discarded.
+
+### What worked
+- A fixture proves `ResolveRecipe` does not execute its configured plugin.
+- A phase fixture proves build and prepare outputs survive in `PreparedLaunch`.
+- Configuration mutation after preparation produces `E_RECIPE_STALE`.
+- A controller fixture proves stale restart preparation does not stop the running service.
+- `go test ./...` and `golangci-lint run -v` passed in workspace mode.
+
+### What didn't work
+- The first `docmgr doc relate` attempt rejected the hand-written decision record because it lacked frontmatter. I added the required reference metadata, related the implementation files, and then completed both tasks successfully.
+
+### What I learned
+- The merged typed configuration is a suitable semantic fingerprint input: canonical JSON hashing detects meaningful config/profile changes without storing secret values in the recipe.
+- Existing `--timeout` behavior is per phase. Preserving it and treating the caller context as an optional overall bound avoids an undocumented semantic change.
+
+### What was tricky to build
+- Restart must validate prepared identity before `downLocked`; validating only inside the subsequent start helper would be too late.
+- Recipe output must describe unresolved launch facts without serializing runtime policy or mutated secret-bearing configuration.
+
+### What warrants a second pair of eyes
+- Review whether a future CLI `--explain` should expose the current recipe model directly or through a narrower projection.
+- Review the explicit decision to bump run records to schema v2 with no version-1 compatibility reader when artifact provenance is added.
+
+### What should be done in the future
+- Implement typed immutable native-executable provenance, attach selected artifacts to run records, and test digest corruption and path replacement.
+
+### Code review instructions
+- Start with `pkg/operator/planner.go`, then trace `controller.Up` and `controller.Restart` to the under-lock `ValidatePrepared` calls.
+- Run `TestPipelinePlannerResolveDoesNotExecutePlugins`, `TestPipelinePlannerRejectsPreparedRecipeAfterConfigChange`, and `TestRestartStalePreparedRecipeDoesNotStopService`.
+
+### Technical details
+- Recipe schema: `LifecycleRecipeSchemaVersion = 1`; ephemeral and strictly rejected when unsupported.
+- Fingerprint: SHA-256 over canonical merged configuration, resolved profile, and recipe schema.
+- Timeout: fresh `PipelinePolicy.Timeout` child context per phase; caller context remains the external overall bound.
