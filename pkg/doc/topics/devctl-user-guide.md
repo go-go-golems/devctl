@@ -203,6 +203,15 @@ devctl start web          # Start a stopped or crashed tracked service
 
 `start` refuses to duplicate a service whose tracked PID is still alive. Use `restart` when you intentionally want to replace a running process.
 
+Preview lifecycle intent without executing plugins or phases:
+
+```bash
+devctl up --explain --format json
+devctl restart api --explain --format json
+```
+
+Explain output lists enabled and skipped phases, selected services and steps, and unresolved launch facts. It does not run builds to make the preview appear more complete.
+
 ### Stop and cleanup
 
 ```bash

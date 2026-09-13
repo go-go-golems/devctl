@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/go-go-golems/devctl/pkg/engine"
@@ -82,6 +83,52 @@ func TestStageAndPublishReferencedArtifact(t *testing.T) {
 	}
 }
 
+func TestConcurrentPreparationsUseIndependentStagingAndDeduplicateOnPublish(t *testing.T) {
+	repoRoot := t.TempDir()
+	source := filepath.Join(repoRoot, "build", "api")
+	writeExecutableArtifact(t, source, "#!/bin/sh\nexec sleep 60\n")
+	ids := []string{
+		"018f0f65-6c1a-7abc-8def-0123456789ab",
+		"018f0f65-6c1a-7abc-8def-0123456789ac",
+	}
+	prepared := make([]PreparedLaunch, len(ids))
+	errorsByIndex := make([]error, len(ids))
+	var wait sync.WaitGroup
+	for index, id := range ids {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			recipe := LifecycleRecipe{Version: LifecycleRecipeSchemaVersion, ID: id, RepoRoot: repoRoot}
+			plan := engine.LaunchPlan{Services: []engine.ServiceSpec{{
+				Name: "api", Executable: &engine.ExecutableRef{ArtifactID: "api"},
+			}}}
+			records, err := stageReferencedArtifacts(
+				context.Background(), recipe, &plan,
+				&engine.BuildResult{Artifacts: map[string]string{"api": source}}, nil,
+			)
+			errorsByIndex[index] = err
+			prepared[index] = PreparedLaunch{Version: LifecycleRecipeSchemaVersion, Recipe: recipe, Plan: plan, Artifacts: records}
+		}()
+	}
+	wait.Wait()
+	for _, err := range errorsByIndex {
+		if err != nil {
+			t.Fatalf("concurrent stage: %v", err)
+		}
+	}
+	if prepared[0].Artifacts[0].Path == prepared[1].Artifacts[0].Path {
+		t.Fatal("concurrent preparations shared a staging path")
+	}
+	for index := range prepared {
+		if err := publishPreparedArtifacts(&prepared[index]); err != nil {
+			t.Fatalf("publish %d: %v", index, err)
+		}
+	}
+	if prepared[0].Artifacts[0].Path != prepared[1].Artifacts[0].Path {
+		t.Fatalf("identical bytes did not deduplicate: %q != %q", prepared[0].Artifacts[0].Path, prepared[1].Artifacts[0].Path)
+	}
+}
+
 func TestStageRejectsAmbiguousAndMissingArtifactReferences(t *testing.T) {
 	repoRoot := t.TempDir()
 	source := filepath.Join(repoRoot, "api")
@@ -150,6 +197,14 @@ func TestCollectArtifactsProtectsCurrentAndLastRuns(t *testing.T) {
 	for _, digest := range []string{protected[0].digest, protected[1].digest, orphan} {
 		writeExecutableArtifact(t, filepath.Join(artifactRoot, digest, "api"), digest)
 	}
+	malformed := filepath.Join(artifactRoot, "not-a-digest")
+	writeExecutableArtifact(t, filepath.Join(malformed, "executable"), "malformed")
+	outside := filepath.Join(repoRoot, "outside")
+	writeExecutableArtifact(t, filepath.Join(outside, "keep"), "outside")
+	symlink := filepath.Join(artifactRoot, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
+	if err := os.Symlink(outside, symlink); err != nil {
+		t.Fatalf("create artifact symlink: %v", err)
+	}
 	if err := collectArtifacts(t.Context(), store); err != nil {
 		t.Fatalf("collect: %v", err)
 	}
@@ -160,6 +215,15 @@ func TestCollectArtifactsProtectsCurrentAndLastRuns(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(artifactRoot, orphan)); !os.IsNotExist(err) {
 		t.Fatalf("orphan digest still exists: %v", err)
+	}
+	if _, err := os.Stat(malformed); err != nil {
+		t.Fatalf("malformed directory was removed: %v", err)
+	}
+	if _, err := os.Lstat(symlink); err != nil {
+		t.Fatalf("symlink entry was removed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "keep")); err != nil {
+		t.Fatalf("symlink target was changed: %v", err)
 	}
 }
 

@@ -9,5 +9,5 @@
 - [x] Separate lifecycle recipe resolution preparation and application <!-- t:jyam -->
 - [x] Add typed immutable artifact provenance to service runs <!-- t:22at -->
 - [x] Test documentation examples phase matrix and raw/schema help discoverability <!-- t:xmy4 -->
-- [ ] Qualify complete offline lifecycle and failure matrix <!-- t:tqur -->
+- [x] Qualify complete offline lifecycle and failure matrix <!-- t:tqur -->
 - [x] Implement simple content-addressed artifact garbage collection from design-doc/02 <!-- t:2zpu -->

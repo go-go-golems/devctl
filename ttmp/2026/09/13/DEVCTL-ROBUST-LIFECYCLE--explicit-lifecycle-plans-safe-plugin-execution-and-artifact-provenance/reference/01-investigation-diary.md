@@ -858,3 +858,64 @@ I initially expanded future artifact pruning into a lease, manifest, quarantine,
 - Store path: `.devctl/artifacts/sha256/<lowercase-sha256>/executable`.
 - Retained bytes: distinct digests referenced by each service's `CurrentRunID` or `LastRunID`.
 - Run schema: `RunSchemaVersion = 2`, no implicit v1 migration.
+
+## Step 15: Add effect-free explain output and complete the qualification matrix
+
+I audited the implementation against every ticket requirement and the parent design's acceptance criteria. The audit uncovered one missing user-facing boundary: recipes existed internally but no effect-free explain command exposed them. I added `--explain` to up and restart, proved it does not start providers, then completed broad Go, race, Python, help, build, vet, lint, and docmgr qualification.
+
+### Prompt Context
+**User prompt (verbatim):** “continue”
+**Assistant interpretation:** Run Phase 6 integration qualification, fill any evidence-backed gap found by the audit, and close the remaining matrix task only after all boundaries pass.
+**Inferred user intent:** Finish the ticket as a complete reviewed system rather than stop after individual feature commits.
+
+### What I did
+- Added `--explain` to `devctl up` and `devctl restart`.
+- Projected recipe version/ID, operation, repository fingerprint, profile, selection, enabled phases, requested steps, and unresolved facts as structured rows.
+- Kept explain effect-free by calling only `ResolveRecipe`; it does not construct the controller, start plugins, build, prepare, validate, or resolve launch facts.
+- Added a built-binary marker fixture proving `restart --explain` emits five ordered phase rows without starting its configured provider.
+- Added a concurrent preparation fixture proving recipe-owned staging does not collide and serialized publication deduplicates identical bytes.
+- Expanded collection coverage to prove malformed directories and symlink entries are ignored without touching the symlink target.
+- Updated the user and plugin-authoring Glazed help entries for explain mode.
+- Wrote `reference/04-implementation-qualification-matrix.md` mapping requirements to tests and revisions.
+- Completed task `tqur`; docmgr reported all ticket tasks complete and all doctor checks passed.
+
+### Why
+- The design explicitly required an effect-free preview that labels unresolved facts. Internal recipe types alone did not satisfy that acceptance criterion.
+- Broad test success does not identify which fixture proves each safety invariant, so the qualification matrix preserves the requirement-to-evidence mapping.
+
+### What worked
+- `go test ./...` passed.
+- `go test -race ./pkg/operator ./pkg/runtime ./pkg/plugincatalog ./pkg/runstate ./pkg/supervise ./pkg/tui` passed.
+- `golangci-lint run -v`, `go vet ./...`, and `go build ./...` passed.
+- `PYTHONDONTWRITEBYTECODE=1 python3 sdk/python/test_devctl_runner.py -v` passed six tests.
+- `PYTHONDONTWRITEBYTECODE=1 skills/session-context-audit/scripts/validate.sh` validated the fixture and passed five model tests.
+- `devctl help artifact-provenance` rendered, structured export returned one row, and all eight embedded help slugs were unique.
+- Final `docmgr doctor` reported all checks passed.
+
+### What didn't work
+- `python3 -m unittest -v sdk/python/test_devctl_runner.py` failed with `ModuleNotFoundError: No module named 'devctl_runner'` because module-mode execution did not add `sdk/python` to the import path.
+- The analogous slash-path unittest invocation for the session skill failed, and the expected old test filename had changed in the colleague's committed skill update. Running each package's supported script entry point passed.
+- The first qualification document used the unknown docmgr topic `testing`; replacing it with the existing `workflow` vocabulary value cleared the doctor warning.
+
+### What I learned
+- Completion audits are useful implementation tools: the explicit acceptance list exposed missing explain output even though all existing tests passed.
+- Python package tests should document and use a location-independent supported entry point rather than relying on unittest's interpretation of slash paths.
+
+### What was tricky to build
+- Explain must expose enough information to be useful while never running plugins to resolve service commands. The explicit `unresolved` fields preserve that distinction.
+- Qualification had to account for concurrent work on the session-context skill without reverting or misattributing those changes.
+
+### What warrants a second pair of eyes
+- Review the explain row schema as the initial public recipe projection.
+- Review the completion matrix's deliberate native-executable and current/last retention boundaries.
+
+### What should be done in the future
+- No ticket implementation requirement remains. Future work should be separately scoped from this completed lifecycle ticket.
+
+### Code review instructions
+- Start with `reference/04-implementation-qualification-matrix.md`, then follow each requirement to its focused fixture and commit.
+- Verify `devctl restart api --explain --format json` against a marker plugin and inspect that no marker is created.
+
+### Technical details
+- Final broad qualification used normal parent workspace resolution; no `GOWORK=off` bypass was used.
+- Explain is available on up/restart only; down has no preparation recipe.

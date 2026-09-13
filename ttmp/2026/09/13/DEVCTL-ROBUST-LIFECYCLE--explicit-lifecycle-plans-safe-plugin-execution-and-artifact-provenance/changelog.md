@@ -117,3 +117,14 @@ Implemented simplified native executable provenance with content-addressed publi
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/runstate/artifact.go — SHA-256 and executable identity validation
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/supervise/supervisor.go — Final artifact integrity check before wrapper launch
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/doc/topics/devctl-artifact-provenance.md — Embedded help for plugin authors and operators
+
+## 2026-09-13
+
+Added effect-free lifecycle recipe explanation, concurrent artifact-preparation evidence, and a requirement-to-test qualification matrix; full tests, race tests, lint, vet, build, Python fixtures, embedded help, and docmgr hygiene passed.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/cmd/devctl/cmds/lifecycle.go — Effect-free up and restart recipe projection
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/cmd/devctl/cmds/cli_contract_test.go — Built-binary no-provider explain fixture
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/operator/artifacts_test.go — Concurrent staging deduplication and collector safety evidence
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/ttmp/2026/09/13/DEVCTL-ROBUST-LIFECYCLE--explicit-lifecycle-plans-safe-plugin-execution-and-artifact-provenance/reference/04-implementation-qualification-matrix.md — Completion audit

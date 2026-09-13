@@ -112,6 +112,22 @@ func TestBuiltCLIContracts(t *testing.T) {
 		require.Contains(t, stdout, "Garbage collection")
 	})
 
+	t.Run("lifecycle explain resolves recipe without starting provider", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		configPath, markerPath := writeCountingCommandPlugin(t, repoRoot)
+		stdout, stderr, err := runCLI(binary,
+			"restart", "api", "--explain", "--repo-root", repoRoot, "--config", configPath, "--format", "json",
+		)
+		require.NoError(t, err, stderr)
+		require.NoFileExists(t, markerPath)
+		var rows []map[string]any
+		require.NoError(t, json.Unmarshal([]byte(stdout), &rows))
+		require.Len(t, rows, 5)
+		require.Equal(t, "config.mutate", rows[0]["phase"])
+		require.Equal(t, "launch.plan", rows[4]["phase"])
+		require.NotEmpty(t, rows[4]["unresolved"])
+	})
+
 	t.Run("catalog inspection does not start provider", func(t *testing.T) {
 		repoRoot := t.TempDir()
 		configPath, markerPath := writeCountingCommandPlugin(t, repoRoot)

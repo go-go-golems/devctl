@@ -26,6 +26,7 @@ type LifecycleCommand struct {
 
 type LifecycleSettings struct {
 	Services     []string `glazed:"services"`
+	Explain      bool     `glazed:"explain"`
 	SkipValidate bool     `glazed:"skip-validate"`
 	SkipBuild    bool     `glazed:"skip-build"`
 	SkipPrepare  bool     `glazed:"skip-prepare"`
@@ -57,6 +58,7 @@ func NewLifecycleCommand(kind string) (*LifecycleCommand, error) {
 	}
 	if kind != "down" {
 		options = append(options, glazedcmds.WithFlags(
+			fields.New("explain", fields.TypeBool, fields.WithDefault(false), fields.WithHelp("Describe the effect-free lifecycle recipe without running plugins")),
 			fields.New("skip-validate", fields.TypeBool, fields.WithDefault(false), fields.WithHelp("Skip validation")),
 			fields.New("skip-build", fields.TypeBool, fields.WithDefault(false), fields.WithHelp("Skip build")),
 			fields.New("skip-prepare", fields.TypeBool, fields.WithDefault(false), fields.WithHelp("Skip prepare")),
@@ -83,10 +85,6 @@ func (c *LifecycleCommand) RunIntoGlazeProcessor(
 	if err != nil {
 		return err
 	}
-	controller, err := newOperatorController(repositoryContext.RepoRoot)
-	if err != nil {
-		return err
-	}
 	selection := operator.Selection{Services: settings.Services}
 	policy := operator.PipelinePolicy{
 		ConfigPath:   repositoryContext.ConfigPath,
@@ -99,6 +97,22 @@ func (c *LifecycleCommand) RunIntoGlazeProcessor(
 		SkipValidate: settings.SkipValidate,
 		BuildSteps:   settings.BuildSteps,
 		PrepareSteps: settings.PrepareSteps,
+	}
+	if settings.Explain {
+		recipe, err := (operator.PipelinePlanner{}).ResolveRecipe(ctx, c.kind, operator.UpRequest{
+			RepoRoot: repositoryContext.RepoRoot,
+			Profile:  repositoryContext.Profile,
+			Select:   selection,
+			Policy:   policy,
+		})
+		if err != nil {
+			return err
+		}
+		return addLifecycleRecipeRows(ctx, processor, recipe)
+	}
+	controller, err := newOperatorController(repositoryContext.RepoRoot)
+	if err != nil {
+		return err
 	}
 	var result operator.OperationResult
 	var operationErr error
@@ -130,6 +144,30 @@ func (c *LifecycleCommand) RunIntoGlazeProcessor(
 		return err
 	}
 	return operationErr
+}
+
+func addLifecycleRecipeRows(
+	ctx context.Context,
+	processor middlewares.Processor,
+	recipe operator.LifecycleRecipe,
+) error {
+	for _, phase := range recipe.Phases {
+		if err := processor.AddRow(ctx, types.NewRow(
+			types.MRP("recipe_version", recipe.Version),
+			types.MRP("recipe_id", recipe.ID),
+			types.MRP("operation", recipe.Operation),
+			types.MRP("repository_fingerprint", recipe.RepositoryFingerprint),
+			types.MRP("profile", recipe.ProfileName),
+			types.MRP("services", recipe.Selection.Services),
+			types.MRP("phase", phase.Name),
+			types.MRP("enabled", phase.Enabled),
+			types.MRP("steps", phase.Steps),
+			types.MRP("unresolved", phase.Unresolved),
+		)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func addOperationRows(
