@@ -20,23 +20,29 @@ Create an evidence-backed HTML report about the current session without exposing
    - files actually read and APIs actually inspected during the session;
    - commands/tests and exact meaningful failures already recorded.
 3. Build a JSON report model following [the report contract](references/report-contract.md).
-4. Render it with the bundled script:
+4. Validate the JSON model before rendering. The wrapper resolves its own directory, so it works from any current working directory:
+
+```bash
+scripts/validate.sh report.json
+```
+
+5. Render it with the bundled script:
 
 ```bash
 python3 scripts/render_report.py --input report.json --output session-context-audit.html
 ```
 
-5. Validate:
+6. If visual inspection is requested, open the standalone file directly by default:
 
 ```bash
-python3 -m unittest -v scripts/test_render_report.py
-python3 scripts/render_report.py --input scripts/fixtures/minimal.json --output /tmp/session-context-audit.html
+python3 scripts/render_report.py --input report.json --output session-context-audit.html --open
 ```
 
-6. If visual inspection is requested, serve the containing directory from an owned temporary process and open the HTTP URL. Do not commit browser snapshots, server logs, or cache files.
+Use `--serve-open` only when HTTP origin behavior is required. It binds an OS-selected loopback port, opens the report, waits for `--serve-seconds` (default 3), and shuts down. Do not commit browser snapshots, server logs, or cache files.
 7. If the user asks to archive the report with a ticket diary:
-   - place it in the diary's directory with the next numeric prefix;
-   - use `docmgr doc relate --doc <diary> --file-note "/absolute/report.html:reason"`;
+   - place the paired model and rendering in the diary's directory with the same next numeric prefix, for example `06-session-context-audit.json` and `06-session-context-audit.html`;
+   - treat JSON as the regenerable evidence model and HTML as its browser view;
+   - use `docmgr doc relate --doc <diary> --file-note "/absolute/report.json:Regenerable audit model" --file-note "/absolute/report.html:Browser-readable audit"`;
    - update the diary/changelog according to their owning skills;
    - commit the report separately from unrelated in-progress code when practical.
 
@@ -69,7 +75,8 @@ For every issue/churn timeline segment, include specific advice that would preve
 ## Writing and visual style
 
 - Be concise and scannable: short bullets, strong labels, and concrete paths/symbols.
-- Use a high-contrast brutalist report style: paper background, black borders, one accent color, large section headings, responsive columns.
+- Use a high-contrast brutalist report style: paper background, black borders, one accent color, and large section headings.
+- Render grouped file/change/API inventories as full-width horizontal group rows: group title on the left, a vertical bullet list on the right. Render each file/API purpose beneath its name in italic muted text.
 - Keep the HTML standalone with embedded CSS and no remote assets.
 - Escape every value supplied through the JSON model. Do not interpolate untrusted text as HTML.
 - The report should remain useful as a static ticket artifact after the temporary browser server is gone.
@@ -79,5 +86,6 @@ For every issue/churn timeline segment, include specific advice that would preve
 - [Report model and classification contract](references/report-contract.md)
 - `scripts/render_report.py` — deterministic standalone HTML renderer
 - `scripts/fixtures/minimal.json` — minimal valid input
-- `scripts/test_render_report.py` — escaping and required-section tests
+- `scripts/validate.sh` and `scripts/validate_report.py` — location-independent JSON model validation
+- `scripts/test_report_model.py` — strict report-model tests; rendering tests are intentionally omitted
 - `assets/example-report.html` — concrete report that motivated this skill; use as visual reference, not as a source of current facts
