@@ -83,3 +83,61 @@ rg: pkg/operator/types.go: No such file or directory (os error 2)
 - reMarkable destination: `/ai/2026/09/13/DEVCTL-ROBUST-LIFECYCLE`.
 - Delivery evidence proves cloud upload, not physical tablet synchronization.
 - No runtime files modified, no services launched, and no extensive rendering validation performed.
+
+## Step 2: Import the current skill and establish the implementation baseline
+
+I resumed the ticket as an implementation effort, first synchronizing the repository-owned devctl authoring skill with the current installed skill. I also read the complete design and prior diary, inspected all open tasks, printed the overall implementation plan and Phase 0 start slips, and established a passing targeted baseline before runtime edits.
+
+### Prompt Context
+**User prompt (verbatim):**
+> 1. Let's import the devctl skill into a skills/ directory.
+> 2. Let's work on docmgr ticket DEVCTL-ROBUST-LIFECYCLE (read design doc, diary).
+>
+> commit at appropriate intervals and keep a detailed diary as you work (using the diary format from the skill).
+> Print out a brutalist work slip with the plan / different phases for the ticket. then before stsarting a phase, plrint a split about the phase, and print one when the phase is done.
+
+**Assistant interpretation:** Vendor the latest installed devctl plugin-authoring skill, then implement the ticket in phased, tested commits while maintaining this detailed diary and printing a thermal slip before and after each phase.
+**Inferred user intent:** Carry the design through to robust implementation with physical progress markers and reviewable checkpoints.
+
+### What I did
+- Compared `/home/manuel/.pi/agent/skills/devctl-plugin-authoring` with `skills/devctl-plugin-authoring` and copied the current `SKILL.md` and protocol quick reference into the repository; retained the repository packaging metadata in `agents/openai.yaml`.
+- Read the complete design guide, prior diary, index, and nine open ticket tasks.
+- Ran `devctl help --all` and read the installed `user-guide`, `scripting-guide`, and `plugin-authoring` topics into temporary local files as required by the skill.
+- Printed a five-phase overall work plan and a four-step `P0 START` slip through the remote almanach renderer.
+- Ran the targeted baseline tests from the design guide.
+
+### Why
+- Synchronizing the skill first makes its corrected lifecycle, cancellation, catalog, logs, and smoke-test guidance available in the repository before those contracts are implemented.
+- Targeted baseline tests distinguish pre-existing failures from regressions and protect the current restart-before-stop safety property.
+
+### What worked
+- Both thermal print calls returned HTTP success with `printed: true` at `2026-09-13T10:37:12Z`.
+- `go test ./pkg/operator -run 'TestRestart'` passed.
+- `go test ./pkg/runtime ./pkg/plugincatalog` passed (`pkg/runtime` 3.786s, `pkg/plugincatalog` 0.056s).
+- `git diff --check` passed; the imported protocol quick reference was already byte-identical, while `SKILL.md` gained the current guidance.
+
+### What didn't work
+- No failures were observed in this step.
+
+### What I learned
+- The skill had already been vendored at commit `6f5637c`, but its repository copy lagged the installed version; this is a synchronization update rather than first-time directory creation.
+- The design baseline is commit `418a4ca`, while this branch already includes the documentation commit `f2d3c6b` and starts clean.
+
+### What was tricky to build
+- Importing the directory wholesale would have removed repository-specific OpenAI packaging metadata absent from the installed skill. Copying the canonical content files preserves that local integration while synchronizing the authored guidance.
+
+### What warrants a second pair of eyes
+- Confirm that retained `agents/openai.yaml` is still the desired repository packaging contract.
+- The unresolved timeout and persistence-schema decisions must be reviewed before their implementation phases; no compatibility layer is implied.
+
+### What should be done in the future
+- Complete Phase 0 by mapping task order and making the skill import checkpoint, then begin the low-risk shared health projection and catalog inspection phase.
+
+### Code review instructions
+- Review `skills/devctl-plugin-authoring/SKILL.md` against the installed source and verify `agents/openai.yaml` remains unchanged.
+- Re-run `go test ./pkg/operator -run 'TestRestart'` and `go test ./pkg/runtime ./pkg/plugincatalog` for the baseline.
+
+### Technical details
+- Overall printed phases: import/orient; health/catalog truth; shutdown/runner; recipes/artifacts; documentation/full matrix.
+- The installed help topics totaled 1,924 lines and were read from temporary files only; no generated help capture was committed.
+- Repository branch at start: `task/devctl-improve`; starting revision: `f2d3c6b`.
