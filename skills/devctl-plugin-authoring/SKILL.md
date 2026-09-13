@@ -131,8 +131,10 @@ complete lifetime:
   running subprocess and immediately after normal completion.
 
 A streaming-output helper is not a complete subprocess supervisor unless it
-also implements timeout, cancellation, and descendant cleanup. Test these
-properties with a slow fixture child before using expensive build commands.
+also implements timeout, cancellation, and descendant cleanup. For Python
+plugins, vendor the supported standalone helper from `sdk/python/devctl_runner.py`
+and share one `Budget` across every step in a request. Test these properties
+with a slow fixture child before using expensive build commands.
 
 ### 5. Wire the repo config
 

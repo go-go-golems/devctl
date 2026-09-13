@@ -44,3 +44,12 @@ Implemented one-owner plugin process waiting with idempotent graceful EOF, TERM,
 
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/runtime/process_lifetime.go — Single Wait owner and bounded process-group shutdown state machine
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/runtime/shutdown_test.go — EOF TERM KILL descendant concurrent and canceled Close fixtures
+
+## 2026-09-13
+
+Shipped a standalone supported Python subprocess runner with shared monotonic budgets, protocol-safe streaming, bounded tails, dry-run, cancellation, TERM/KILL process-group cleanup, and CI-backed fixtures.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/sdk/python/devctl_runner.py — Supported standalone bounded runner for Python plugins
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/sdk/python/test_devctl_runner.py — Runner budget output dry-run cancellation and descendant fixtures

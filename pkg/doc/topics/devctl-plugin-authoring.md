@@ -404,25 +404,24 @@ devctl prepare --step pnpm-install
 
 Keep stdout reserved for protocol frames. If a build, install, migration, or code-generation command takes a while, stream human-readable progress to stderr. devctl reads plugin stderr while the request is running, so operators can watch progress without corrupting the NDJSON protocol on stdout.
 
-A safe Python pattern is to pipe subprocess output to stderr while emitting exactly one JSON response on stdout:
+Use the supported runner in `sdk/python/devctl_runner.py` rather than copying a streaming-only helper. One `Budget` must be shared by every build or prepare step in the request:
 
 ```python
-def run_streaming(argv, cwd):
-    proc = subprocess.Popen(
-        argv,
-        cwd=cwd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-    for line in proc.stdout:
-        sys.stderr.write(line)
-        sys.stderr.flush()
-    return proc.wait()
+from devctl_runner import Budget, Runner
+
+runner = Runner(output=sys.stderr)
+runner.install_signal_handlers()
+budget = Budget.from_deadline_ms(req["ctx"]["deadline_ms"])
+
+result = runner.run(
+    ["go", "build", "-o", output, "./cmd/server"],
+    cwd=req["ctx"]["repo_root"],
+    budget=budget,
+    dry_run=req["ctx"].get("dry_run", False),
+)
 ```
 
-Avoid `print()` for progress unless it writes to stderr. Any non-JSON text on stdout is protocol contamination and will fail the plugin.
+The runner uses argv without shell parsing, streams both child outputs to plugin stderr, bounds retained diagnostic tails, owns a separate process group, escalates TERM to KILL, and reaps the main child. Treat `timed_out`, `canceled`, nonzero `exit_code`, or false `cleanup_confirmed` as operation failure. Avoid `print()` for progress unless it writes to stderr. Any non-JSON text on stdout is protocol contamination and will fail the plugin.
 
 ### 6.4. `launch.plan`: describe services devctl should supervise
 

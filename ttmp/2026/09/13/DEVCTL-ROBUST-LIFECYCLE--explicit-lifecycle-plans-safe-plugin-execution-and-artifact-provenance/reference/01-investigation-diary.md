@@ -383,3 +383,63 @@ I replaced immediate signal-and-wait shutdown with one process-lifetime owner th
 - Default EOF grace is 250ms. Existing `ShutdownTimeout` is used independently for TERM and post-KILL confirmation.
 - A canceled Close does not claim success; it returns the context error while the single cleanup owner continues.
 - Expected TERM/KILL exits are represented by shutdown mode and exit code rather than returned as cleanup failures.
+
+## Step 7: Ship the supported bounded Python runner
+
+I added a standalone standard-library Python runner for build and prepare subprocesses. It keeps protocol stdout untouched, streams both child outputs to plugin stderr, shares one monotonic request budget, owns a separate process group, and returns structured timeout, cancellation, exit, diagnostic-tail, and cleanup-confirmation evidence.
+
+### Prompt Context
+**User prompt (verbatim):** See Step 2.
+**Assistant interpretation:** Complete Phase 2 by publishing the supported runner proposed by the design and prove its cancellation and descendant behavior in normal Go CI.
+**Inferred user intent:** Stop plugin authors from copying incomplete streaming snippets that leak children or reset deadlines per command.
+
+### What I did
+- Added `sdk/python/devctl_runner.py` with `Budget`, `Runner`, and immutable `RunResult`.
+- Implemented argv-only execution, cwd validation, merged environment, separate process groups, concurrent stdout/stderr pumping to plugin stderr, bounded UTF-8 diagnostic tails, TERM/KILL escalation, child reaping, and bounded unconfirmed-cleanup reporting.
+- Added explicit dry-run no-execution and structured executable-start failure behavior.
+- Added optional signal-handler installation that converts active SIGTERM/SIGINT into orderly runner cancellation outside the signal handler itself.
+- Added six Python tests covering shared deadlines, high-volume output, bounded tails, dry-run, explicit cancellation, descendants, and nonexistent executables.
+- Added a Go test that invokes the Python suite so `go test ./...` qualifies the shipped SDK file.
+- Replaced the incomplete streaming-only documentation snippet and added packaging/support instructions in `sdk/python/README.md` and the vendored skill.
+- Checked task `hslp` and updated the ticket changelog.
+
+### Why
+- Streaming output alone does not own timeout, cancellation, process-group cleanup, or reaping.
+- A `Budget` object prevents each sequential step from receiving a fresh copy of the request's remaining duration.
+- A standalone standard-library file can be vendored beside a repository plugin without introducing a Python package registry dependency.
+
+### What worked
+- `python3 -m py_compile sdk/python/devctl_runner.py sdk/python/test_devctl_runner.py` passed.
+- The direct Python suite passed all six tests in approximately 0.5 seconds.
+- `GOWORK=off go test -race ./pkg/runtime` passed with the Python support suite included.
+- `GOWORK=off go test ./...` passed.
+- The descendant test records a spawned `sleep` PID, cancels the runner, and verifies the PID no longer exists.
+
+### What didn't work
+- No failed behavioral implementation attempt occurred in this step. During review before testing, I noticed that post-KILL group confirmation had no final bound and that a subsequent unconditional `wait()` could theoretically block. I added a second bounded grace interval, `cleanup_confirmed=false`, and a bounded final wait before running the suite.
+- The first checkpoint accidentally staged Python `__pycache__` bytecode created by `py_compile`. I removed it immediately, added repository ignore rules for `__pycache__/` and `*.py[cod]`, and amended the checkpoint before proceeding; the final checkpoint contains source and tests only.
+
+### What I learned
+- `subprocess.Popen.poll()` reaps an exited direct child, allowing process-group disappearance checks to distinguish an exited leader from retained descendants.
+- Signal conversion must not throw through Python's asynchronous signal handler. The handler only records cancellation; the synchronous run loop owns termination and return.
+
+### What was tricky to build
+- Both output streams must be drained concurrently to avoid pipe deadlock, while writes to the shared plugin stderr and diagnostic tail buffers require serialization.
+- A direct child can exit while descendants retain pipes and the process group. The runner treats that as orphaned-owned work and starts TERM/KILL cleanup rather than returning success immediately.
+
+### What warrants a second pair of eyes
+- Review whether this standalone vendoring model should later become a versioned Python package; current support identity is the devctl repository revision.
+- Review backpressure and memory behavior under pathological infinite output. Retained tails are bounded, but streaming intentionally follows stderr sink throughput.
+- Windows is explicitly unsupported because the implementation uses Unix sessions/process groups.
+
+### What should be done in the future
+- Print the Phase 2 completion slip, then start Phase 3 for lifecycle recipe separation and artifact provenance decisions.
+
+### Code review instructions
+- Start with `sdk/python/README.md` and `devctl_runner.py`, then run the Python suite and `GOWORK=off go test -race ./pkg/runtime`.
+- Verify plugin examples share one `Budget` and treat false `cleanup_confirmed` as failure.
+
+### Technical details
+- Default retained tail is 16 KiB per stream; default TERM grace is one second.
+- Deadline-exhausted-before-start returns exit code 124 without creating a process. Spawn failure returns 127 with a structured error string.
+- Deliberately detached descendants are outside the process-group ownership guarantee and are documented as unsupported.

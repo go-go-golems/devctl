@@ -5,7 +5,7 @@
 - [x] Implement shared current-versus-historical health projection <!-- t:qsjl -->
 - [x] Implement catalog inspection provenance and declared source fingerprints <!-- t:2mza -->
 - [x] Implement graceful EOF shutdown with one process Wait owner <!-- t:pqv5 -->
-- [ ] Ship supported bounded subprocess runner and cancellation fixtures <!-- t:hslp -->
+- [x] Ship supported bounded subprocess runner and cancellation fixtures <!-- t:hslp -->
 - [ ] Separate lifecycle recipe resolution preparation and application <!-- t:jyam -->
 - [ ] Add typed immutable artifact provenance to service runs <!-- t:22at -->
 - [x] Test documentation examples phase matrix and raw/schema help discoverability <!-- t:xmy4 -->
