@@ -1,7 +1,7 @@
 ---
 Title: Explicit lifecycle plans safe plugin execution and artifact provenance
 Ticket: DEVCTL-ROBUST-LIFECYCLE
-Status: active
+Status: complete
 Topics:
     - devctl
     - architecture
@@ -12,10 +12,10 @@ Intent: long-term
 Owners: []
 RelatedFiles: []
 ExternalSources: []
-Summary: "Documentation-only design for lifecycle plans, graceful shutdown, bounded build execution, artifact provenance, health presentation, and catalog discovery."
-LastUpdated: 2026-09-13T06:28:01.040512292-04:00
-WhatFor: ""
-WhenToUse: ""
+Summary: Implemented and qualified robust lifecycle recipes, plugin shutdown, bounded execution, executable provenance, truthful health, and catalog provenance.
+LastUpdated: 2026-09-13T08:27:56.664104538-04:00
+WhatFor: Durable implementation evidence and operational design for devctl lifecycle safety.
+WhenToUse: When reviewing lifecycle behavior, failure handling, artifact identity, or the completed implementation.
 ---
 
 # Explicit lifecycle plans safe plugin execution and artifact provenance

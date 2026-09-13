@@ -43,7 +43,7 @@ This matrix maps each explicit ticket requirement and design acceptance boundary
 | Plugin shutdown must have one Wait owner and bounded EOF/TERM/KILL escalation | `runtime.processLifetime` | EOF, TERM, KILL, descendant, concurrent Close, cancellation, and race fixtures | `53ee866` |
 | Supported plugin subprocess execution must share one monotonic request budget | `sdk/python/devctl_runner.py` | six Python fixtures covering budget, output, dry-run, cancellation, descendants, and missing executable | `f7abf04` |
 | Devctl must use the workspace Glazed API without bypassing the workspace | canonical command builders and structured output `--format` | full workspace build/tests, CLI contract, no removed output symbols | `b2ac21a`; Glazed `e0cfa33` |
-| Recipe resolution must be effect-free and label unresolved facts | `PipelinePlanner.ResolveRecipe`; lifecycle `--explain` | no-execution marker tests and five-phase explain rows | `f3eb1ad` plus current qualification commit |
+| Recipe resolution must be effect-free and label unresolved facts | `PipelinePlanner.ResolveRecipe`; lifecycle `--explain` | no-execution marker tests and five-phase explain rows | `f3eb1ad`, `a14d611` |
 | Replacement preparation must precede stop | `PrepareReplacement` before lifecycle lock/down | planning/preparation failure restart fixtures | `f3eb1ad` |
 | Apply must reject stale configuration before stop | fingerprint plus under-lock `ValidatePrepared` | stale-config planner test and stale-restart controller test | `f3eb1ad` |
 | Timeout semantics must be explicit | per-phase `PipelinePolicy.Timeout`; caller context remains overall bound | phase matrix, cancellation tests, decision record | `f3eb1ad` |
@@ -51,7 +51,7 @@ This matrix maps each explicit ticket requirement and design acceptance boundary
 | A service may select one build-produced native executable | `engine.ExecutableRef`; artifact staging and publication | ambiguity/missing reference tests and built CLI artifact service | `af0d5bb` |
 | Launched bytes must have durable typed identity | run schema v2 `ArtifactRecord` | CLI run JSON and structured status digest assertions | `af0d5bb` |
 | Mutable or corrupt bytes must be rejected before launch | SHA-256/size validation in planner and supervisor | staged corruption, changed bytes, non-executable, and supervisor corruption tests | `af0d5bb` |
-| Identical outputs must deduplicate and concurrent preparations must not share staging | digest path plus recipe-owned staging | sequential reuse and concurrent preparation race fixture | current qualification commit |
+| Identical outputs must deduplicate and concurrent preparations must not share staging | digest path plus recipe-owned staging | sequential reuse and concurrent preparation race fixture | `a14d611` |
 | Garbage collection must be simple and bounded | current/last digest mark set and removal of other valid digest directories | collector unit test and automatic post-up integration test | `af0d5bb` |
 | Plugin authors and operators must discover artifact behavior in CLI help | embedded `artifact-provenance` help plus authoring/user/upgrade updates | unique-slug check, `devctl help artifact-provenance`, structured help export | `af0d5bb` |
 | Documentation workflow and reusable context audit must remain reproducible | installed/project `session-context-audit` skill and archived HTML | bundled validation script and ticket report | `b9d859f`, `f72e74a`, shared skill `4e6e3d5` |

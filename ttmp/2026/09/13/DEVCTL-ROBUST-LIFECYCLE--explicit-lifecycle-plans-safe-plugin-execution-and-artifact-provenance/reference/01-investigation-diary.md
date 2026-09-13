@@ -919,3 +919,25 @@ I audited the implementation against every ticket requirement and the parent des
 ### Technical details
 - Final broad qualification used normal parent workspace resolution; no `GOWORK=off` bypass was used.
 - Explain is available on up/restart only; down has no preparation recipe.
+
+## Step 16: Close the qualified lifecycle ticket
+
+The requirement audit, final implementation revision, task ledger, and docmgr hygiene all agree that the ticket is complete. I closed the ticket only after the final broad qualification and recorded the authoritative revisions in the close receipt.
+
+### Prompt Context
+**User prompt (verbatim):** (see Step 15)
+**Assistant interpretation:** Complete and close the fully qualified ticket.
+**Inferred user intent:** Leave a reviewable finished workspace with no ambiguous open requirements.
+
+### Evidence and commits
+- Implementation/qualification revision: `a14d611`.
+- Glazed dependency revision: `e0cfa33`.
+- Docmgr close operation: `close-8ba7dfa395c70a2e5bc4cce16cd6379b`.
+- `tasks.md`: every task checked.
+- `docmgr doctor`: all checks passed.
+
+### Noteworthy decisions or failures
+- No unresolved implementation requirement remains; the index summary was corrected from its original documentation-only wording to reflect the delivered system.
+
+### Remaining requirements and next action
+- N/A for `DEVCTL-ROBUST-LIFECYCLE`.
