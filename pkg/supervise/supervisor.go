@@ -345,6 +345,15 @@ func (s *Supervisor) StartPreparedService(
 			runstate.RunPlanned,
 		)
 	}
+	if prepared.Artifact != nil {
+		if len(svc.Command) == 0 || svc.Command[0] != prepared.Artifact.Path {
+			return state.ServiceRecord{}, errors.New("prepared command does not select its recorded artifact")
+		}
+		if err := runstate.ValidateArtifact(*prepared.Artifact); err != nil {
+			markRunFailed(store, runID, "ARTIFACT_INVALID", err)
+			return state.ServiceRecord{}, errors.Wrap(err, "validate prepared executable artifact")
+		}
+	}
 
 	request, err := NewWrapperRequest(store, runID, svc.Name, cwd, svc.Command, svc.Env)
 	if err != nil {

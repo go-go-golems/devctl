@@ -149,6 +149,10 @@ func addStatusRows(ctx context.Context, processor middlewares.Processor, result 
 			types.MRP("exit_code", exitCode(service.Exit)),
 			types.MRP("signal", exitSignal(service.Exit)),
 			types.MRP("last_error_code", lastErrorCode(service.LastError)),
+			types.MRP("artifact_id", artifactID(service.Artifact)),
+			types.MRP("artifact_path", artifactPath(service.Artifact)),
+			types.MRP("artifact_sha256", artifactSHA256(service.Artifact)),
+			types.MRP("artifact_size_bytes", artifactSize(service.Artifact)),
 			types.MRP("stdout_path", service.StdoutPath),
 			types.MRP("stderr_path", service.StderrPath),
 		)

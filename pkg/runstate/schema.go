@@ -9,7 +9,7 @@ import (
 
 const (
 	StateSchemaVersion = 2
-	RunSchemaVersion   = 1
+	RunSchemaVersion   = 2
 )
 
 type DesiredState string
@@ -62,7 +62,15 @@ type RunRecord struct {
 	Health      *HealthResult     `json:"health,omitempty"`
 	Exit        *ExitSummary      `json:"exit,omitempty"`
 	ArtifactDir string            `json:"artifact_dir"`
+	Artifact    *ArtifactRecord   `json:"artifact,omitempty"`
 	LastError   *ErrorRecord      `json:"last_error,omitempty"`
+}
+
+type ArtifactRecord struct {
+	ID        string `json:"id"`
+	Path      string `json:"path"`
+	SHA256    string `json:"sha256"`
+	SizeBytes int64  `json:"size_bytes"`
 }
 
 type ServiceSpecRecord struct {

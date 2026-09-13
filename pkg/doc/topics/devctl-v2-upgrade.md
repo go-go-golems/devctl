@@ -116,6 +116,8 @@ directories only after confirming they are not current in `devctl status
 Do not delete `.devctl/state.json` to recover from an ownership error. Run
 `devctl doctor` and preserve both state and run artifacts for diagnosis.
 
+Run records now use schema version 2 when they can include native executable provenance. Version-1 run records are rejected rather than silently upgraded. Stop environments with the earlier binary before upgrading. Build-produced executables explicitly selected by `launch.plan` are copied to `.devctl/artifacts/sha256/`; current and immediately previous service runs retain their bytes while older run records retain digest evidence only.
+
 ## Verify dynamic commands after the upgrade
 
 Repository-specific commands still appear automatically at the `devctl`

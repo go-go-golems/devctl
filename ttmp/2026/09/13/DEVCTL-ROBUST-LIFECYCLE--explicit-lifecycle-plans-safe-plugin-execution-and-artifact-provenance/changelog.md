@@ -106,3 +106,14 @@ Separated lifecycle recipe resolution, effectful replacement preparation, and un
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/operator/planner.go — Versioned recipes prepared launches phase results and configuration fingerprints
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/operator/controller.go — Stale validation before applying up or stopping during restart
 - /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/ttmp/2026/09/13/DEVCTL-ROBUST-LIFECYCLE--explicit-lifecycle-plans-safe-plugin-execution-and-artifact-provenance/reference/03-lifecycle-recipe-and-schema-decisions.md — Accepted timeout and migration decisions
+
+## 2026-09-13
+
+Implemented simplified native executable provenance with content-addressed publication, run schema v2 linkage, pre-launch digest validation, current/last reference garbage collection, structured status evidence, and embedded Glazed help.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/operator/artifacts.go — Staging publication deduplication and reference collector
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/runstate/artifact.go — SHA-256 and executable identity validation
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/supervise/supervisor.go — Final artifact integrity check before wrapper launch
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/pkg/doc/topics/devctl-artifact-provenance.md — Embedded help for plugin authors and operators

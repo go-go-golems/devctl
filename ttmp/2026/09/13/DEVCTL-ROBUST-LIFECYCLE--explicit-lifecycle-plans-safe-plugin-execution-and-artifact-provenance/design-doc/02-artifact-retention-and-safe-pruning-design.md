@@ -10,12 +10,18 @@ DocType: design-doc
 Intent: long-term
 Owners: []
 RelatedFiles:
-    - Path: repo://pkg/runstate/schema.go
-      Note: Run records retain selected artifact identity
-    - Path: repo://pkg/operator/planner.go
-      Note: Prepared launches stage referenced executable artifacts
+    - Path: repo://pkg/doc/topics/devctl-artifact-provenance.md
+      Note: Embedded Glazed operator and plugin help
+    - Path: repo://pkg/operator/artifacts.go
+      Note: Content-addressed staging publication and reference collector
     - Path: repo://pkg/operator/controller.go
       Note: Lifecycle lock protects publication run linkage and collection
+    - Path: repo://pkg/operator/planner.go
+      Note: Prepared launches stage referenced executable artifacts
+    - Path: repo://pkg/runstate/artifact.go
+      Note: Artifact digest inspection and validation
+    - Path: repo://pkg/runstate/schema.go
+      Note: Run records retain selected artifact identity
 ExternalSources: []
 Summary: Minimal content-addressed storage and reference-based collection for build-produced service executables.
 LastUpdated: 2026-09-13T11:56:00Z
@@ -83,7 +89,7 @@ type ArtifactRecord struct {
 Preparation copies each referenced executable to operation-owned staging while computing its digest. The lifecycle apply path then publishes it beneath:
 
 ```text
-.devctl/artifacts/sha256/<sha256>/<artifact-id>
+.devctl/artifacts/sha256/<sha256>/executable
 ```
 
 The SHA-256 directory is the content identity. Identical bytes reuse the same directory. Different builds that produce identical bytes do not create duplicate payloads.

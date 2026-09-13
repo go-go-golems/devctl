@@ -154,6 +154,27 @@ func TestCreateAndUpdateRun(t *testing.T) {
 	require.Equal(t, filepath.ToSlash(filepath.Join(".devctl", "runs", testRunID)), loaded.ArtifactDir)
 }
 
+func TestLoadRunRejectsPreviousSchemaWithoutImplicitMigration(t *testing.T) {
+	repo := testrepo.New(t)
+	store, err := NewStore(repo.Root)
+	require.NoError(t, err)
+	run := RunRecord{
+		RunID: testRunID, Service: "api", Phase: RunPlanned,
+		Spec: ServiceSpecRecord{Name: "api", Command: []string{"/bin/true"}},
+	}
+	require.NoError(t, store.CreateRun(context.Background(), run))
+	loaded, err := store.LoadRun(context.Background(), testRunID)
+	require.NoError(t, err)
+	loaded.Version = 1
+	path, err := store.RunPath(testRunID)
+	require.NoError(t, err)
+	require.NoError(t, WriteJSONAtomic(path, loaded, 0o600))
+
+	_, err = store.LoadRun(context.Background(), testRunID)
+	require.ErrorIs(t, err, ErrInvalidState)
+	require.ErrorContains(t, err, "unsupported run version 1")
+}
+
 func TestPathsRejectEscapesAndInvalidIdentifiers(t *testing.T) {
 	repo := testrepo.New(t)
 	store, err := NewStore(repo.Root)

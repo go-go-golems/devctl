@@ -3,11 +3,17 @@ package engine
 import "github.com/go-go-golems/devctl/pkg/protocol"
 
 type ServiceSpec struct {
-	Name    string            `json:"name"`
-	Cwd     string            `json:"cwd,omitempty"`
-	Command []string          `json:"command"`
-	Env     map[string]string `json:"env,omitempty"`
-	Health  *HealthCheck      `json:"health,omitempty"`
+	Name       string            `json:"name"`
+	Cwd        string            `json:"cwd,omitempty"`
+	Command    []string          `json:"command,omitempty"`
+	Executable *ExecutableRef    `json:"executable,omitempty"`
+	Env        map[string]string `json:"env,omitempty"`
+	Health     *HealthCheck      `json:"health,omitempty"`
+}
+
+type ExecutableRef struct {
+	ArtifactID string   `json:"artifact_id"`
+	Args       []string `json:"args,omitempty"`
 }
 
 type HealthCheck struct {

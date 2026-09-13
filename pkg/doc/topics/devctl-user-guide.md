@@ -214,6 +214,8 @@ terminate its child process group, escalates when graceful shutdown exceeds the
 timeout, and records the terminal outcome. Completed `.devctl/runs/`
 directories remain available for diagnosis.
 
+When a plugin explicitly launches a native executable returned by `build.run` or `prepare.run`, devctl runs a verified content-addressed copy under `.devctl/artifacts/sha256/`. The current and immediately previous run for each service protect their executable bytes from garbage collection. Older run records retain SHA-256 identity evidence, but their stored executable may be collected.
+
 ## Profiles and local overrides
 
 Profiles select which plugins participate in a devctl run. They are useful when a repository has more than one valid local mode: frontend-only, backend-only, full-stack, or local debugging.

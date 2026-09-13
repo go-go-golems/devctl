@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-go-golems/devctl/pkg/runstate"
 	"github.com/stretchr/testify/require"
 )
 
@@ -104,6 +105,11 @@ func TestBuiltCLIContracts(t *testing.T) {
 		require.Equal(t, "devctl restart", schema["path"])
 		require.Contains(t, schema["use"], "restart")
 		require.NotEmpty(t, schema["flags"])
+
+		stdout, stderr, err = runCLI(binary, "help", "artifact-provenance")
+		require.NoError(t, err, stderr)
+		require.Contains(t, stdout, "content-addressed")
+		require.Contains(t, stdout, "Garbage collection")
 	})
 
 	t.Run("catalog inspection does not start provider", func(t *testing.T) {
@@ -150,6 +156,46 @@ func TestBuiltCLIContracts(t *testing.T) {
 		require.NoError(t, readErr)
 		lines := strings.Fields(string(data))
 		require.Len(t, lines, 1, "dynamic invocation started provider more than once")
+	})
+
+	t.Run("build artifact is published and linked to service run", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		configPath := writeArtifactServicePlugin(t, repoRoot)
+		stdout, stderr, err := runCLI(binary,
+			"up", "--repo-root", repoRoot, "--config", configPath, "--format", "json",
+		)
+		if err != nil {
+			logs, _ := filepath.Glob(filepath.Join(repoRoot, ".devctl", "runs", "*", "*"))
+			for _, logPath := range logs {
+				data, _ := os.ReadFile(logPath)
+				stderr += "\n" + logPath + ":\n" + string(data)
+			}
+		}
+		require.NoError(t, err, stderr+stdout)
+		t.Cleanup(func() {
+			_, _, _ = runCLI(binary, "down", "--repo-root", repoRoot)
+		})
+
+		store, err := runstate.NewStore(repoRoot)
+		require.NoError(t, err)
+		environment, err := store.LoadEnvironment(t.Context())
+		require.NoError(t, err)
+		run, err := store.LoadRun(t.Context(), environment.Services["artifact-service"].CurrentRunID)
+		require.NoError(t, err)
+		require.NotNil(t, run.Artifact)
+		require.Equal(t, "service-bin", run.Artifact.ID)
+		require.Equal(t, run.Artifact.Path, run.Spec.Command[0])
+		require.Contains(t, run.Artifact.Path, filepath.Join(".devctl", "artifacts", "sha256", run.Artifact.SHA256))
+		require.NoError(t, runstate.ValidateArtifact(*run.Artifact))
+
+		statusOut, statusErr, err := runCLI(binary,
+			"status", "--repo-root", repoRoot, "--with-glaze-output", "--format", "json",
+		)
+		require.NoError(t, err, statusErr)
+		var rows []map[string]any
+		require.NoError(t, json.Unmarshal([]byte(statusOut), &rows))
+		require.Len(t, rows, 1)
+		require.Equal(t, run.Artifact.SHA256, rows[0]["artifact_sha256"])
 	})
 
 	t.Run("provider-qualified run resolves a catalog collision", func(t *testing.T) {
@@ -219,6 +265,47 @@ func runCLIInDir(binary string, directory string, args ...string) (string, strin
 	command.Stderr = &stderr
 	err := command.Run()
 	return stdout.String(), stderr.String(), err
+}
+
+func writeArtifactServicePlugin(t *testing.T, repoRoot string) string {
+	t.Helper()
+	pluginPath := filepath.Join(repoRoot, "artifact-plugin.py")
+	artifactPath := filepath.Join(repoRoot, "build", "service.sh")
+	plugin := `#!/usr/bin/env python3
+import json
+import os
+import pathlib
+import sys
+
+artifact = pathlib.Path(sys.argv[1])
+def emit(value):
+    print(json.dumps(value), flush=True)
+
+emit({"type":"handshake","protocol_version":"v2","plugin_name":"artifact","capabilities":{"ops":["config.mutate","build.run","prepare.run","validate.run","launch.plan"]}})
+for line in sys.stdin:
+    request = json.loads(line)
+    op = request["op"]
+    output = {}
+    if op == "config.mutate":
+        output = {"config_patch":{"set":{},"unset":[]}}
+    elif op == "build.run":
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_text("#!/bin/sh\nexec sleep 60\n", encoding="utf-8")
+        os.chmod(artifact, 0o700)
+        output = {"steps":[{"name":"service","ok":True}],"artifacts":{"service-bin":str(artifact)}}
+    elif op == "prepare.run":
+        output = {"steps":[],"artifacts":{}}
+    elif op == "validate.run":
+        output = {"valid":True,"errors":[],"warnings":[]}
+    elif op == "launch.plan":
+        output = {"services":[{"name":"artifact-service","executable":{"artifact_id":"service-bin"}}]}
+    emit({"type":"response","request_id":request["request_id"],"ok":True,"output":output})
+`
+	require.NoError(t, os.WriteFile(pluginPath, []byte(plugin), 0o700))
+	configPath := filepath.Join(repoRoot, ".devctl.yaml")
+	config := "plugins:\n  - id: artifact\n    path: python3\n    args: [" + pluginPath + ", " + artifactPath + "]\n"
+	require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
+	return configPath
 }
 
 func writeCountingCommandPlugin(t *testing.T, repoRoot string) (string, string) {

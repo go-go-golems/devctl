@@ -3,7 +3,9 @@ package operator
 import (
 	"context"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"testing"
@@ -258,6 +260,30 @@ func TestUpIndexesRunBeforeStartingWrapper(t *testing.T) {
 	}
 	if !snapshot.Exists || snapshot.Services[0].Phase != runstate.RunReady {
 		t.Fatalf("unexpected snapshot: %#v", snapshot)
+	}
+}
+
+func TestUpCollectsUnreferencedContentAddressedArtifact(t *testing.T) {
+	repoRoot := t.TempDir()
+	orphan := filepath.Join(
+		repoRoot, ".devctl", "artifacts", "sha256",
+		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "executable",
+	)
+	if err := os.MkdirAll(filepath.Dir(orphan), 0o700); err != nil {
+		t.Fatalf("mkdir orphan: %v", err)
+	}
+	if err := os.WriteFile(orphan, []byte("orphan"), 0o500); err != nil {
+		t.Fatalf("write orphan: %v", err)
+	}
+	supervisor := &recordingSupervisor{t: t, repoRoot: repoRoot}
+	controller := newTestController(t, repoRoot, staticPlanner{result: PlanResult{
+		Plan: engine.LaunchPlan{Services: []engine.ServiceSpec{{Name: "web", Command: []string{"serve"}}}},
+	}}, supervisor)
+	if _, err := controller.Up(context.Background(), UpRequest{RepoRoot: repoRoot}, nil); err != nil {
+		t.Fatalf("up: %v", err)
+	}
+	if _, err := os.Stat(filepath.Dir(orphan)); !os.IsNotExist(err) {
+		t.Fatalf("unreferenced artifact was not collected: %v", err)
 	}
 }
 

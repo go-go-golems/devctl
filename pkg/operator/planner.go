@@ -45,13 +45,14 @@ type PlanResult struct {
 }
 
 type PreparedLaunch struct {
-	Version               int                   `json:"version"`
-	Recipe                LifecycleRecipe       `json:"recipe"`
-	RepositoryFingerprint string                `json:"repository_fingerprint"`
-	Plan                  engine.LaunchPlan     `json:"plan"`
-	Build                 *engine.BuildResult   `json:"build,omitempty"`
-	Prepare               *engine.PrepareResult `json:"prepare,omitempty"`
-	PreparedAt            time.Time             `json:"prepared_at"`
+	Version               int                       `json:"version"`
+	Recipe                LifecycleRecipe           `json:"recipe"`
+	RepositoryFingerprint string                    `json:"repository_fingerprint"`
+	Plan                  engine.LaunchPlan         `json:"plan"`
+	Artifacts             []runstate.ArtifactRecord `json:"artifacts,omitempty"`
+	Build                 *engine.BuildResult       `json:"build,omitempty"`
+	Prepare               *engine.PrepareResult     `json:"prepare,omitempty"`
+	PreparedAt            time.Time                 `json:"prepared_at"`
 }
 
 type Planner interface {
@@ -193,6 +194,12 @@ func (PipelinePlanner) PrepareReplacement(
 	if err != nil {
 		return PreparedLaunch{}, errors.Wrap(err, "resolve prepared launch plan")
 	}
+	prepared.Artifacts, err = stageReferencedArtifacts(
+		ctx, recipe, &prepared.Plan, prepared.Build, prepared.Prepare,
+	)
+	if err != nil {
+		return PreparedLaunch{}, err
+	}
 	prepared.RepositoryFingerprint = fingerprint
 	prepared.PreparedAt = time.Now().UTC()
 	return prepared, nil
@@ -217,6 +224,12 @@ func (PipelinePlanner) ValidatePrepared(ctx context.Context, prepared PreparedLa
 	}
 	if fingerprint != prepared.RepositoryFingerprint || fingerprint != prepared.Recipe.RepositoryFingerprint {
 		return staleRecipeError(prepared.Recipe.ID)
+	}
+	if err := validatePreparedArtifacts(prepared); err != nil {
+		return &OperatorError{
+			Code: CodeArtifactInvalid, Message: "prepared artifact identity changed",
+			Details: map[string]any{"recipe_id": prepared.Recipe.ID}, cause: err,
+		}
 	}
 	return ctx.Err()
 }

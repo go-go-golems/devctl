@@ -792,3 +792,69 @@ I split lifecycle planning into an effect-free recipe stage, an effectful prepar
 - Recipe schema: `LifecycleRecipeSchemaVersion = 1`; ephemeral and strictly rejected when unsupported.
 - Fingerprint: SHA-256 over canonical merged configuration, resolved profile, and recipe schema.
 - Timeout: fresh `PipelinePolicy.Timeout` child context per phase; caller context remains the external overall bound.
+
+## Step 14: Simplify and implement content-addressed executable provenance with collection
+
+I initially expanded future artifact pruning into a lease, manifest, quarantine, quota, and recovery subsystem. The user challenged that complexity, so I reduced the feature to its actual requirement: copy a selected native build output, hash it, publish one content-addressed executable, record its identity on the run, and collect digests no current or immediately previous run needs.
+
+### Prompt Context
+**User prompts (verbatim):**
+> “ok, well let's simplify it all down back to that, and implement garbage collection right from the get go, since the new design is going to be quite simple”
+>
+> “update the design docs and ticket tasks”
+>
+> “update the glazed help entries in devctl documentation too, if you haven't already”
+**Assistant interpretation:** Remove speculative storage machinery, implement the minimal provenance and collector now, and keep ticket plus embedded CLI documentation synchronized.
+**Inferred user intent:** Obtain exact executable evidence and bounded storage without turning devctl into a general artifact-management platform.
+
+### What I did
+- Added `engine.ExecutableRef` so `launch.plan` can select one named native executable from build/prepare artifacts and provide its argv tail.
+- Added run schema v2 with a four-field `ArtifactRecord`: ID, immutable path, SHA-256, and byte size; version-1 run records are explicitly rejected.
+- Staged selected outputs outside the content store, verified regular/executable bytes, and published them read-only at `.devctl/artifacts/sha256/<digest>/executable` under the lifecycle lock.
+- Reused an existing verified digest path for identical bytes and rejected ambiguous `command` plus `executable` declarations or undeclared artifact IDs.
+- Persisted the selected identity before wrapper launch and added a final supervisor digest check immediately before creating the wrapper request.
+- Added structured status fields for artifact ID, path, digest, and size.
+- Added a locked collector that protects digests referenced by current and immediately previous service runs and removes other well-formed digest directories; malformed and symlink entries are ignored.
+- Rewrote the pruning design to remove leases, manifests, quarantine, pinning, quotas, and background maintenance.
+- Added the embedded Glazed help entry `artifact-provenance`, updated plugin authoring, user, and upgrade help, verified eight unique slugs, and proved `devctl help artifact-provenance` plus structured help export.
+- Completed ticket tasks `22at` and `2zpu` through docmgr.
+
+### Why
+- Mutable build paths do not identify the bytes used by a service attempt.
+- Content addressing gives exact identity and deduplicates unchanged builds with one directory convention.
+- Current/last references provide a simple bounded retention rule without introducing a separate persistence subsystem.
+
+### What worked
+- A built CLI fixture created a native shell service artifact, launched the SHA-256-store copy, persisted matching run evidence, and exposed the digest through structured status.
+- Unit tests cover ambiguous and missing references, staged corruption, content reuse, current/last protection, orphan collection, non-executable files, changed bytes, and explicit rejection of run schema v1.
+- A supervisor test proves published-byte corruption fails before wrapper launch and marks the run `ARTIFACT_INVALID`.
+- `go test ./...`, race tests over operator/runstate/supervise, and lint passed before the final help entry; targeted help and supervisor checks passed after their additions.
+
+### What didn't work
+- The first CLI artifact fixture wrote literal `\\n` text into its shebang, causing `fork/exec ...: no such file or directory`. Inspecting `exit.json` revealed the malformed executable; using actual Python newline escapes made the end-to-end test pass.
+- The first corruption test attempted to overwrite a read-only `0500` artifact and failed with permission denied before reaching the intended assertion. The fixture now temporarily restores owner-write mode, changes the bytes, and returns the file to read-only mode.
+
+### What I learned
+- `ENOENT` from `exec` can mean a malformed shebang interpreter, not a missing executable path; retained wrapper `exit.json` made that distinction immediate.
+- Content addressing removes the need for build manifests and retention clocks for this scope. Historical records can preserve digest evidence without retaining every historical payload.
+
+### What was tricky to build
+- Preparation occurs outside the lifecycle lock, while collection occurs inside it. Keeping staged files outside the `sha256` subtree lets the collector ignore in-flight preparation without leases.
+- Publication changes the service command from staging to the immutable path, so selected service copies must be refreshed before run records are created.
+
+### What warrants a second pair of eyes
+- Review the retention contract that executable bytes remain only for current and immediately previous runs while older records retain evidence.
+- Review the run schema v2 rejection policy and native-executable-only protocol scope.
+- Review whether `E_ARTIFACT_INVALID` should be projected more specifically when preparation fails before the controller's apply boundary.
+
+### What should be done in the future
+- Complete the final offline lifecycle/failure matrix, docmgr hygiene, and prompt-to-artifact audit.
+
+### Code review instructions
+- Begin with `pkg/operator/artifacts.go`, then inspect `planner.go`, the locked publication calls in `controller.go`, and the final check in `pkg/supervise/supervisor.go`.
+- Run the artifact tests, the built CLI contract subtest, and `devctl help artifact-provenance`.
+
+### Technical details
+- Store path: `.devctl/artifacts/sha256/<lowercase-sha256>/executable`.
+- Retained bytes: distinct digests referenced by each service's `CurrentRunID` or `LastRunID`.
+- Run schema: `RunSchemaVersion = 2`, no implicit v1 migration.

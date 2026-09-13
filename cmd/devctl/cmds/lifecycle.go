@@ -252,6 +252,34 @@ func exitSignal(exit *runstate.ExitSummary) string {
 	return exit.Signal
 }
 
+func artifactID(artifact *runstate.ArtifactRecord) string {
+	if artifact == nil {
+		return ""
+	}
+	return artifact.ID
+}
+
+func artifactPath(artifact *runstate.ArtifactRecord) string {
+	if artifact == nil {
+		return ""
+	}
+	return artifact.Path
+}
+
+func artifactSHA256(artifact *runstate.ArtifactRecord) string {
+	if artifact == nil {
+		return ""
+	}
+	return artifact.SHA256
+}
+
+func artifactSize(artifact *runstate.ArtifactRecord) int64 {
+	if artifact == nil {
+		return 0
+	}
+	return artifact.SizeBytes
+}
+
 func lastErrorCode(lastError *runstate.ErrorRecord) string {
 	if lastError == nil {
 		return ""
