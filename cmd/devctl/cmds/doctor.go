@@ -82,8 +82,10 @@ func (c *DoctorCommand) RunIntoGlazeProcessor(
 	return nil
 }
 
-func newDoctorCmd() *cobra.Command {
+func newDoctorCmd() (*cobra.Command, error) {
 	command, err := NewDoctorCommand()
-	cobra.CheckErr(err)
+	if err != nil {
+		return nil, err
+	}
 	return buildGlazedCommand(command)
 }

@@ -78,10 +78,10 @@ reports partial failures per service.
 Scripts should select an explicit output format:
 
 ```bash
-devctl status --output json
-devctl doctor --output json
-devctl logs api --output json
-devctl logs api --follow --output json  # Compact JSON Lines until interrupted.
+devctl status --with-glaze-output --format json
+devctl doctor --format json
+devctl logs api --with-glaze-output --format json
+devctl logs api --follow --with-glaze-output --format jsonl  # Compact JSON Lines until interrupted.
 ```
 
 Usage failures exit 2, operational failures exit 1, interrupts exit 130, and a
@@ -111,7 +111,7 @@ state record, raw streams, structured journal, and terminal exit record.
 delete completed run directories. This release deliberately performs no
 automatic retention deletion. Archive or remove old `.devctl/runs/<run-id>/`
 directories only after confirming they are not current in `devctl status
---output json`.
+--with-glaze-output --format json`.
 
 Do not delete `.devctl/state.json` to recover from an ownership error. Run
 `devctl doctor` and preserve both state and run artifacts for diagnosis.
@@ -142,7 +142,7 @@ metadata.
 | A former command is unknown | The command was consolidated rather than aliased | Use the replacement table above and update scripts |
 | Completed logs still consume disk | Run retention is intentionally manual | Verify current run IDs, then archive or remove only old run directories |
 | A dynamic command is absent | The catalog is stale, conflicted, or its provider identity changed | Run `plugins refresh`, `plugins inspect`, and use provider-qualified `plugins run` |
-| JSON automation receives a table | The default renderer is for humans | Pass `--output json`; followed output is compact JSON Lines |
+| JSON automation receives human output | `status` and `logs` default to their human renderers | Add `--with-glaze-output --format json`; use `--format jsonl` for followed logs |
 
 ## See Also
 

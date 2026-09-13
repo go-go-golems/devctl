@@ -85,3 +85,14 @@ Installed and committed the session-context-audit skill in the shared skill repo
 ### Related Files
 
 - /home/manuel/code/wesen/go-go-golems/go-go-parc/Projects/2026/09/13/ARTICLE - Session Context Audits - Evidence Models Timelines and Reusable HTML Reports.md — Published technical analysis of the skill architecture and evidence model
+
+## 2026-09-13
+
+Migrated devctl to Glazed v1.4 command builders and structured-output flags, removed the private legacy output bridge, made streaming JSONL explicit, propagated command-construction errors, and fixed Glazed to flush structured rows on command failure.
+
+### Related Files
+
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/cmd/devctl/cmds/lifecycle.go — Canonical Glazed builder integration and constructor error propagation
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/cmd/devctl/cmds/logs.go — Human/structured dual-mode log output
+- /home/manuel/workspaces/2026-09-13/devctl-improve/devctl/cmd/devctl/cmds/stream.go — Human/JSONL dual-mode stream output
+- /home/manuel/workspaces/2026-09-13/devctl-improve/glazed/pkg/cli/cobra.go — Structured-output flushing and Cobra writer ownership

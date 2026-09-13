@@ -7,22 +7,31 @@ import (
 
 func AddCommands(root *cobra.Command) error {
 	root.AddCommand(dev.NewCmd())
-	root.AddCommand(newPlanCmd())
-	root.AddCommand(newBuildCmd())
-	root.AddCommand(newPrepareCmd())
-	root.AddCommand(newValidateCmd())
-	root.AddCommand(newPluginsCmd())
-	root.AddCommand(newProfilesCmd())
 	root.AddCommand(newSchemaCmd())
-
-	root.AddCommand(newUpCmd())
-	root.AddCommand(newDownCmd())
-	root.AddCommand(newStatusCmd())
-	root.AddCommand(newLogsCmd())
-	root.AddCommand(newDoctorCmd())
-	root.AddCommand(newStreamCmd())
 	root.AddCommand(newTuiCmd())
 	root.AddCommand(newWrapServiceCmd())
-	root.AddCommand(newRestartCmd())
+
+	constructors := []func() (*cobra.Command, error){
+		newPlanCmd,
+		newBuildCmd,
+		newPrepareCmd,
+		newValidateCmd,
+		newPluginsCmd,
+		newProfilesCmd,
+		newUpCmd,
+		newDownCmd,
+		newStatusCmd,
+		newLogsCmd,
+		newDoctorCmd,
+		newStreamCmd,
+		newRestartCmd,
+	}
+	for _, construct := range constructors {
+		command, err := construct()
+		if err != nil {
+			return err
+		}
+		root.AddCommand(command)
+	}
 	return nil
 }

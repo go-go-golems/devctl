@@ -100,7 +100,7 @@ Equivalent non-interactive commands are:
 devctl logs api
 devctl logs api --stream stderr
 devctl logs api --follow
-devctl logs api --output json   # A finite query as structured output.
+devctl logs api --with-glaze-output --format json   # A finite query as structured output.
 ```
 
 ## Review run and operation outcomes
@@ -139,9 +139,9 @@ devctl tui --alt-screen=false
 
 # In another shell:
 tmux capture-pane -pt devctl-debug -S -200
-devctl status --output json
-devctl doctor --output json
-devctl plugins inspect --output json
+devctl status --with-glaze-output --format json
+devctl doctor --format json
+devctl plugins inspect --format json
 ```
 
 Do not enable unrelated application debug logs on the TUI's terminal. Service
@@ -153,7 +153,7 @@ output belongs in the run journal and is available through Logs.
 |---|---|---|
 | Overview says `stopped` | No durable environment state exists | Press `u`, confirm all configured services, or run `devctl up` |
 | A service is `failed` | The wrapper recorded a launch, exit, or health error | Select it, press `Enter`, then inspect Runs for the stable error code |
-| Follow appears idle | No selected run has produced a new journal record | Check the selected service and toggle `f`; use `devctl status --output json` to verify its run ID |
+| Follow appears idle | No selected run has produced a new journal record | Check the selected service and toggle `f`; use `devctl status --with-glaze-output --format json` to verify its run ID |
 | Old lines disappear while paused | The bounded display buffer reached its record or byte limit | Resume with `p`, narrow the service/filter scope, or query the durable journal with `devctl logs` |
 | A dynamic command is missing or conflicted | Catalog discovery changed or a static command owns its name | Run `devctl plugins inspect`; execute an unambiguous provider-qualified command with `devctl plugins run` |
 | The screen is hard to capture | The alternate screen does not remain in scrollback | Restart with `--alt-screen=false` inside `tmux` |

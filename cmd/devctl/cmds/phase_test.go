@@ -173,12 +173,11 @@ func runPhaseCommand(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 	root := &cobra.Command{Use: "devctl", SilenceUsage: true, SilenceErrors: true}
 	require.NoError(t, AddCommands(root))
-	var stdout, stderr bytes.Buffer
-	root.SetOut(&stdout)
+	var stderr bytes.Buffer
 	root.SetErr(&stderr)
-	root.SetArgs(append(args, "--output", "json"))
-	err := root.Execute()
-	return stdout.String(), stderr.String(), err
+	root.SetArgs(append(args, "--format", "json"))
+	stdout, err := captureProcessStdout(t, root.Execute)
+	return stdout, stderr.String(), err
 }
 
 func decodePhaseOutput(t *testing.T, stdout string) map[string]any {

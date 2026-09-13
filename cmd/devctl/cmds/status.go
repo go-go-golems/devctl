@@ -257,8 +257,10 @@ func stringSelection(values []string) map[string]bool {
 	return selected
 }
 
-func newStatusCmd() *cobra.Command {
+func newStatusCmd() (*cobra.Command, error) {
 	command, err := NewStatusCommand()
-	cobra.CheckErr(err)
+	if err != nil {
+		return nil, err
+	}
 	return buildDualGlazedCommand(command)
 }

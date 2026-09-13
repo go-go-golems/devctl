@@ -9,6 +9,8 @@ import (
 	"github.com/go-go-golems/devctl/pkg/repository"
 	"github.com/go-go-golems/devctl/pkg/runtime"
 	glazedcmds "github.com/go-go-golems/glazed/pkg/cmds"
+	"github.com/go-go-golems/glazed/pkg/cmds/fields"
+	"github.com/go-go-golems/glazed/pkg/cmds/schema"
 	"github.com/go-go-golems/glazed/pkg/cmds/values"
 	"github.com/go-go-golems/glazed/pkg/middlewares"
 	"github.com/go-go-golems/glazed/pkg/types"
@@ -16,24 +18,25 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newPluginsCmd() *cobra.Command {
+func newPluginsCmd() (*cobra.Command, error) {
 	command := &cobra.Command{
 		Use:   "plugins",
 		Short: "Inspect plugins and manage the dynamic command catalog",
 	}
-	command.AddCommand(newPluginsListCmd())
-	command.AddCommand(newPluginsCommandsCmd())
-	command.AddCommand(newPluginsCatalogCmd())
-	command.AddCommand(newPluginsInspectCmd())
+	for _, kind := range []string{"list", "commands", "catalog", "inspect", "refresh"} {
+		subcommand, err := buildPluginsSubcommand(kind)
+		if err != nil {
+			return nil, err
+		}
+		command.AddCommand(subcommand)
+	}
 	command.AddCommand(newPluginsRunCmd())
-	command.AddCommand(newPluginsRefreshCmd())
-	return command
+	return command, nil
 }
 
 type PluginsCommand struct {
 	*glazedcmds.CommandDescription
-	kind       string
-	providerID string
+	kind string
 }
 
 var _ glazedcmds.GlazeCommand = (*PluginsCommand)(nil)
@@ -53,14 +56,19 @@ func NewPluginsCommand(kind string) (*PluginsCommand, error) {
 	if short == "" {
 		return nil, errors.Errorf("unknown plugins command %q", kind)
 	}
+	options := []glazedcmds.CommandDescriptionOption{
+		glazedcmds.WithShort(short),
+		glazedcmds.WithParents("plugins"),
+		glazedcmds.WithSections(repoSection),
+	}
+	if kind == "inspect" {
+		options = append(options, glazedcmds.WithArguments(
+			fields.New("plugin", fields.TypeString, fields.WithRequired(true), fields.WithHelp("Selected plugin ID")),
+		))
+	}
 	return &PluginsCommand{
-		CommandDescription: glazedcmds.NewCommandDescription(
-			kind,
-			glazedcmds.WithShort(short),
-			glazedcmds.WithParents("plugins"),
-			glazedcmds.WithSections(repoSection),
-		),
-		kind: kind,
+		CommandDescription: glazedcmds.NewCommandDescription(kind, options...),
+		kind:               kind,
 	}, nil
 }
 
@@ -111,9 +119,18 @@ func (c *PluginsCommand) RunIntoGlazeProcessor(
 		}
 		return addCatalogRows(ctx, processor, catalog)
 	case "inspect":
-		spec, exists := repo.SpecByID[c.providerID]
+		pluginValues, exists := vals.Get(schema.DefaultSlug)
 		if !exists {
-			return errors.Errorf("E_USAGE: plugin %q is not selected", c.providerID)
+			return errors.New("inspect arguments are unavailable")
+		}
+		providerIDValue, exists := pluginValues.GetField("plugin")
+		providerID, ok := providerIDValue.(string)
+		if !exists || !ok || providerID == "" {
+			return errors.New("E_USAGE: inspect requires exactly one plugin ID")
+		}
+		spec, exists := repo.SpecByID[providerID]
+		if !exists {
+			return errors.Errorf("E_USAGE: plugin %q is not selected", providerID)
 		}
 		catalog, err := loadDiagnosticCatalog(repo)
 		if err != nil {
@@ -133,24 +150,6 @@ func (c *PluginsCommand) RunIntoGlazeProcessor(
 	default:
 		return errors.Errorf("unsupported plugins command %q", c.kind)
 	}
-}
-
-func (c *PluginsCommand) ConfigureCobra(command *cobra.Command) {
-	if c.kind == "inspect" {
-		command.Use = "inspect PLUGIN"
-		command.Args = cobra.ExactArgs(1)
-	}
-}
-
-func (c *PluginsCommand) SetCobraArgs(args []string) error {
-	if c.kind != "inspect" {
-		return nil
-	}
-	if len(args) != 1 {
-		return errors.Errorf("E_USAGE: inspect requires exactly one plugin ID")
-	}
-	c.providerID = args[0]
-	return nil
 }
 
 type runtimePluginSpec struct {
@@ -336,30 +335,12 @@ func addPluginInspectionRows(
 	return nil
 }
 
-func buildPluginsSubcommand(kind string) *cobra.Command {
+func buildPluginsSubcommand(kind string) (*cobra.Command, error) {
 	command, err := NewPluginsCommand(kind)
-	cobra.CheckErr(err)
+	if err != nil {
+		return nil, err
+	}
 	return buildGlazedCommand(command)
-}
-
-func newPluginsListCmd() *cobra.Command {
-	return buildPluginsSubcommand("list")
-}
-
-func newPluginsCommandsCmd() *cobra.Command {
-	return buildPluginsSubcommand("commands")
-}
-
-func newPluginsCatalogCmd() *cobra.Command {
-	return buildPluginsSubcommand("catalog")
-}
-
-func newPluginsInspectCmd() *cobra.Command {
-	return buildPluginsSubcommand("inspect")
-}
-
-func newPluginsRefreshCmd() *cobra.Command {
-	return buildPluginsSubcommand("refresh")
 }
 
 func newPluginsRunCmd() *cobra.Command {

@@ -17,7 +17,6 @@ import (
 	"github.com/go-go-golems/glazed/pkg/cmds/schema"
 	"github.com/go-go-golems/glazed/pkg/cmds/values"
 	"github.com/go-go-golems/glazed/pkg/middlewares"
-	glazedsettings "github.com/go-go-golems/glazed/pkg/settings"
 	"github.com/go-go-golems/glazed/pkg/types"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -79,62 +78,11 @@ func (p *humanLogsProcessor) Close(context.Context) error {
 	return nil
 }
 
-func (c *LogsCommand) BuildGlazedProcessor(
-	vals *values.Values,
-	writer io.Writer,
-) (middlewares.Processor, bool, error) {
-	logValues, exists := vals.Get(schema.DefaultSlug)
-	if !exists {
-		return nil, false, errors.New("logs settings are unavailable")
-	}
-	follow, _ := logValues.GetField("follow")
-	outputValues, exists := vals.Get(glazedsettings.GlazedSlug)
-	if !exists {
-		return nil, false, errors.New("glazed output settings are unavailable")
-	}
-	output, _ := outputValues.GetField("output")
-	if follow != true || output != "json" {
-		return nil, false, nil
-	}
-	processor, err := newJSONLinesProcessor(outputValues, writer)
-	return processor, true, err
-}
-
-func (c *LogsCommand) PrepareGlazedValues(vals *values.Values) error {
-	logValues, exists := vals.Get(schema.DefaultSlug)
-	if !exists {
-		return errors.New("logs settings are unavailable")
-	}
-	followValue, exists := logValues.Fields.Get("follow")
-	if !exists || followValue.Value != true {
-		return nil
-	}
-	glazedValues, exists := vals.Get(glazedsettings.GlazedSlug)
-	if !exists {
-		return errors.New("glazed output settings are unavailable")
-	}
-	outputValue, exists := glazedValues.Fields.Get("output")
-	if !exists || outputValue.Value != "json" {
-		return nil
-	}
-	objectsValue, exists := glazedValues.Fields.Get("output-as-objects")
-	if !exists {
-		return errors.New("glazed JSON object output setting is unavailable")
-	}
-	objectsValue.Value = true
-	return nil
-}
-
 func NewLogsCommand() (*LogsCommand, error) {
 	repoSection, err := getRepoLayer()
 	if err != nil {
 		return nil, err
 	}
-	glazedSection, err := glazedsettings.NewGlazedSection()
-	if err != nil {
-		return nil, err
-	}
-	glazedSection.OutputSection.Definitions.Delete("stream")
 	return &LogsCommand{CommandDescription: glazedcmds.NewCommandDescription(
 		"logs",
 		glazedcmds.WithShort("Show or follow service logs"),
@@ -155,7 +103,7 @@ func NewLogsCommand() (*LogsCommand, error) {
 			fields.New("no-prefix", fields.TypeBool, fields.WithDefault(false), fields.WithHelp("Disable text prefixes")),
 			fields.New("ansi", fields.TypeString, fields.WithDefault("auto"), fields.WithHelp("ANSI policy: auto, always, never")),
 		),
-		glazedcmds.WithSections(repoSection, glazedSection),
+		glazedcmds.WithSections(repoSection),
 	)}, nil
 }
 
@@ -444,8 +392,10 @@ func stripANSI(value string) string {
 	return result.String()
 }
 
-func newLogsCmd() *cobra.Command {
+func newLogsCmd() (*cobra.Command, error) {
 	command, err := NewLogsCommand()
-	cobra.CheckErr(err)
+	if err != nil {
+		return nil, err
+	}
 	return buildDualGlazedCommand(command)
 }

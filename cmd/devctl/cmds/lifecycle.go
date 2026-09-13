@@ -2,8 +2,6 @@ package cmds
 
 import (
 	"context"
-	stderrors "errors"
-	"io"
 	"os"
 	"time"
 
@@ -16,7 +14,6 @@ import (
 	"github.com/go-go-golems/glazed/pkg/cmds/schema"
 	"github.com/go-go-golems/glazed/pkg/cmds/values"
 	"github.com/go-go-golems/glazed/pkg/middlewares"
-	glazedsettings "github.com/go-go-golems/glazed/pkg/settings"
 	"github.com/go-go-golems/glazed/pkg/types"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -192,169 +189,41 @@ func newOperatorController(repoRoot string) (operator.Controller, error) {
 	})
 }
 
-func buildGlazedCommand(command glazedcmds.GlazeCommand) *cobra.Command {
-	description := command.Description().Clone(true)
-	if _, exists := description.Schema.Get(glazedsettings.GlazedSlug); !exists {
-		glazedSection, err := glazedsettings.NewGlazedSection()
-		cobra.CheckErr(err)
-		description.Schema.Set(glazedsettings.GlazedSlug, glazedSection)
-	}
-	built := &cobra.Command{
-		Use: description.Name, Short: description.Short, Long: description.Long,
-	}
-	if configurable, ok := command.(interface{ ConfigureCobra(*cobra.Command) }); ok {
-		configurable.ConfigureCobra(built)
-	}
-	parser, err := cli.NewCobraParserFromSections(description.Schema, &cli.CobraParserConfig{
-		SkipCommandSettingsSection: false,
-	})
-	cobra.CheckErr(err)
-	cobra.CheckErr(parser.AddToCobraCommand(built))
-	built.RunE = func(cmd *cobra.Command, args []string) error {
-		if receiver, ok := command.(interface{ SetCobraArgs([]string) error }); ok {
-			if err := receiver.SetCobraArgs(args); err != nil {
-				return err
-			}
-		}
-		parsedValues, err := parser.Parse(cmd, args)
-		if err != nil {
-			return err
-		}
-		if preparer, ok := command.(interface{ PrepareGlazedValues(*values.Values) error }); ok {
-			if err := preparer.PrepareGlazedValues(parsedValues); err != nil {
-				return err
-			}
-		}
-		glazedValues, exists := parsedValues.Get(glazedsettings.GlazedSlug)
-		if !exists {
-			return errors.New("glazed output settings are unavailable")
-		}
-		var processor middlewares.Processor
-		custom := false
-		if builder, ok := command.(interface {
-			BuildGlazedProcessor(*values.Values, io.Writer) (middlewares.Processor, bool, error)
-		}); ok {
-			processor, custom, err = builder.BuildGlazedProcessor(parsedValues, cmd.OutOrStdout())
-			if err != nil {
-				return err
-			}
-		}
-		if !custom {
-			tableProcessor, setupErr := glazedsettings.SetupTableProcessor(glazedValues)
-			err = setupErr
-			if err != nil {
-				return err
-			}
-			processor = tableProcessor
-			if _, err := glazedsettings.SetupProcessorOutput(tableProcessor, glazedValues, cmd.OutOrStdout()); err != nil {
-				return err
-			}
-		}
-		runErr := command.RunIntoGlazeProcessor(cmd.Context(), parsedValues, processor)
-		closeErr := processor.Close(cmd.Context())
-		return stderrors.Join(runErr, closeErr)
-	}
-	return built
+func buildGlazedCommand(command glazedcmds.Command) (*cobra.Command, error) {
+	return cli.BuildCobraCommandFromCommand(command,
+		cli.WithCobraShortHelpSections(schema.DefaultSlug),
+	)
 }
 
-// buildDualGlazedCommand is the temporary devctl-side bridge until Glazed's
-// dual-mode builder returns errors through RunE and exposes custom processor
-// setup as a supported interface. Keeping this here preserves devctl's typed
-// exit-code classification and streaming log processor behavior.
-func buildDualGlazedCommand(command glazedcmds.Command) *cobra.Command {
-	description := command.Description().Clone(true)
-	if _, exists := description.Schema.Get(glazedsettings.GlazedSlug); !exists {
-		glazedSection, err := glazedsettings.NewGlazedSection()
-		cobra.CheckErr(err)
-		description.Schema.Set(glazedsettings.GlazedSlug, glazedSection)
-	}
-	built := &cobra.Command{
-		Use: description.Name, Short: description.Short, Long: description.Long,
-	}
-	if configurable, ok := command.(interface{ ConfigureCobra(*cobra.Command) }); ok {
-		configurable.ConfigureCobra(built)
-	}
-	if built.Flags().Lookup("with-glaze-output") == nil {
-		built.Flags().Bool("with-glaze-output", false, "Use structured Glazed output")
-	}
-	parser, err := cli.NewCobraParserFromSections(description.Schema, &cli.CobraParserConfig{
-		SkipCommandSettingsSection: false,
-	})
-	cobra.CheckErr(err)
-	cobra.CheckErr(parser.AddToCobraCommand(built))
-	built.RunE = func(cmd *cobra.Command, args []string) error {
-		if receiver, ok := command.(interface{ SetCobraArgs([]string) error }); ok {
-			if err := receiver.SetCobraArgs(args); err != nil {
-				return err
-			}
-		}
-		parsedValues, err := parser.Parse(cmd, args)
-		if err != nil {
-			return err
-		}
-		useGlaze, err := cmd.Flags().GetBool("with-glaze-output")
-		if err != nil {
-			return err
-		}
-		if !useGlaze {
-			bare, ok := command.(glazedcmds.BareCommand)
-			if !ok {
-				return errors.Errorf("command %s does not implement BareCommand", description.Name)
-			}
-			return bare.Run(cmd.Context(), parsedValues)
-		}
-
-		if preparer, ok := command.(interface{ PrepareGlazedValues(*values.Values) error }); ok {
-			if err := preparer.PrepareGlazedValues(parsedValues); err != nil {
-				return err
-			}
-		}
-		glazedValues, exists := parsedValues.Get(glazedsettings.GlazedSlug)
-		if !exists {
-			return errors.New("glazed output settings are unavailable")
-		}
-		var processor middlewares.Processor
-		custom := false
-		if builder, ok := command.(interface {
-			BuildGlazedProcessor(*values.Values, io.Writer) (middlewares.Processor, bool, error)
-		}); ok {
-			processor, custom, err = builder.BuildGlazedProcessor(parsedValues, cmd.OutOrStdout())
-			if err != nil {
-				return err
-			}
-		}
-		if !custom {
-			tableProcessor, setupErr := glazedsettings.SetupTableProcessor(glazedValues)
-			if setupErr != nil {
-				return setupErr
-			}
-			processor = tableProcessor
-			if _, err := glazedsettings.SetupProcessorOutput(tableProcessor, glazedValues, cmd.OutOrStdout()); err != nil {
-				return err
-			}
-		}
-		runErr := command.(glazedcmds.GlazeCommand).RunIntoGlazeProcessor(cmd.Context(), parsedValues, processor)
-		closeErr := processor.Close(cmd.Context())
-		return stderrors.Join(runErr, closeErr)
-	}
-	return built
+func buildDualGlazedCommand(command glazedcmds.Command) (*cobra.Command, error) {
+	return cli.BuildCobraCommandFromCommand(command,
+		cli.WithDualMode(true),
+		cli.WithGlazeToggleFlag("with-glaze-output"),
+		cli.WithCobraShortHelpSections(schema.DefaultSlug),
+	)
 }
 
-func newUpCmd() *cobra.Command {
+func newUpCmd() (*cobra.Command, error) {
 	command, err := NewLifecycleCommand("up")
-	cobra.CheckErr(err)
+	if err != nil {
+		return nil, err
+	}
 	return buildGlazedCommand(command)
 }
 
-func newDownCmd() *cobra.Command {
+func newDownCmd() (*cobra.Command, error) {
 	command, err := NewLifecycleCommand("down")
-	cobra.CheckErr(err)
+	if err != nil {
+		return nil, err
+	}
 	return buildGlazedCommand(command)
 }
 
-func newRestartCmd() *cobra.Command {
+func newRestartCmd() (*cobra.Command, error) {
 	command, err := NewLifecycleCommand("restart")
-	cobra.CheckErr(err)
+	if err != nil {
+		return nil, err
+	}
 	return buildGlazedCommand(command)
 }
 

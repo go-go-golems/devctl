@@ -17,7 +17,7 @@ func TestBuiltCLIContracts(t *testing.T) {
 	t.Run("structured no-state status", func(t *testing.T) {
 		repoRoot := t.TempDir()
 		stdout, stderr, err := runCLI(binary,
-			"status", "--repo-root", repoRoot, "--with-glaze-output", "--output", "json",
+			"status", "--repo-root", repoRoot, "--with-glaze-output", "--format", "json",
 		)
 		require.NoError(t, err, stderr)
 		require.Empty(t, stderr)
@@ -92,7 +92,7 @@ func TestBuiltCLIContracts(t *testing.T) {
 
 	t.Run("raw help and command schema are machine readable", func(t *testing.T) {
 		stdout, stderr, err := runCLI(binary,
-			"help", "export", "--slug", "plugin-authoring", "--select", "content",
+			"help", "export", "--slug", "plugin-authoring", "--format", "json", "--output-fields", "content",
 		)
 		require.NoError(t, err, stderr)
 		require.Contains(t, stdout, "devctl plugins let you take")
@@ -111,7 +111,7 @@ func TestBuiltCLIContracts(t *testing.T) {
 		configPath, markerPath := writeCountingCommandPlugin(t, repoRoot)
 		stdout, stderr, err := runCLI(binary,
 			"plugins", "catalog", "--repo-root", repoRoot, "--config", configPath,
-			"--output", "json",
+			"--format", "json",
 		)
 		require.NoError(t, err, stderr)
 		require.NoFileExists(t, markerPath)
@@ -127,7 +127,7 @@ func TestBuiltCLIContracts(t *testing.T) {
 		configPath, markerPath := writeCountingCommandPlugin(t, repoRoot)
 		_, stderr, err := runCLI(binary,
 			"plugins", "refresh", "--repo-root", repoRoot, "--config", configPath,
-			"--output", "json",
+			"--format", "json",
 		)
 		require.NoError(t, err, stderr)
 		require.NoError(t, os.Remove(markerPath))
@@ -157,7 +157,7 @@ func TestBuiltCLIContracts(t *testing.T) {
 		configPath, alphaMarker, betaMarker := writeConflictingCommandPlugins(t, repoRoot)
 		_, stderr, err := runCLI(binary,
 			"plugins", "refresh", "--repo-root", repoRoot, "--config", configPath,
-			"--output", "json",
+			"--format", "json",
 		)
 		require.Error(t, err)
 		require.Contains(t, stderr, "plugin command catalog has conflicts")
@@ -166,7 +166,7 @@ func TestBuiltCLIContracts(t *testing.T) {
 
 		stdout, stderr, err := runCLI(binary,
 			"plugins", "inspect", "alpha", "--repo-root", repoRoot,
-			"--config", configPath, "--output", "json",
+			"--config", configPath, "--format", "json",
 		)
 		require.NoError(t, err, stderr)
 		var rows []map[string]any

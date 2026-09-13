@@ -25,7 +25,7 @@ func TestStreamCommandJSONLinesAndHumanOutput(t *testing.T) {
 		"--repo-root", repoRoot,
 		"--config", configPath,
 		"--op", "stream.start",
-		"--output", "json",
+		"--with-glaze-output", "--format", "jsonl",
 	)
 	require.NoError(t, err, stderr)
 	lines := strings.Split(strings.TrimSuffix(stdout, "\n"), "\n")
@@ -62,10 +62,9 @@ func runDevctlCommand(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 	root := &cobra.Command{Use: "devctl", SilenceUsage: true, SilenceErrors: true}
 	require.NoError(t, AddCommands(root))
-	var stdout, stderr bytes.Buffer
-	root.SetOut(&stdout)
+	var stderr bytes.Buffer
 	root.SetErr(&stderr)
 	root.SetArgs(args)
-	err := root.Execute()
-	return stdout.String(), stderr.String(), err
+	stdout, err := captureProcessStdout(t, root.Execute)
+	return stdout, stderr.String(), err
 }

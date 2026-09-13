@@ -32,7 +32,7 @@ devctl schema restart
 devctl schema plugins catalog
 ```
 
-`devctl schema` reports command path, usage, summary, and local/inherited flags without running the command. Use `devctl help export --output json` when you need help metadata and content together.
+`devctl schema` reports command path, usage, summary, and local/inherited flags without running the command. Use `devctl help export --format json` when you need help metadata and content together.
 
 ## 1. The two hard rules: handshake first, stdout is sacred
 
